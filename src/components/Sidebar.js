@@ -7,6 +7,7 @@ export default function Sidebar({ active, setActive, close }) {
     { name: "Tamil", icon: <FaFilm /> },
     { name: "Tamil Dubbed", icon: <FaMicrophone /> },
     { name: "English", icon: <FaGlobe /> },
+    { name: "Movies", icon: <FaFilm /> },
   ];
 
   const handleClick = (name) => {

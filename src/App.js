@@ -2,6 +2,7 @@ import { useState } from "react";
 import Sidebar from "./components/Sidebar";
 import { FaBars } from "react-icons/fa";
 
+import Movies from "./pages/Movies";
 import Home from "./pages/Home";
 import Tamil from "./pages/Tamil";
 import Dubbed from "./pages/Dubbed";
@@ -13,8 +14,11 @@ function App() {
   const [active, setActive] = useState("Home");
   const [open, setOpen] = useState(false);
 
+  // ✅ SINGLE renderPage (FIXED)
   const renderPage = () => {
     switch (active) {
+      case "Movies":
+        return <Movies />;
       case "Tamil":
         return <Tamil />;
       case "Tamil Dubbed":
