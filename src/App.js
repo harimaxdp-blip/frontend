@@ -21,6 +21,7 @@ function App() {
   const location = useLocation();
   const navigate = useNavigate();
 
+  // INTRO ONLY ON FIRST LOAD
   useEffect(() => {
     const hasSeenIntro = sessionStorage.getItem("introShown");
 
@@ -30,55 +31,50 @@ function App() {
     }
   }, []);
 
+  // LOADER
   useEffect(() => {
     const timer = setTimeout(() => setLoading(false), 2000);
     return () => clearTimeout(timer);
   }, []);
 
+  // ACTIVE PAGE DETECT
   const getActive = () => {
     const path = location.pathname;
 
-    if (path.includes("/movies")) return "MOVIES";
-    if (path.includes("/series")) return "SERIES";
-    if (path.includes("/anime")) return "ANIME";
-    if (path.includes("/upload")) return "UPLOAD";
-    if (path.includes("/edit")) return "EDIT";
+    if (path.startsWith("/movies")) return "MOVIES";
+    if (path.startsWith("/series")) return "SERIES";
+    if (path.startsWith("/anime")) return "ANIME";
+    if (path.startsWith("/upload")) return "UPLOAD";
+    if (path.startsWith("/edit")) return "EDIT";
 
     return "ALL";
   };
 
   const active = getActive();
 
+  // NAVIGATION
   const handleSetActive = (page) => {
     setOpen(false);
 
-    switch (page) {
-      case "MOVIES":
-        navigate("/movies");
-        break;
-      case "SERIES":
-        navigate("/series");
-        break;
-      case "ANIME":
-        navigate("/anime");
-        break;
-      case "UPLOAD":
-        navigate("/upload");
-        break;
-      case "EDIT":
-        navigate("/edit");
-        break;
-      default:
-        navigate("/");
-    }
+    if (page === "MOVIES") navigate("/movies");
+    else if (page === "SERIES") navigate("/series");
+    else if (page === "ANIME") navigate("/anime");
+    else if (page === "UPLOAD") navigate("/upload");
+    else if (page === "EDIT") navigate("/edit");
+    else navigate("/");
   };
 
+  // LOADING
   if (loading) return <Loader />;
-  if (showIntro) return <IntroVideo onFinish={() => setShowIntro(false)} />;
+
+  // INTRO
+  if (showIntro)
+    return <IntroVideo onFinish={() => setShowIntro(false)} />;
 
   return (
     <div className="app">
 
+      {/* TOP BAR */}
       <div className="topbar">
         <button className="menu-btn" onClick={() => setOpen(!open)}>
           <FaBars />
@@ -89,6 +85,7 @@ function App() {
         </div>
       </div>
 
+      {/* SIDEBAR */}
       <div className={`sidebar ${open ? "open" : ""}`}>
         <Sidebar
           active={active}
@@ -97,17 +94,23 @@ function App() {
         />
       </div>
 
+      {/* PAGES */}
       <div className={`content ${open ? "shift" : ""}`}>
         <Routes>
           <Route path="/" element={<Home type="all" />} />
           <Route path="/movies" element={<Home type="movie" />} />
           <Route path="/series" element={<Home type="series" />} />
           <Route path="/anime" element={<Home type="anime" />} />
+
           <Route path="/upload" element={<UploadMovie />} />
           <Route path="/edit" element={<EditMovies />} />
+
+          {/* FIX FOR UNKNOWN ROUTES */}
+          <Route path="*" element={<Home type="all" />} />
         </Routes>
       </div>
 
+      {/* BACKDROP */}
       {open && <div className="backdrop" onClick={() => setOpen(false)} />}
 
     </div>
