@@ -59,7 +59,7 @@ export default function IntroVideo({ onFinish }) {
       {!isPlaying && (
         <div className="overlay">
           <div className="play-button">
-             <span>ENTER EXPERIENCE</span>
+             <span>ENTER</span>
           </div>
         </div>
       )}
