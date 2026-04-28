@@ -1,78 +1,417 @@
-.upload-page {
-  padding: 100px 30px;
+body {
+  margin: 0;
+  background: #000;
+  color: white;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* =========================
+   GLOBAL LAYOUT FIX
+========================= */
+* {
+  box-sizing: border-box;
+}
+
+/* =========================
+   UPLOAD PAGE (TV STYLE)
+========================= */
+.tv-upload {
   min-height: 100vh;
   background: #000;
   color: white;
-  display: flex;
-  justify-content: center;
-  align-items: center;
+  padding: 40px 20px;
 }
 
-/* FORM CONTAINER */
-.form-box {
-  width: 100%;
-  max-width: 500px;
-  background: #111;
-  padding: 25px;
-  border-radius: 15px;
-  box-shadow: 0 0 20px rgba(255, 0, 0, 0.15);
-  animation: fadeIn 0.5s ease;
-}
-
-/* TITLE */
-.form-box h2 {
+.tv-title {
   text-align: center;
-  margin-bottom: 20px;
+  font-size: 36px;
   color: red;
+  margin-bottom: 30px;
+  letter-spacing: 2px;
 }
 
-/* INPUT FIELDS */
-.form-box input {
-  width: 100%;
-  padding: 12px;
-  margin: 10px 0;
-  background: #000;
-  border: 1px solid #333;
+/* GRID */
+.tv-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  max-width: 900px;
+  margin: auto;
+}
+
+/* INPUTS */
+.tv-input {
+  padding: 16px;
+  font-size: 16px;
+  background: #111;
+  border: 2px solid #222;
   color: white;
-  border-radius: 8px;
+  border-radius: 12px;
   outline: none;
-  transition: 0.3s;
+  transition: 0.25s ease;
 }
 
-/* FOCUS EFFECT */
-.form-box input:focus {
-  border-color: red;
-  box-shadow: 0 0 10px rgba(255, 0, 0, 0.3);
+.tv-input:focus {
+  border: 2px solid red;
+  box-shadow: 0 0 10px red;
+  transform: scale(1.02);
 }
 
 /* BUTTON */
-.form-box button {
+.tv-button {
+  display: block;
+  margin: 40px auto 0;
+  padding: 16px 60px;
+  font-size: 20px;
+  background: red;
+  border: none;
+  color: white;
+  border-radius: 14px;
+  cursor: pointer;
+  transition: 0.3s;
+  font-weight: bold;
+}
+
+.tv-button:hover {
+  background: darkred;
+  transform: scale(1.05);
+}
+
+/* =========================
+   MOVIES PAGE
+========================= */
+.movies-page {
+  padding: 20px;
+  min-height: 100vh;
+  background: #000;
+}
+
+/* TITLE */
+.movies-page h2 {
+  font-size: 22px;
+  color: red;
+  margin-bottom: 20px;
+}
+
+/* =========================
+   FILTER BAR (TV STYLE)
+========================= */
+.filter-bar {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 15px;
+}
+
+.filter-bar select {
+  background: #111;
+  color: white;
+  border: 1px solid #333;
+  padding: 10px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+.filter-bar select:hover {
+  border-color: red;
+}
+
+/* =========================
+   GRID (NETFLIX / TV STYLE)
+========================= */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 16px;
+}
+
+/* CARD */
+.card {
+  background: #111;
+  border-radius: 14px;
+  padding: 10px;
+  cursor: pointer;
+  transition: 0.3s ease;
+  overflow: hidden;
+}
+
+.card:hover {
+  transform: scale(1.06);
+  box-shadow: 0 0 20px rgba(255, 0, 0, 0.6);
+}
+
+/* IMAGE FIX */
+.card img {
   width: 100%;
-  padding: 12px;
-  margin-top: 15px;
+  height: 240px;
+  object-fit: cover;
+  border-radius: 10px;
+  background: #222;
+  transition: 0.3s ease;
+}
+
+.card:hover img {
+  transform: scale(1.03);
+}
+
+/* TEXT */
+.card h3 {
+  font-size: 15px;
+  margin: 8px 0 4px;
+  color: white;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.card p {
+  font-size: 12px;
+  margin: 2px 0;
+  color: #bbb;
+}
+
+/* =========================
+   EDIT PAGE FIX
+========================= */
+.edit-input {
+  width: 100%;
+  padding: 8px;
+  margin-top: 8px;
+  background: #111;
+  border: 1px solid #333;
+  color: white;
+  border-radius: 6px;
+  outline: none;
+}
+
+.edit-input:focus {
+  border-color: red;
+}
+
+/* UPDATE BUTTON */
+.update-btn {
+  width: 100%;
+  margin-top: 8px;
+  padding: 8px;
+  background: #ff9800;
+  color: black;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: 0.2s;
+}
+
+.update-btn:hover {
+  background: #ffa726;
+  transform: scale(1.03);
+}
+
+/* DELETE BUTTON */
+.delete-btn {
+  width: 100%;
+  margin-top: 8px;
+  padding: 8px;
   background: red;
   color: white;
   border: none;
-  border-radius: 10px;
-  font-size: 16px;
+  border-radius: 6px;
   cursor: pointer;
-  transition: 0.3s;
+  transition: 0.2s;
 }
 
-/* BUTTON HOVER */
-.form-box button:hover {
+.delete-btn:hover {
   background: darkred;
   transform: scale(1.03);
 }
 
-/* ANIMATION */
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(30px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
+/* =========================
+   RESPONSIVE (ALL DEVICES)
+========================= */
+
+/* LARGE TV */
+@media (min-width: 1600px) {
+  .grid {
+    grid-template-columns: repeat(7, 1fr);
   }
 }
+
+/* LAPTOP */
+@media (max-width: 1200px) {
+  .grid {
+    grid-template-columns: repeat(5, 1fr);
+  }
+}
+
+/* TABLET */
+@media (max-width: 900px) {
+  .grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .tv-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* MOBILE */
+@media (max-width: 600px) {
+  .grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .card img {
+    height: 200px;
+  }
+
+  .tv-title {
+    font-size: 28px;
+  }
+}
+/* =========================
+   SEARCH BAR WRAPPER
+========================= */
+
+.search-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+
+  margin: 15px 0;
+  padding: 0 10px;
+}
+
+/* =========================
+   INPUT FIELD (TV OPTIMIZED)
+========================= */
+
+.search-input {
+  flex: 1;
+
+  padding: 14px 18px;
+  font-size: 18px;
+
+  border-radius: 10px;
+  border: none;
+  outline: none;
+
+  background: #1a1a1a;
+  color: white;
+
+  /* important for TV readability */
+  letter-spacing: 0.5px;
+}
+
+/* placeholder */
+.search-input::placeholder {
+  color: #888;
+}
+
+/* =========================
+   MIC BUTTON
+========================= */
+
+.mic-btn {
+  width: 52px;
+  height: 52px;
+
+  border-radius: 12px;
+  border: none;
+
+  background: #222;
+  color: white;
+
+  font-size: 22px;
+
+  cursor: pointer;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  transition: 0.2s ease;
+}
+
+/* hover / focus (TV remote support) */
+.mic-btn:hover,
+.mic-btn:focus {
+  background: #444;
+  transform: scale(1.05);
+  outline: 2px solid white;
+}
+
+/* =========================
+   TV MODE (Google TV / Android TV)
+========================= */
+
+@media (min-width: 1200px) {
+  .search-input {
+    padding: 18px 22px;
+    font-size: 22px;
+  }
+
+  .mic-btn {
+    width: 64px;
+    height: 64px;
+    font-size: 26px;
+  }
+}
+
+/* =========================
+   MOBILE MODE
+========================= */
+
+@media (max-width: 768px) {
+  .search-input {
+    font-size: 15px;
+    padding: 12px 14px;
+  }
+
+  .mic-btn {
+    width: 44px;
+    height: 44px;
+    font-size: 18px;
+  }
+}
+.search-bar {
+  display: flex;
+  align-items: center;
+  background: #222;
+  border-radius: 50px;
+  padding: 5px 15px;
+  border: 2px solid transparent;
+  transition: 0.3s;
+}
+
+/* Visual cue when listening */
+.search-bar.listening-mode {
+  border-color: #ff4b2b;
+  box-shadow: 0 0 15px rgba(255, 75, 43, 0.4);
+}
+
+.search-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: white;
+  padding: 10px;
+  outline: none;
+  font-size: 16px;
+}
+
+.mic-btn {
+  background: none;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 10px;
+  border-radius: 50%;
+  transition: 0.3s;
+}
+
+.mic-on {
+  transform: scale(1.2);
+  filter: drop-shadow(0 0 5px red);
+}
+
