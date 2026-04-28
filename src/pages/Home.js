@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import React, {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useCallback,
+} from "react";
 import { db } from "../firebase";
 import { collection, onSnapshot } from "firebase/firestore";
 import "./Movies.css";
@@ -14,6 +20,14 @@ export default function Home({ type = "all" }) {
   const [isListening, setIsListening] = useState(false);
 
   const recognitionRef = useRef(null);
+
+  // =========================
+  // NORMALIZE
+  // =========================
+  const normalize = (value) =>
+    String(value || "")
+      .toLowerCase()
+      .trim();
 
   // =========================
   // FETCH DATA
@@ -42,56 +56,165 @@ export default function Home({ type = "all" }) {
   }, [type]);
 
   // =========================
-  // FILTER DATA BY CURRENT TYPE
+  // TYPE MATCHER
   // =========================
-  const dataByType =
-    type === "all"
-      ? movies
-      : movies.filter(
-          (m) =>
-            (m.type || "").toLowerCase().trim() ===
-            type.toLowerCase().trim()
-        );
+  const matchesType = useCallback(
+    (itemType) => {
+      const cleanType = normalize(itemType);
+
+      if (type === "all") return true;
+
+      if (type === "movie") {
+        return ["movie", "movies"].includes(cleanType);
+      }
+
+      if (type === "series") {
+        return ["series", "tv", "show"].includes(cleanType);
+      }
+
+      if (type === "anime") {
+        return ["anime"].includes(cleanType);
+      }
+
+      return true;
+    },
+    [type]
+  );
 
   // =========================
-  // AUTO FILTER OPTIONS
+  // TAB DATA
   // =========================
-  const availableLanguages = [
-    ...new Set(
-      dataByType
-        .map((m) => (m.language || "").trim())
-        .filter(Boolean)
-    ),
-  ].sort();
-
-  const availableGenres = [
-    ...new Set(
-      dataByType
-        .map((m) => (m.genre || "").trim())
-        .filter(Boolean)
-    ),
-  ].sort();
-
-  const availableYears = [
-    ...new Set(
-      dataByType
-        .map((m) => Number(m.year))
-        .filter(Boolean)
-    ),
-  ].sort((a, b) => b - a);
+  const dataByType = useMemo(() => {
+    return movies.filter((item) => matchesType(item.type));
+  }, [movies, matchesType]);
 
   // =========================
-  // STOP VOICE
+  // FILTER OPTIONS BASED ON CURRENT TAB
+  // =========================
+  const availableLanguages = useMemo(() => {
+    return [
+      ...new Set(
+        dataByType
+          .map((item) => normalize(item.language))
+          .filter(Boolean)
+      ),
+    ].sort();
+  }, [dataByType]);
+
+  const availableGenres = useMemo(() => {
+    return [
+      ...new Set(
+        dataByType
+          .map((item) => normalize(item.genre))
+          .filter(Boolean)
+      ),
+    ].sort();
+  }, [dataByType]);
+
+  const availableYears = useMemo(() => {
+    return [
+      ...new Set(
+        dataByType
+          .map((item) => Number(item.year))
+          .filter(Boolean)
+      ),
+    ].sort((a, b) => b - a);
+  }, [dataByType]);
+
+  // =========================
+  // MAIN FILTER
+  // IMPORTANT:
+  // FILTER ON ALL TYPES, NOT JUST MOVIES
+  // =========================
+  const filteredContent = useMemo(() => {
+    return dataByType.filter((item) => {
+      const itemLanguage = normalize(item.language);
+      const itemGenre = normalize(item.genre);
+      const itemTitle = normalize(item.title);
+      const itemYear = Number(item.year);
+
+      const languageMatch =
+        languageFilter === "all" ||
+        itemLanguage === normalize(languageFilter);
+
+      const genreMatch =
+        genreFilter === "all" ||
+        itemGenre === normalize(genreFilter);
+
+      const yearMatch =
+        yearFilter === "all" ||
+        itemYear === Number(yearFilter);
+
+      const searchMatch =
+        itemTitle.includes(normalize(search));
+
+      return (
+        languageMatch &&
+        genreMatch &&
+        yearMatch &&
+        searchMatch
+      );
+    });
+  }, [
+    dataByType,
+    languageFilter,
+    genreFilter,
+    yearFilter,
+    search,
+  ]);
+
+  // =========================
+  // MOVIES
+  // =========================
+  const movieItems = useMemo(() => {
+    return filteredContent.filter((item) =>
+      ["movie", "movies"].includes(normalize(item.type))
+    );
+  }, [filteredContent]);
+
+  // =========================
+  // SERIES + ANIME
+  // IMPORTANT:
+  // ANIME MUST ALSO FILTER HERE
+  // =========================
+  const groupedContent = useMemo(() => {
+    const grouped = {};
+
+    filteredContent.forEach((item) => {
+      const cleanType = normalize(item.type);
+
+      // Skip only movies
+      if (["movie", "movies"].includes(cleanType)) return;
+
+      const title = item.title || "Unknown Title";
+      const season = item.season || "1";
+
+      if (!grouped[title]) {
+        grouped[title] = {};
+      }
+
+      if (!grouped[title][season]) {
+        grouped[title][season] = [];
+      }
+
+      grouped[title][season].push(item);
+    });
+
+    return grouped;
+  }, [filteredContent]);
+
+  // =========================
+  // VOICE
   // =========================
   const stopVoice = () => {
     setIsListening(false);
-    recognitionRef.current?.stop();
-    recognitionRef.current = null;
+
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+      recognitionRef.current = null;
+    }
   };
 
-  // =========================
-  // VOICE SEARCH
-  // =========================
   const startVoiceSearch = () => {
     const SpeechRecognition =
       window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -126,50 +249,6 @@ export default function Home({ type = "all" }) {
     recognition.start();
   };
 
-  // =========================
-  // MAIN FILTER LOGIC
-  // =========================
-  const filteredMovies = dataByType.filter((item) => {
-    const itemLanguage = (item.language || "").toLowerCase().trim();
-    const itemGenre = (item.genre || "").toLowerCase().trim();
-    const itemTitle = (item.title || "").toLowerCase().trim();
-
-    return (
-      (languageFilter === "all" ||
-        itemLanguage === languageFilter.toLowerCase().trim()) &&
-
-      (genreFilter === "all" ||
-        itemGenre === genreFilter.toLowerCase().trim()) &&
-
-      (yearFilter === "all" ||
-        Number(item.year) === Number(yearFilter)) &&
-
-      itemTitle.includes(search.toLowerCase().trim())
-    );
-  });
-
-  // =========================
-  // GROUP SERIES + ANIME
-  // =========================
-  const groupedContent = {};
-
-  filteredMovies.forEach((item) => {
-    // MOVIES DIRECT GRID
-    if (item.type === "movie") return;
-
-    if (!groupedContent[item.title]) {
-      groupedContent[item.title] = {};
-    }
-
-    const seasonKey = item.season || "1";
-
-    if (!groupedContent[item.title][seasonKey]) {
-      groupedContent[item.title][seasonKey] = [];
-    }
-
-    groupedContent[item.title][seasonKey].push(item);
-  });
-
   return (
     <div className="movies-page">
 
@@ -193,46 +272,41 @@ export default function Home({ type = "all" }) {
 
       {/* FILTERS */}
       <div className="filter-bar">
-
-        {/* LANGUAGE */}
         <select
           value={languageFilter}
           onChange={(e) => setLanguageFilter(e.target.value)}
         >
           <option value="all">All Languages</option>
-          {availableLanguages.map((l) => (
-            <option key={l} value={l}>
-              {l}
+          {availableLanguages.map((lang) => (
+            <option key={lang} value={lang}>
+              {lang}
             </option>
           ))}
         </select>
 
-        {/* GENRE */}
         <select
           value={genreFilter}
           onChange={(e) => setGenreFilter(e.target.value)}
         >
           <option value="all">All Genres</option>
-          {availableGenres.map((g) => (
-            <option key={g} value={g}>
-              {g}
+          {availableGenres.map((genre) => (
+            <option key={genre} value={genre}>
+              {genre}
             </option>
           ))}
         </select>
 
-        {/* YEAR */}
         <select
           value={yearFilter}
           onChange={(e) => setYearFilter(e.target.value)}
         >
           <option value="all">All Years</option>
-          {availableYears.map((y) => (
-            <option key={y} value={y}>
-              {y}
+          {availableYears.map((year) => (
+            <option key={year} value={year}>
+              {year}
             </option>
           ))}
         </select>
-
       </div>
 
       {/* TITLE */}
@@ -240,36 +314,33 @@ export default function Home({ type = "all" }) {
         🎬 {type.toUpperCase()}
       </h2>
 
-      {/* MOVIE GRID */}
-      <div className="grid">
-        {filteredMovies
-          .filter(
-            (m) =>
-              (m.type || "").toLowerCase().trim() === "movie"
-          )
-          .map((m) => (
+      {/* MOVIES */}
+      {movieItems.length > 0 && (
+        <div className="grid">
+          {movieItems.map((movie) => (
             <div
               className="card"
-              key={m.id}
-              onClick={() => window.open(m.link, "_blank")}
+              key={movie.id}
+              onClick={() => window.open(movie.link, "_blank")}
             >
               <img
-                src={m.img || "https://via.placeholder.com/300x450"}
-                alt={m.title}
+                src={movie.img || "https://via.placeholder.com/300x450"}
+                alt={movie.title}
               />
 
-              <h3>{m.title}</h3>
+              <h3>{movie.title}</h3>
 
               <p>
-                {m.language || "Unknown"} • {m.year || "N/A"}
+                {movie.language || "Unknown"} • {movie.year || "N/A"}
               </p>
 
               <p style={{ color: "#999", fontSize: "12px" }}>
-                {m.genre || "Unknown"}
+                {movie.genre || "Unknown"}
               </p>
             </div>
           ))}
-      </div>
+        </div>
+      )}
 
       {/* SERIES + ANIME */}
       {Object.entries(groupedContent).map(([title, seasons]) => (
@@ -294,19 +365,14 @@ export default function Home({ type = "all" }) {
                     onClick={() => window.open(ep.link, "_blank")}
                   >
                     <img
-                      src={
-                        ep.img ||
-                        "https://via.placeholder.com/300x450"
-                      }
+                      src={ep.img || "https://via.placeholder.com/300x450"}
                       alt={ep.title}
                     />
 
-                    <p>
-                      Episode {ep.episode || "N/A"}
-                    </p>
+                    <p>{ep.title}</p>
 
                     <p style={{ color: "#999", fontSize: "12px" }}>
-                      {ep.genre || "Unknown"}
+                      {ep.language || "Unknown"} • {ep.genre || "Unknown"}
                     </p>
                   </div>
                 ))}
@@ -318,8 +384,8 @@ export default function Home({ type = "all" }) {
         </div>
       ))}
 
-      {/* NO RESULTS */}
-      {filteredMovies.length === 0 && (
+      {/* EMPTY */}
+      {filteredContent.length === 0 && (
         <p style={{ color: "gray", marginTop: 30 }}>
           No content found
         </p>
