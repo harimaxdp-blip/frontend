@@ -11,7 +11,7 @@ import "./index.css";
 // =========================
 
 // Browser tab title
-document.title = "HARI MOVIE";
+document.title = "HARI MOVIES";
 
 // Browser favicon from src/assets/logo.png
 const favicon =
