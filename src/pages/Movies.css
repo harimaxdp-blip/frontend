@@ -6,10 +6,15 @@ body {
 }
 
 /* =========================
-   GLOBAL LAYOUT FIX
+   GLOBAL FIX
 ========================= */
 * {
   box-sizing: border-box;
+}
+
+img {
+  max-width: 100%;
+  display: block;
 }
 
 /* =========================
@@ -94,13 +99,79 @@ body {
 }
 
 /* =========================
-   FILTER BAR (TV STYLE)
+   SEARCH BAR
+========================= */
+.search-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 15px 0;
+  padding: 8px 15px;
+  background: #222;
+  border-radius: 50px;
+  border: 2px solid transparent;
+  transition: 0.3s;
+}
+
+.search-bar.active-search,
+.search-bar.listening-mode {
+  border-color: #ff4b2b;
+  box-shadow: 0 0 15px rgba(255, 75, 43, 0.4);
+}
+
+.search-input {
+  flex: 1;
+  padding: 14px 18px;
+  font-size: 18px;
+  border-radius: 10px;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: white;
+  letter-spacing: 0.5px;
+}
+
+.search-input::placeholder {
+  color: #888;
+}
+
+/* MIC BUTTON */
+.mic-btn {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: none;
+  background: #222;
+  color: white;
+  font-size: 22px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: 0.3s ease;
+}
+
+.mic-btn:hover,
+.mic-btn:focus {
+  background: #444;
+  transform: scale(1.05);
+  outline: 2px solid white;
+}
+
+.mic-btn.listening,
+.mic-on {
+  transform: scale(1.2);
+  filter: drop-shadow(0 0 5px red);
+}
+
+/* =========================
+   FILTER BAR
 ========================= */
 .filter-bar {
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
-  margin-bottom: 15px;
+  margin-bottom: 20px;
 }
 
 .filter-bar select {
@@ -111,64 +182,98 @@ body {
   border-radius: 10px;
   cursor: pointer;
   transition: 0.2s;
+  outline: none;
 }
 
-.filter-bar select:hover {
+.filter-bar select:hover,
+.filter-bar select:focus {
   border-color: red;
 }
 
 /* =========================
-   GRID (NETFLIX / TV STYLE)
+   GRID LAYOUT
 ========================= */
-.grid {
+.grid,
+.episode-row {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
   gap: 16px;
 }
 
-/* CARD */
-.card {
+/* =========================
+   CARD UNIVERSAL FIX
+========================= */
+.card,
+.episode-card {
   background: #111;
   border-radius: 14px;
   padding: 10px;
   cursor: pointer;
   transition: 0.3s ease;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
-.card:hover {
+.card:hover,
+.episode-card:hover {
   transform: scale(1.06);
   box-shadow: 0 0 20px rgba(255, 0, 0, 0.6);
 }
 
-/* IMAGE FIX */
-.card img {
+/* =========================
+   UNIVERSAL IMAGE SIZE FIX
+   MOVIES / SERIES / ANIME SAME SIZE
+========================= */
+.card img,
+.episode-card img {
   width: 100%;
-  height: 240px;
+  height: 260px;
   object-fit: cover;
+  object-position: center;
   border-radius: 10px;
   background: #222;
   transition: 0.3s ease;
 }
 
-.card:hover img {
+.card:hover img,
+.episode-card:hover img {
   transform: scale(1.03);
 }
 
 /* TEXT */
 .card h3 {
   font-size: 15px;
-  margin: 8px 0 4px;
+  margin: 10px 0 4px;
   color: white;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  text-align: center;
 }
 
-.card p {
+.card p,
+.episode-card p {
   font-size: 12px;
-  margin: 2px 0;
+  margin: 4px 0;
   color: #bbb;
+  text-align: center;
+}
+
+/* =========================
+   SERIES BLOCK
+========================= */
+.series-block {
+  margin-top: 30px;
+}
+
+.series-block h2 {
+  color: white;
+}
+
+.series-block h3 {
+  color: #aaa;
+  margin-left: 10px;
 }
 
 /* =========================
@@ -227,125 +332,29 @@ body {
 }
 
 /* =========================
-   RESPONSIVE (ALL DEVICES)
+   RESPONSIVE
 ========================= */
 
 /* LARGE TV */
 @media (min-width: 1600px) {
-  .grid {
+  .grid,
+  .episode-row {
     grid-template-columns: repeat(7, 1fr);
+  }
+
+  .card img,
+  .episode-card img {
+    height: 320px;
   }
 }
 
 /* LAPTOP */
 @media (max-width: 1200px) {
-  .grid {
+  .grid,
+  .episode-row {
     grid-template-columns: repeat(5, 1fr);
   }
-}
 
-/* TABLET */
-@media (max-width: 900px) {
-  .grid {
-    grid-template-columns: repeat(3, 1fr);
-  }
-
-  .tv-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-/* MOBILE */
-@media (max-width: 600px) {
-  .grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  .card img {
-    height: 200px;
-  }
-
-  .tv-title {
-    font-size: 28px;
-  }
-}
-/* =========================
-   SEARCH BAR WRAPPER
-========================= */
-
-.search-bar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-
-  margin: 15px 0;
-  padding: 0 10px;
-}
-
-/* =========================
-   INPUT FIELD (TV OPTIMIZED)
-========================= */
-
-.search-input {
-  flex: 1;
-
-  padding: 14px 18px;
-  font-size: 18px;
-
-  border-radius: 10px;
-  border: none;
-  outline: none;
-
-  background: #1a1a1a;
-  color: white;
-
-  /* important for TV readability */
-  letter-spacing: 0.5px;
-}
-
-/* placeholder */
-.search-input::placeholder {
-  color: #888;
-}
-
-/* =========================
-   MIC BUTTON
-========================= */
-
-.mic-btn {
-  width: 52px;
-  height: 52px;
-
-  border-radius: 12px;
-  border: none;
-
-  background: #222;
-  color: white;
-
-  font-size: 22px;
-
-  cursor: pointer;
-
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  transition: 0.2s ease;
-}
-
-/* hover / focus (TV remote support) */
-.mic-btn:hover,
-.mic-btn:focus {
-  background: #444;
-  transform: scale(1.05);
-  outline: 2px solid white;
-}
-
-/* =========================
-   TV MODE (Google TV / Android TV)
-========================= */
-
-@media (min-width: 1200px) {
   .search-input {
     padding: 18px 22px;
     font-size: 22px;
@@ -358,10 +367,24 @@ body {
   }
 }
 
-/* =========================
-   MOBILE MODE
-========================= */
+/* TABLET */
+@media (max-width: 900px) {
+  .grid,
+  .episode-row {
+    grid-template-columns: repeat(3, 1fr);
+  }
 
+  .tv-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .card img,
+  .episode-card img {
+    height: 220px;
+  }
+}
+
+/* MOBILE */
 @media (max-width: 768px) {
   .search-input {
     font-size: 15px;
@@ -374,44 +397,27 @@ body {
     font-size: 18px;
   }
 }
-.search-bar {
-  display: flex;
-  align-items: center;
-  background: #222;
-  border-radius: 50px;
-  padding: 5px 15px;
-  border: 2px solid transparent;
-  transition: 0.3s;
+
+@media (max-width: 600px) {
+  .grid,
+  .episode-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .card img,
+  .episode-card img {
+    height: 190px;
+  }
+
+  .tv-title {
+    font-size: 28px;
+  }
 }
 
-/* Visual cue when listening */
-.search-bar.listening-mode {
-  border-color: #ff4b2b;
-  box-shadow: 0 0 15px rgba(255, 75, 43, 0.4);
+/* EXTRA SMALL */
+@media (max-width: 400px) {
+  .card img,
+  .episode-card img {
+    height: 170px;
+  }
 }
-
-.search-input {
-  flex: 1;
-  background: transparent;
-  border: none;
-  color: white;
-  padding: 10px;
-  outline: none;
-  font-size: 16px;
-}
-
-.mic-btn {
-  background: none;
-  border: none;
-  font-size: 20px;
-  cursor: pointer;
-  padding: 10px;
-  border-radius: 50%;
-  transition: 0.3s;
-}
-
-.mic-on {
-  transform: scale(1.2);
-  filter: drop-shadow(0 0 5px red);
-}
-
