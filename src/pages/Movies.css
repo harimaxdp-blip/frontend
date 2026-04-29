@@ -327,3 +327,103 @@ body::before {
   100% { transform: scale(1); opacity: 1; }
 }
 
+/* =========================
+   UPLOAD SECTION (MATTE)
+========================= */
+
+/* The Container Box */
+.tv-upload {
+  max-width: 800px;
+  margin: 20px auto 60px;
+  background: #161616; /* Solid dark grey */
+  border: 1px solid #333333;
+  border-radius: 12px;
+  padding: 40px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+}
+
+/* Header Text */
+.tv-title {
+  text-align: center;
+  font-size: 1.8rem;
+  margin-bottom: 30px;
+  color: #ffffff;
+  text-transform: uppercase;
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+
+/* Form Grid Layout */
+.tv-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 15px;
+}
+
+/* Inputs & Select Boxes */
+.tv-input {
+  width: 100%;
+  padding: 12px 16px;
+  background: #222222; /* Solid matte background */
+  border: 1px solid #444444;
+  border-radius: 6px;
+  color: #ffffff;
+  font-size: 0.95rem;
+  outline: none;
+  transition: border-color 0.2s ease;
+}
+
+/* Focus State (Only Border Changes) */
+.tv-input:focus {
+  border-color: #e50914; /* Netflix Red */
+}
+
+/* Dropdown Arrow & Option Styling */
+select.tv-input {
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='white' width='18px' height='18px'%3E%3Cpath d='M7 10l5 5 5-5z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+}
+
+/* Fixes the "white on white" dropdown error in browsers */
+.tv-input option {
+  background-color: #1a1a1a;
+  color: #ffffff;
+}
+
+/* Grid Spanning Classes */
+.span-2 { grid-column: span 2; }
+.span-3 { grid-column: span 3; }
+
+/* The Upload Button */
+.tv-button {
+  width: 100%;
+  margin-top: 25px;
+  padding: 15px;
+  background: #e50914;
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  font-weight: 700;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.2s ease;
+  box-shadow: none; /* No glow */
+}
+
+.tv-button:hover {
+  background: #b20710; /* Darker red on hover */
+}
+
+/* Responsive Adjustments */
+@media (max-width: 768px) {
+  .tv-grid { grid-template-columns: 1fr 1fr; }
+  .span-2, .span-3 { grid-column: span 2; }
+}
+
+@media (max-width: 500px) {
+  .tv-grid { grid-template-columns: 1fr; }
+  .span-2, .span-3 { grid-column: span 1; }
+}
