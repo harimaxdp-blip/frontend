@@ -9,17 +9,19 @@ export default function MoviePlayer() {
   const videoRef = useRef(null);
 
   useEffect(() => {
-    // Only attempt to play if the movie and the video element exist
-    if (movie && videoRef.current) {
-      const playPromise = videoRef.current.play();
+    if (!movie || !videoRef.current) return;
 
-      if (playPromise !== undefined) {
-        playPromise.catch((error) => {
-          // Auto-play was prevented or interrupted
-          console.log("Playback interrupted or prevented:", error);
-        });
+    const video = videoRef.current;
+
+    const tryPlay = async () => {
+      try {
+        await video.play();
+      } catch (err) {
+        console.log("Autoplay blocked or failed:", err);
       }
-    }
+    };
+
+    tryPlay();
   }, [movie]);
 
   if (!movie) {
@@ -42,11 +44,16 @@ export default function MoviePlayer() {
           <video
             ref={videoRef}
             controls
-            // Removed autoPlay attribute to handle it manually in useEffect
-            style={{ width: "100%", height: "100%", borderRadius: "12px" }}
+            preload="metadata"
+            playsInline
+            style={{
+              width: "100%",
+              height: "100%",
+              borderRadius: "12px",
+              backgroundColor: "black",
+            }}
           >
             <source src={movie.link} type="video/mp4" />
-            <source src={movie.link} type="video/x-matroska" />
             Your browser does not support this video format.
           </video>
         </div>
