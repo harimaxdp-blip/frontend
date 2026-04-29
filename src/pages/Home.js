@@ -9,7 +9,6 @@ import { db } from "../firebase";
 import { collection, onSnapshot } from "firebase/firestore";
 import "./Movies.css";
 
-// Assets for GIFs (kept as per your requirement)
 import shuffleGif from "../assets/dice-game.gif";
 import topGif from "../assets/up.gif";
 
@@ -23,28 +22,31 @@ export default function Home({ type = "all" }) {
 
   const navigate = useNavigate();
 
-  // =========================
-  // HELPER: NORMALIZE
-  // =========================
   const normalize = useCallback((value) => {
     return String(value || "").toLowerCase().trim();
   }, []);
 
   // =========================
-  // FETCH DATA
+  // FETCH & SHUFFLE DATA
   // =========================
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "movies"), (snapshot) => {
-      const data = snapshot.docs.map((doc) => ({
+      let data = snapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
       })) || [];
+
+      // FISHER-YATES SHUFFLE: Randomize order on every reload/fetch
+      for (let i = data.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [data[i], data[j]] = [data[j], data[i]];
+      }
+
       setMovies(data);
     });
     return () => unsub();
   }, []);
 
-  // RESET FILTERS ON NAV CHANGE
   useEffect(() => {
     setLanguageFilter("all");
     setGenreFilter("all");
@@ -74,7 +76,6 @@ export default function Home({ type = "all" }) {
 
       return matchType && matchLang && matchGen && matchYear && matchSearch;
     });
-    // Removed 'type' from dependency to fix ESLint warning
   }, [movies, languageFilter, genreFilter, yearFilter, search, normalize, matchesType]);
 
   // =========================
@@ -93,7 +94,7 @@ export default function Home({ type = "all" }) {
   , [movies, matchesType]);
 
   // =========================
-  // GROUPING
+  // GROUPING & SORTING EPISODES
   // =========================
   const movieItems = useMemo(() => 
     filteredContent.filter(m => ["movie", "movies", "anime"].includes(normalize(m.type)))
@@ -112,6 +113,16 @@ export default function Home({ type = "all" }) {
       if (!grouped[title][sNum]) grouped[title][sNum] = [];
       grouped[title][sNum].push(item);
     });
+
+    // SORTING LOGIC: Sort episodes numerically within each season
+    Object.keys(grouped).forEach(title => {
+      Object.keys(grouped[title]).forEach(season => {
+        grouped[title][season].sort((a, b) => {
+          return (Number(a.episode) || 0) - (Number(b.episode) || 0);
+        });
+      });
+    });
+
     return grouped;
   }, [filteredContent, normalize]);
 
@@ -162,7 +173,6 @@ export default function Home({ type = "all" }) {
           className={`mic-btn ${isListening ? "listening" : ""}`} 
           onClick={startVoiceSearch}
         >
-          {/* Changed from <img> to dynamic Icon symbols */}
           <span className="icon-symbol">
             {isListening ? "⏹" : "🎙"}
           </span>
@@ -215,7 +225,7 @@ export default function Home({ type = "all" }) {
                     <img src={ep.img || "https://via.placeholder.com/300x450"} alt={ep.title} loading="lazy" />
                     <div className="card-info">
                       <h3>{ep.title}</h3>
-                      <p>Episode {ep.episode || ep.id.slice(-2)}</p>
+                      <p>Episode {ep.episode || "Special"}</p>
                     </div>
                   </div>
                 ))}

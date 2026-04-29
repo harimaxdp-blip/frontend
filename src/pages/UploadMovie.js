@@ -18,7 +18,7 @@ export default function UploadMovie() {
     episode: "",
   });
 
-  const genres = ["Action", "Adventure", "Comedy", "Drama", "Horror", "Thriller", "Romance", "Sci-Fi", "Fantasy", "Animation", "Documentary"];
+  const genres = ["Action", "Adventure", "Comedy", "Drama", "Horror", "Thriller", "Romance", "Sci-Fi", "Fantasy", "Animation", "Documentary","Mystery"];
   const languages = ["Tamil", "Tamil Dubbed", "English", "Telugu", "Malayalam", "Hindi","Korean", "Chinese", "Japanese"];
   const handleUpload = async () => {
     try {
