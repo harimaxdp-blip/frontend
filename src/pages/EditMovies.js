@@ -1,170 +1,145 @@
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
 import { db } from "../firebase";
-import {
-  collection,
-  onSnapshot,
-  deleteDoc,
-  doc,
-  updateDoc,
-} from "firebase/firestore";
-import "./Movies.css";
+import { collection, getDocs, doc, updateDoc, deleteDoc } from "firebase/firestore";
+import "./EditMovies.css";
 
 export default function EditMovies() {
   const [movies, setMovies] = useState([]);
+  const [editingId, setEditingId] = useState(null);
+  const [editForm, setEditForm] = useState({});
 
-  // store edits per movie
-  const [editData, setEditData] = useState({});
+  const genres = ["Action", "Adventure", "Comedy", "Drama", "Horror", "Thriller", "Romance", "Sci-Fi", "Fantasy", "Animation", "Documentary", "Mystery"];
+  const languages = ["Tamil", "English", "Telugu", "Malayalam", "Hindi", "Korean", "Chinese", "Japanese"];
 
-  // 🔴 REALTIME FETCH
-  useEffect(() => {
-    const unsub = onSnapshot(collection(db, "movies"), (snapshot) => {
-      const data = snapshot.docs.map((doc) => ({
+  const fetchMovies = async () => {
+    try {
+      const querySnapshot = await getDocs(collection(db, "movies"));
+      const movieData = querySnapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
       }));
-      setMovies(data);
-    });
+      setMovies(movieData);
+    } catch (err) {
+      console.error("Fetch Error:", err);
+    }
+  };
 
-    return () => unsub();
+  useEffect(() => {
+    fetchMovies();
   }, []);
 
-  // ✏️ UPDATE FULL MOVIE
-  const handleUpdate = async (id) => {
-    try {
-      const ref = doc(db, "movies", id);
-
-      await updateDoc(ref, {
-        title: editData[id]?.title || "",
-        year: editData[id]?.year || "",
-        language: editData[id]?.language || "",
-        genre: editData[id]?.genre || "",
-        link: editData[id]?.link || "",
-        img: editData[id]?.img || "",
-      });
-
-      alert("Updated Successfully");
-    } catch (err) {
-      console.error(err);
-      alert("Update failed");
-    }
-  };
-
-  // 🗑️ DELETE
   const handleDelete = async (id) => {
-    try {
-      await deleteDoc(doc(db, "movies", id));
-      alert("Deleted Successfully");
-    } catch (err) {
-      console.error(err);
-      alert("Delete failed");
+    if (window.confirm("Are you sure you want to delete this content?")) {
+      try {
+        await deleteDoc(doc(db, "movies", id));
+        setMovies(movies.filter((m) => m.id !== id));
+        alert("Deleted successfully!");
+      } catch (err) {
+        console.error(err);
+      }
     }
   };
 
-  // 🧠 handle input change
-  const handleChange = (id, field, value) => {
-    setEditData((prev) => ({
-      ...prev,
-      [id]: {
-        ...prev[id],
-        [field]: value,
-      },
-    }));
+  const startEdit = (movie) => {
+    setEditingId(movie.id);
+    setEditForm(movie);
+  };
+
+  const handleUpdate = async () => {
+    try {
+      const movieRef = doc(db, "movies", editingId);
+      await updateDoc(movieRef, {
+        ...editForm,
+        title: editForm.title.trim(),
+        link: editForm.link.trim(),
+        img: editForm.img.trim(),
+        year: Number(editForm.year),
+        season: editForm.type === "movie" ? null : Number(editForm.season) || 1,
+        episode: editForm.type === "movie" ? null : Number(editForm.episode) || 1,
+      });
+      alert("Updated successfully!");
+      setEditingId(null);
+      fetchMovies();
+    } catch (err) {
+      console.error("Update Error:", err);
+      alert("Failed to update.");
+    }
   };
 
   return (
-    <div className="movies-page">
-
-      <h2 style={{ color: "red" }}>EDIT MOVIES</h2>
-
-      <div className="grid">
-
+    <div className="edit-container">
+      <h1 className="edit-title">🎬 Manage Content</h1>
+      
+      <div className="movie-list">
         {movies.map((m) => (
-          <div className="card" key={m.id}>
+          <div key={m.id} className="movie-card">
+            {editingId === m.id ? (
+              <div className="edit-mode-form">
+                <input 
+                  className="edit-input"
+                  value={editForm.title} 
+                  onChange={(e) => setEditForm({...editForm, title: e.target.value})}
+                  placeholder="Title"
+                />
+                
+                <div className="edit-row">
+                  <input 
+                    className="edit-input"
+                    type="number"
+                    value={editForm.year} 
+                    onChange={(e) => setEditForm({...editForm, year: e.target.value})}
+                  />
+                  <select 
+                    className="edit-input"
+                    value={editForm.language} 
+                    onChange={(e) => setEditForm({...editForm, language: e.target.value})}
+                  >
+                    {languages.map(l => <option key={l} value={l}>{l}</option>)}
+                  </select>
+                  <select 
+                    className="edit-input"
+                    value={editForm.genre} 
+                    onChange={(e) => setEditForm({...editForm, genre: e.target.value})}
+                  >
+                    {genres.map(g => <option key={g} value={g}>{g}</option>)}
+                  </select>
+                </div>
 
-            {/* IMAGE */}
-            <img
-              src={m.img || "https://via.placeholder.com/300x450"}
-              alt={m.title}
-            />
+                <input 
+                  className="edit-input"
+                  value={editForm.img} 
+                  onChange={(e) => setEditForm({...editForm, img: e.target.value})}
+                  placeholder="Poster URL"
+                />
 
-            {/* TITLE */}
-            <input
-              className="edit-input"
-              placeholder="Title"
-              defaultValue={m.title}
-              onChange={(e) =>
-                handleChange(m.id, "title", e.target.value)
-              }
-            />
+                <input 
+                  className="edit-input"
+                  value={editForm.link} 
+                  onChange={(e) => setEditForm({...editForm, link: e.target.value})}
+                  placeholder="Video URL (Link)"
+                />
 
-            {/* YEAR */}
-            <input
-              className="edit-input"
-              placeholder="Year"
-              defaultValue={m.year}
-              onChange={(e) =>
-                handleChange(m.id, "year", e.target.value)
-              }
-            />
-
-            {/* LANGUAGE */}
-            <input
-              className="edit-input"
-              placeholder="Language"
-              defaultValue={m.language}
-              onChange={(e) =>
-                handleChange(m.id, "language", e.target.value)
-              }
-            />
-
-            {/* GENRE */}
-            <input
-              className="edit-input"
-              placeholder="Genre"
-              defaultValue={m.genre}
-              onChange={(e) =>
-                handleChange(m.id, "genre", e.target.value)
-              }
-            />
-
-            {/* LINK */}
-            <input
-              className="edit-input"
-              placeholder="Video Link"
-              defaultValue={m.link}
-              onChange={(e) =>
-                handleChange(m.id, "link", e.target.value)
-              }
-            />
-
-            {/* IMAGE URL */}
-            <input
-              className="edit-input"
-              placeholder="Image URL"
-              defaultValue={m.img}
-              onChange={(e) =>
-                handleChange(m.id, "img", e.target.value)
-              }
-            />
-
-            {/* BUTTONS */}
-            <button
-              className="update-btn"
-              onClick={() => handleUpdate(m.id)}
-            >
-              Update
-            </button>
-
-            <button
-              className="delete-btn"
-              onClick={() => handleDelete(m.id)}
-            >
-              Delete
-            </button>
-
+                <div className="btn-group">
+                  <button className="save-btn" onClick={handleUpdate}>SAVE CHANGES</button>
+                  <button className="cancel-btn" onClick={() => setEditingId(null)}>CANCEL</button>
+                </div>
+              </div>
+            ) : (
+              <div className="view-mode">
+                <img src={m.img} alt={m.title} className="edit-poster" />
+                <div className="movie-info">
+                  <h3>{m.title} ({m.year})</h3>
+                  <p>{m.language} | {m.genre}</p>
+                  <code className="link-preview">{m.link.substring(0, 40)}...</code>
+                </div>
+                <div className="action-btns">
+                  <button className="edit-btn" onClick={() => startEdit(m)}>Edit</button>
+                  <button className="delete-btn" onClick={() => handleDelete(m.id)}>Delete</button>
+                </div>
+              </div>
+            )}
           </div>
         ))}
-
       </div>
     </div>
   );
