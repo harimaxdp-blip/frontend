@@ -19,7 +19,7 @@ export default function UploadMovie() {
   });
 
   const genres = ["Action", "Adventure", "Comedy", "Drama", "Horror", "Thriller", "Romance", "Sci-Fi", "Fantasy", "Animation", "Documentary","Mystery"];
-  const languages = ["Tamil", "Tamil Dubbed", "English", "Telugu", "Malayalam", "Hindi","Korean", "Chinese", "Japanese"];
+  const languages = ["Tamil", "English", "Telugu", "Malayalam", "Hindi","Korean", "Chinese", "Japanese"];
   const handleUpload = async () => {
     try {
       const { title, year, language, genre, link, img, type } = movie;
