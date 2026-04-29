@@ -1,21 +1,29 @@
-/* HARI MOVIE - PRO ARCHITECTURE 
-  Target: TV, PC, Laptop, Tablet, Mobile
+/* HARI MOVIE - ANIME STYLE OTT UI
+   Movies + Series UNIFIED DESIGN
 */
 
 :root {
   --primary: #ff0000;
   --primary-low: rgba(255, 0, 0, 0.2);
   --bg-deep: #050505;
-  --card-bg: rgba(22, 22, 22, 0.8);
+
+  --card-bg: linear-gradient(
+    145deg,
+    rgba(25,25,25,0.9),
+    rgba(15,15,15,0.95)
+  );
+
   --glass: rgba(255, 255, 255, 0.05);
   --glass-border: rgba(255, 255, 255, 0.12);
+
   --text-main: #ffffff;
   --text-dim: #b0b0b0;
+
   --bezier: cubic-bezier(0.23, 1, 0.32, 1);
 }
 
 /* =========================
-   GLOBAL RESET & BASE
+   GLOBAL
 ========================= */
 * {
   box-sizing: border-box;
@@ -23,55 +31,164 @@
 
 body {
   margin: 0;
-  background-color: var(--bg-deep);
+  background: var(--bg-deep);
   color: var(--text-main);
-  font-family: 'Inter', -apple-system, system-ui, sans-serif;
+  font-family: 'Inter', system-ui, sans-serif;
   overflow-x: hidden;
-  -webkit-font-smoothing: antialiased;
 }
 
-/* Background Cinematic Gradient */
+/* Background glow */
 body::before {
   content: '';
   position: fixed;
   inset: 0;
-  background: radial-gradient(circle at 50% 50%, #1a0000 0%, #050505 100%);
+  background: radial-gradient(circle at center, #1a0000 0%, #050505 100%);
   z-index: -1;
   opacity: 0.7;
 }
 
+/* =========================
+   PAGE
+========================= */
 .movies-page {
   padding: 40px 5%;
   max-width: 1920px;
-  margin: 0 auto;
-  animation: reveal 0.8s var(--bezier);
-}
-
-@keyframes reveal {
-  from { opacity: 0; transform: translateY(20px); filter: blur(10px); }
-  to { opacity: 1; transform: translateY(0); filter: blur(0); }
+  margin: auto;
 }
 
 /* =========================
-   SEARCH & SHUFFLE SECTION
+   GRID (FIXED)
+========================= */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 22px;
+  align-items: stretch;
+}
+
+/* =========================
+   UNIFIED ANIME CARD
+   (MOVIE + SERIES SAME)
+========================= */
+.card,
+.episode-card {
+  background: var(--card-bg);
+  border-radius: 18px;
+  overflow: hidden;
+
+  border: 1px solid rgba(255,255,255,0.08);
+
+  display: flex;
+  flex-direction: column;
+
+  cursor: pointer;
+  position: relative;
+
+  transition: transform 0.35s var(--bezier),
+              box-shadow 0.35s var(--bezier);
+}
+
+/* =========================
+   IMAGE (FIXED UNIFORM)
+========================= */
+.card img,
+.episode-card img {
+  width: 100%;
+  height: 310px;
+
+  object-fit: cover;
+  object-position: center;
+
+  display: block;
+
+  transition: transform 0.6s var(--bezier),
+              filter 0.3s ease;
+}
+
+/* =========================
+   HOVER EFFECT (ANIME STYLE)
+========================= */
+.card:hover,
+.episode-card:hover {
+  transform: translateY(-10px) scale(1.02);
+
+  box-shadow:
+    0 20px 50px rgba(0,0,0,0.8),
+    0 0 25px rgba(255,0,0,0.15);
+}
+
+.card:hover img,
+.episode-card:hover img {
+  transform: scale(1.12);
+  filter: brightness(1.1) saturate(1.2);
+}
+
+/* =========================
+   SHINE EFFECT
+========================= */
+.card::before,
+.episode-card::before {
+  content: "";
+  position: absolute;
+  top: -50%;
+  left: -60%;
+  width: 40%;
+  height: 200%;
+
+  background: linear-gradient(
+    120deg,
+    transparent,
+    rgba(255,255,255,0.08),
+    transparent
+  );
+
+  transform: rotate(25deg);
+  transition: all 0.7s ease;
+}
+
+.card:hover::before,
+.episode-card:hover::before {
+  left: 120%;
+}
+
+/* =========================
+   TEXT AREA
+========================= */
+.card h3,
+.episode-card h3 {
+  font-size: 0.95rem;
+  margin: 10px 12px 4px;
+  color: #fff;
+
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.card p,
+.episode-card p {
+  margin: 0 12px 12px;
+  font-size: 0.8rem;
+  color: #b8b8b8;
+}
+
+/* =========================
+   SEARCH BAR
 ========================= */
 .search-bar {
   max-width: 800px;
   margin: 0 auto 40px;
-  background: var(--glass);
+
+  background: rgba(255,255,255,0.05);
   backdrop-filter: blur(25px);
+
   border: 1px solid var(--glass-border);
   border-radius: 100px;
+
   padding: 8px 24px;
+
   display: flex;
   align-items: center;
-  transition: var(--bezier);
-}
-
-.search-bar:focus-within {
-  border-color: var(--primary);
-  box-shadow: 0 0 30px rgba(255, 0, 0, 0.2);
-  background: rgba(255, 255, 255, 0.08);
 }
 
 .search-input {
@@ -79,185 +196,109 @@ body::before {
   background: transparent;
   border: none;
   color: white;
-  padding: 12px;
   font-size: 1.1rem;
   outline: none;
 }
 
-.shuffle-inline-btn {
-  background: var(--primary-low);
-  border: 1px solid var(--primary);
-  color: white;
-  padding: 8px 20px;
-  border-radius: 50px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  white-space: nowrap;
-  margin: 0 10px;
-  transition: 0.3s var(--bezier);
-}
-
-.shuffle-inline-btn:hover {
-  background: var(--primary);
-  transform: translateY(-2px);
-}
-
 /* =========================
-   FIXED FILTER COLORS
+   FILTER BAR
 ========================= */
 .filter-bar {
   display: flex;
   justify-content: center;
   gap: 15px;
-  margin-bottom: 50px;
+  margin-bottom: 40px;
   flex-wrap: wrap;
 }
 
 .filter-bar select {
-  background: #121212; /* Solid dark for maximum reliability */
-  color: white;
-  border: 1px solid var(--glass-border);
-  padding: 12px 24px;
-  border-radius: 14px;
-  font-size: 15px;
-  font-weight: 500;
-  cursor: pointer;
-  outline: none;
-  transition: var(--bezier);
-}
-
-.filter-bar select:hover {
-  border-color: var(--primary);
-  background: #1a1a1a;
-}
-
-/* Dropdown list styling */
-.filter-bar select option {
   background: #121212;
   color: white;
+
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+
+  padding: 12px 18px;
 }
 
 /* =========================
-   UNIVERSAL FLEXIBLE GRID
-========================= */
-.grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 30px;
-}
-
-.card, .episode-card {
-  background: var(--card-bg);
-  border-radius: 20px;
-  overflow: hidden;
-  border: 1px solid transparent;
-  transition: transform 0.5s var(--bezier), box-shadow 0.5s var(--bezier);
-  will-change: transform;
-}
-
-.card:hover, .episode-card:hover {
-  transform: translateY(-12px) scale(1.03);
-  box-shadow: 0 30px 60px rgba(0,0,0,0.8);
-  border-color: var(--glass-border);
-}
-
-.card img, .episode-card img {
-  width: 100%;
-  aspect-ratio: 2/3; /* Standard Movie Poster Ratio */
-  object-fit: cover;
-  transition: transform 0.8s var(--bezier);
-}
-
-.card:hover img {
-  transform: scale(1.1);
-}
-
-.card h3 {
-  font-size: 1.1rem;
-  padding: 15px 12px 5px;
-  margin: 0;
-  text-align: center;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.card p {
-  font-size: 0.9rem;
-  color: var(--text-dim);
-  text-align: center;
-  padding-bottom: 15px;
-  margin: 0;
-}
-
-/* =========================
-   FLOATING ACTION BUTTONS
+   FLOATING CONTROLS
 ========================= */
 .fixed-controls {
   position: fixed;
   bottom: 30px;
   right: 30px;
+
   display: flex;
   flex-direction: column;
   gap: 15px;
+
   z-index: 2000;
 }
 
 .control-btn {
-  width: 60px;
-  height: 60px;
-  border-radius: 50%;
-  background: var(--glass);
-  backdrop-filter: blur(15px);
+  width: 54px;
+  height: 54px;
+
+  border-radius: 16px;
   border: 1px solid var(--glass-border);
-  color: white;
-  font-size: 22px;
+
+  background: rgba(255,255,255,0.08);
+  backdrop-filter: blur(12px);
+
   cursor: pointer;
+
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 15px 35px rgba(0,0,0,0.5);
-  transition: var(--bezier);
+
+  transition: transform 0.15s ease,
+              background 0.25s ease;
+}
+
+.control-btn img {
+  width: 26px;
+  height: 26px;
 }
 
 .control-btn:hover {
-  background: var(--primary);
-  border-color: var(--primary);
-  transform: scale(1.1) translateY(-5px);
+  background: rgba(255,255,255,0.14);
+}
+
+.control-btn:active {
+  transform: scale(0.88);
 }
 
 /* =========================
-   SCREEN ADAPTATION (TV/PC/MOBILE)
+   RESPONSIVE
 ========================= */
-
-/* Android TV & Large Monitors */
-@media (min-width: 1600px) {
-  .grid { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
-  .card h3 { font-size: 1.3rem; }
-}
-
-/* Laptops */
-@media (max-width: 1200px) {
-  .grid { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
-}
-
-/* Tablets */
 @media (max-width: 900px) {
-  .grid { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
-  .search-bar { width: 95%; }
+  .grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .card img,
+  .episode-card img {
+    height: 260px;
+  }
 }
 
-/* Mobile Phones */
 @media (max-width: 600px) {
-  .grid { grid-template-columns: repeat(2, 1fr); gap: 15px; }
-  .movies-page { padding: 20px 15px; }
-  .shuffle-inline-btn { display: none; } /* Use floating button for mobile */
-  .control-btn { width: 50px; height: 50px; font-size: 18px; }
-  .fixed-controls { bottom: 20px; right: 20px; }
-  .filter-bar select { padding: 10px 15px; font-size: 13px; }
+  .grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 14px;
+  }
+
+  .card img,
+  .episode-card img {
+    height: 220px;
+  }
+
+  .movies-page {
+    padding: 20px 4%;
+  }
 }
-/* Container/Button Reset */
+
 .mic-btn {
   background: transparent;
   border: none;
@@ -267,34 +308,22 @@ body::before {
   justify-content: center;
   padding: 8px;
   transition: transform 0.2s ease;
-  outline: none;
 }
 
-/* Icon Sizing */
-.btn-icon {
-  width: 20px;   /* Adjust based on your search bar height */
-  height: 20px;
-  object-fit: contain;
-  display: block;
+.icon-symbol {
+  font-size: 1.5rem; /* Adjust icon size here */
+  color: #ffffff;
+  line-height: 1;
 }
 
-/* Interaction Effects */
-.mic-btn:hover {
-  transform: scale(1.1);
+.mic-btn.listening .icon-symbol {
+  color: #ff4444; /* Turns red when listening */
+  animation: pulse-mic 1.2s infinite ease-in-out;
 }
 
-.mic-btn:active {
-  transform: scale(0.95);
+@keyframes pulse-mic {
+  0% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.2); opacity: 0.7; }
+  100% { transform: scale(1); opacity: 1; }
 }
 
-/* Optional: Pulse effect when listening */
-.mic-btn.listening .btn-icon {
-  filter: drop-shadow(0 0 5px rgba(255, 0, 0, 0.5));
-  animation: pulse 1.5s infinite;
-}
-
-@keyframes pulse {
-  0% { opacity: 1; }
-  50% { opacity: 0.5; }
-  100% { opacity: 1; }
-}

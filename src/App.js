@@ -7,6 +7,8 @@ import { FaBars } from "react-icons/fa";
 import Home from "./pages/Home";
 import UploadMovie from "./pages/UploadMovie";
 import EditMovies from "./pages/EditMovies";
+import MoviePlayer from "./pages/MoviePlayer"; // NEW PLAYER PAGE
+
 import IntroVideo from "./components/IntroVideo";
 import Loader from "./components/Loader";
 
@@ -21,7 +23,9 @@ function App() {
   const location = useLocation();
   const navigate = useNavigate();
 
+  // =========================
   // INTRO ONLY ON FIRST LOAD
+  // =========================
   useEffect(() => {
     const hasSeenIntro = sessionStorage.getItem("introShown");
 
@@ -31,13 +35,20 @@ function App() {
     }
   }, []);
 
+  // =========================
   // LOADER
+  // =========================
   useEffect(() => {
-    const timer = setTimeout(() => setLoading(false), 2000);
+    const timer = setTimeout(() => {
+      setLoading(false);
+    }, 2000);
+
     return () => clearTimeout(timer);
   }, []);
 
-  // ACTIVE PAGE DETECT
+  // =========================
+  // ACTIVE PAGE DETECTION
+  // =========================
   const getActive = () => {
     const path = location.pathname;
 
@@ -46,73 +57,170 @@ function App() {
     if (path.startsWith("/anime")) return "ANIME";
     if (path.startsWith("/upload")) return "UPLOAD";
     if (path.startsWith("/edit")) return "EDIT";
+    if (path.startsWith("/player")) return "PLAYER";
 
     return "ALL";
   };
 
   const active = getActive();
 
+  // =========================
   // NAVIGATION
+  // =========================
   const handleSetActive = (page) => {
     setOpen(false);
 
-    if (page === "MOVIES") navigate("/movies");
-    else if (page === "SERIES") navigate("/series");
-    else if (page === "ANIME") navigate("/anime");
-    else if (page === "UPLOAD") navigate("/upload");
-    else if (page === "EDIT") navigate("/edit");
-    else navigate("/");
+    switch (page) {
+      case "MOVIES":
+        navigate("/movies");
+        break;
+
+      case "SERIES":
+        navigate("/series");
+        break;
+
+      case "ANIME":
+        navigate("/anime");
+        break;
+
+      case "UPLOAD":
+        navigate("/upload");
+        break;
+
+      case "EDIT":
+        navigate("/edit");
+        break;
+
+      case "PLAYER":
+        navigate("/player");
+        break;
+
+      default:
+        navigate("/");
+    }
   };
 
-  // LOADING
-  if (loading) return <Loader />;
+  // =========================
+  // HIDE SIDEBAR/TOPBAR ON PLAYER PAGE
+  // =========================
+  const isPlayerPage = location.pathname.startsWith("/player");
 
-  // INTRO
-  if (showIntro)
+  // =========================
+  // LOADING SCREEN
+  // =========================
+  if (loading) {
+    return <Loader />;
+  }
+
+  // =========================
+  // INTRO VIDEO
+  // =========================
+  if (showIntro) {
     return <IntroVideo onFinish={() => setShowIntro(false)} />;
+  }
 
   return (
     <div className="app">
+      {/* =========================
+          TOPBAR (HIDDEN ON PLAYER)
+      ========================= */}
+      {!isPlayerPage && (
+        <div className="topbar">
+          <button
+            className="menu-btn"
+            onClick={() => setOpen(!open)}
+          >
+            <FaBars />
+          </button>
 
-      {/* TOP BAR */}
-      <div className="topbar">
-        <button className="menu-btn" onClick={() => setOpen(!open)}>
-          <FaBars />
-        </button>
-
-        <div className="logo-area">
-          <img src={logo} className="logo-img" alt="logo" />
+          <div className="logo-area">
+            <img
+              src={logo}
+              className="logo-img"
+              alt="logo"
+            />
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* SIDEBAR */}
-      <div className={`sidebar ${open ? "open" : ""}`}>
-        <Sidebar
-          active={active}
-          setActive={handleSetActive}
-          close={() => setOpen(false)}
-        />
-      </div>
+      {/* =========================
+          SIDEBAR (HIDDEN ON PLAYER)
+      ========================= */}
+      {!isPlayerPage && (
+        <>
+          <div className={`sidebar ${open ? "open" : ""}`}>
+            <Sidebar
+              active={active}
+              setActive={handleSetActive}
+              close={() => setOpen(false)}
+            />
+          </div>
 
-      {/* PAGES */}
-      <div className={`content ${open ? "shift" : ""}`}>
+          {/* BACKDROP */}
+          {open && (
+            <div
+              className="backdrop"
+              onClick={() => setOpen(false)}
+            />
+          )}
+        </>
+      )}
+
+      {/* =========================
+          PAGE CONTENT
+      ========================= */}
+      <div
+        className={`content ${
+          open && !isPlayerPage ? "shift" : ""
+        } ${isPlayerPage ? "player-mode" : ""}`}
+      >
         <Routes>
-          <Route path="/" element={<Home type="all" />} />
-          <Route path="/movies" element={<Home type="movie" />} />
-          <Route path="/series" element={<Home type="series" />} />
-          <Route path="/anime" element={<Home type="anime" />} />
+          {/* HOME */}
+          <Route
+            path="/"
+            element={<Home type="all" />}
+          />
 
-          <Route path="/upload" element={<UploadMovie />} />
-          <Route path="/edit" element={<EditMovies />} />
+          {/* CATEGORY PAGES */}
+          <Route
+            path="/movies"
+            element={<Home type="movie" />}
+          />
 
-          {/* FIX FOR UNKNOWN ROUTES */}
-          <Route path="*" element={<Home type="all" />} />
+          <Route
+            path="/series"
+            element={<Home type="series" />}
+          />
+
+          <Route
+            path="/anime"
+            element={<Home type="anime" />}
+          />
+
+          {/* ADMIN */}
+          <Route
+            path="/upload"
+            element={<UploadMovie />}
+          />
+
+          <Route
+            path="/edit"
+            element={<EditMovies />}
+          />
+
+          {/* FULL PAGE VIDEO PLAYER */}
+          <Route
+            path="/player"
+            element={<MoviePlayer />}
+          />
+
+          {/* UNKNOWN ROUTES */}
+          <Route
+            path="*"
+            element={<Home type="all" />}
+          />
         </Routes>
       </div>
-
-      {/* BACKDROP */}
-      {open && <div className="backdrop" onClick={() => setOpen(false)} />}
-
     </div>
   );
 }
