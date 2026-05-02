@@ -8,7 +8,7 @@ export default function EditMovies() {
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState({});
 
-  const genres = ["Action", "Adventure", "Comedy", "Drama", "Horror", "Thriller", "Romance", "Sci-Fi", "Fantasy", "Animation", "Documentary", "Mystery"];
+  const genres = ["Action", "Adventure", "Comedy", "Drama", "Horror", "Thriller", "Romance", "Sci-Fi", "Fantasy", "Animation", "Documentary", "Mystery","Zombie"];
   const languages = ["Tamil", "English", "Telugu", "Malayalam", "Hindi", "Korean", "Chinese", "Japanese"];
 
   const fetchMovies = async () => {

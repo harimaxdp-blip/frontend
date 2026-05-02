@@ -50,7 +50,7 @@ export default function Home({ type = "all" }) {
   }, []);
 
   // =========================
-  // FILTER & GROUPING LOGIC
+  // GROUPING LOGIC
   // =========================
   const matchesType = useCallback((itemType) => {
     const clean = normalize(itemType);
@@ -113,19 +113,45 @@ export default function Home({ type = "all" }) {
   }, [movies, matchesType, normalize, search]);
 
   // =========================
-  // SCROLL RESTORATION LOGIC
+  // BROWSER BACK BUTTON LOGIC
+  // =========================
+  useEffect(() => {
+    const handlePopState = (event) => {
+      // If we are currently viewing a collection, close it
+      if (selectedCollection) {
+        setSelectedCollection(null);
+        const bgPos = sessionStorage.getItem("bgScrollPos");
+        setTimeout(() => {
+          window.scrollTo(0, bgPos ? parseInt(bgPos) : savedScrollPos);
+        }, 50);
+      }
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [selectedCollection, savedScrollPos]);
+
+  // =========================
+  // SCROLL RESTORATION (FROM PLAYER)
   // =========================
   useEffect(() => {
     if (isDataLoaded && movieGroups.length > 0) {
       const savedCollectionName = sessionStorage.getItem("activeCollection");
       const savedPos = sessionStorage.getItem("scrollPos");
+      const bgPos = sessionStorage.getItem("bgScrollPos");
 
       if (savedCollectionName) {
-        // Find the group that matches the saved name
         const group = movieGroups.find(([name]) => name === savedCollectionName);
         if (group) {
+          // Re-open the collection
           setSelectedCollection({ name: group[0], items: group[1] });
-          // If we were inside a collection, we don't restore the main page scroll yet
+          // If we re-opened, set the background scroll position memory
+          if (bgPos) setSavedScrollPos(parseInt(bgPos));
+          
+          // Push a dummy state so the browser back button closes the collection next time
+          if (!window.history.state || window.history.state.collection !== group[0]) {
+            window.history.pushState({ collection: group[0] }, "");
+          }
           sessionStorage.removeItem("activeCollection");
         }
       }
@@ -139,7 +165,6 @@ export default function Home({ type = "all" }) {
     }
   }, [isDataLoaded, movieGroups]);
 
-  // Reset filters on tab change
   useEffect(() => {
     setLanguageFilter("all");
     setGenreFilter("all");
@@ -152,26 +177,20 @@ export default function Home({ type = "all" }) {
   // ACTIONS
   // =========================
   const handleOpenCollection = (name, items) => {
-    setSavedScrollPos(window.scrollY); 
+    const currentScroll = window.scrollY;
+    setSavedScrollPos(currentScroll);
+    sessionStorage.setItem("bgScrollPos", currentScroll); // Critical for back button memory
+    
+    window.history.pushState({ collection: name }, "");
     setSelectedCollection({ name, items });
     window.scrollTo(0, 0); 
   };
 
-  const handleCloseCollection = () => {
-    setSelectedCollection(null);
-    setTimeout(() => {
-      window.scrollTo(0, savedScrollPos);
-    }, 0);
-  };
-
   const playMovie = (movie) => {
-    // 1. Save general scroll position
     sessionStorage.setItem("scrollPos", window.scrollY);
-    // 2. If inside a collection, save WHICH collection it was
     if (selectedCollection) {
       sessionStorage.setItem("activeCollection", selectedCollection.name);
-      // Also save the background scroll position so we can go back twice
-      sessionStorage.setItem("bgScrollPos", savedScrollPos);
+      // We don't remove bgScrollPos here because we need it when we return to Home -> Collection -> Back to Home
     }
     navigate("/player", { state: { movie } });
   };
@@ -243,7 +262,6 @@ export default function Home({ type = "all" }) {
 
       {selectedCollection ? (
         <section className="collection-view slide-down">
-          <button className="back-btn" onClick={handleCloseCollection}>← Back to Home</button>
           <h2 className="section-title">{selectedCollection.name} Collection</h2>
           <div className="grid">
             {selectedCollection.items.map(m => (
