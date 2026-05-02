@@ -64,6 +64,7 @@ body::before {
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: 22px;
   align-items: stretch;
+  padding: 20px 0;
 }
 
 /* =========================
@@ -266,7 +267,34 @@ body::before {
 }
 
 .control-btn:active {
-  transform: scale(0.88);
+  transform: scale(0.92);
+  box-shadow: inset 0 0 0 8px rgba(255, 255, 255, 0.05);
+}
+
+.tv-button:active,
+.back-btn:active,
+.mic-btn:active,
+.card:active,
+.episode-card:active {
+  transform: scale(0.98);
+  opacity: 0.95;
+}
+
+.tv-button {
+  transition: background 0.2s ease, transform 0.12s ease, opacity 0.12s ease;
+}
+
+.back-btn {
+  transition: background 0.2s ease, transform 0.12s ease, opacity 0.12s ease;
+}
+
+.mic-btn {
+  transition: transform 0.15s ease, opacity 0.12s ease;
+}
+
+.card,
+.episode-card {
+  transition: transform 0.35s var(--bezier), box-shadow 0.35s var(--bezier), opacity 0.12s ease;
 }
 
 /* =========================
@@ -296,6 +324,10 @@ body::before {
 
   .movies-page {
     padding: 20px 4%;
+  }
+
+  .series-main-title {
+    font-size: 1.5rem;
   }
 }
 
@@ -426,4 +458,119 @@ select.tv-input {
 @media (max-width: 500px) {
   .tv-grid { grid-template-columns: 1fr; }
   .span-2, .span-3 { grid-column: span 1; }
+}
+/* --- Collection Specific Styles --- */
+
+/* The 'is-collection' class adds a "stacked" effect behind the card */
+.card.is-collection {
+  position: relative;
+  border: 1px solid rgba(255, 215, 0, 0.4);
+  box-shadow: 
+    4px 4px 0px rgba(0, 0, 0, 0.2), 
+    8px 8px 0px rgba(255, 215, 0, 0.1); /* Golden stack effect */
+  transition: transform 0.3s ease;
+}
+
+.card.is-collection:hover {
+  transform: translate(-4px, -4px); /* Moves slightly when hovered */
+}
+
+/* Badge that shows number of parts (e.g., "3 Parts") */
+.collection-badge {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: #ffd700;
+  color: #000;
+  padding: 5px 10px;
+  font-size: 0.75rem;
+  font-weight: 800;
+  border-radius: 4px;
+  text-transform: uppercase;
+  z-index: 2;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+}
+
+/* --- Collection View Overlay (The "Folder" View) --- */
+
+.collection-view {
+  animation: fadeIn 0.4s ease-out;
+}
+
+.back-btn {
+  background: #222;
+  color: #fff;
+  border: 1px solid #444;
+  padding: 10px 20px;
+  border-radius: 50px;
+  cursor: pointer;
+  margin-bottom: 30px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: background 0.2s;
+}
+
+.back-btn:hover {
+  background: #ffd700;
+  color: #000;
+  border-color: #ffd700;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* --- Series & Seasons Layout --- */
+
+.series-section {
+  margin-top: 50px;
+  border-top: 1px solid #333;
+  padding-top: 20px;
+}
+
+.series-main-title {
+  font-size: 2rem;
+  color: #fff;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  margin-bottom: 10px;
+}
+
+.season-container {
+  margin-bottom: 40px;
+  padding-left: 10px;
+}
+
+.season-title {
+  color: #aaa;
+  font-size: 1.2rem;
+  border-left: 4px solid #ffd700;
+  padding-left: 15px;
+  margin-bottom: 20px;
+}
+
+/* Episode Card Specifics */
+.episode-card .card-info h3 {
+  font-size: 0.95rem;
+  color: #eee;
+}
+
+.episode-card .card-info p {
+  color: #ffd700; /* Highlight episode number */
+  font-weight: bold;
+}
+
+.mic-btn.listening-active {
+  background-color: #ff3b3b;
+  box-shadow: 0 0 15px rgba(255, 59, 59, 0.6);
+  animation: pulse-red 1.5s infinite;
+}
+
+@keyframes pulse-red {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+  100% { transform: scale(1); }
 }

@@ -19,7 +19,10 @@ export default function Home({ type = "all" }) {
   const [yearFilter, setYearFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [isListening, setIsListening] = useState(false);
-  const [isDataLoaded, setIsDataLoaded] = useState(false); // Track if initial data is ready
+  const [isDataLoaded, setIsDataLoaded] = useState(false);
+  
+  const [selectedCollection, setSelectedCollection] = useState(null);
+  const [savedScrollPos, setSavedScrollPos] = useState(0);
 
   const navigate = useNavigate();
 
@@ -32,24 +35,7 @@ export default function Home({ type = "all" }) {
   }, []);
 
   // =========================
-  // SCROLL RESTORATION LOGIC
-  // =========================
-  useEffect(() => {
-    // Only attempt to scroll once data is loaded and rendered
-    if (isDataLoaded) {
-      const savedPosition = sessionStorage.getItem("scrollPos");
-      if (savedPosition) {
-        // Delay slightly to allow the browser to paint the grid items
-        setTimeout(() => {
-          window.scrollTo(0, parseInt(savedPosition));
-          sessionStorage.removeItem("scrollPos"); // Clear it so it doesn't stick forever
-        }, 100);
-      }
-    }
-  }, [isDataLoaded]);
-
-  // =========================
-  // FETCH DATA
+  // DATA FETCH
   // =========================
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "movies"), (snapshot) => {
@@ -57,22 +43,14 @@ export default function Home({ type = "all" }) {
         id: doc.id,
         ...doc.data(),
       })) || [];
-
       setMovies(data);
-      setIsDataLoaded(true); // Signal that we have data
+      setIsDataLoaded(true);
     });
     return () => unsub();
   }, []);
 
-  useEffect(() => {
-    setLanguageFilter("all");
-    setGenreFilter("all");
-    setYearFilter("all");
-    setSearch("");
-  }, [type]);
-
   // =========================
-  // FILTER LOGIC
+  // FILTER & GROUPING LOGIC
   // =========================
   const matchesType = useCallback((itemType) => {
     const clean = normalize(itemType);
@@ -83,53 +61,139 @@ export default function Home({ type = "all" }) {
     return true;
   }, [type, normalize]);
 
-  const filteredContent = useMemo(() => {
-    return movies.filter((item) => {
+  const movieGroups = useMemo(() => {
+    const filtered = movies.filter((item) => {
+      const isMovieType = ["movie", "movies", "anime"].includes(normalize(item.type));
       const matchType = matchesType(item.type);
       const matchLang = languageFilter === "all" || normalize(item.language) === normalize(languageFilter);
       const matchGen = genreFilter === "all" || normalize(item.genre) === normalize(genreFilter);
       const matchYear = yearFilter === "all" || String(item.year) === String(yearFilter);
       const matchSearch = normalize(item.title).includes(normalize(search));
-
-      return matchType && matchLang && matchGen && matchYear && matchSearch;
+      return isMovieType && matchType && matchLang && matchGen && matchYear && matchSearch;
     });
-  }, [movies, languageFilter, genreFilter, yearFilter, search, normalize, matchesType]);
 
-  const movieItems = useMemo(() => {
-    const items = filteredContent.filter(m => ["movie", "movies", "anime"].includes(normalize(m.type)));
-    return items.sort((a, b) => naturalSort(a.title, b.title));
-  }, [filteredContent, normalize, naturalSort]);
+    const groups = {};
+    filtered.forEach(m => {
+      const baseName = m.title.split(/[-–—0-9]/)[0].trim();
+      if (!groups[baseName]) groups[baseName] = [];
+      groups[baseName].push(m);
+    });
 
-  const seriesGrouped = useMemo(() => {
-    const grouped = {};
-    filteredContent.forEach((item) => {
-      const t = normalize(item.type);
-      if (["movie", "movies"].includes(t)) return;
+    return Object.entries(groups).sort((a, b) => {
+      const latestA = Math.max(...a[1].map(m => parseInt(m.year) || 0));
+      const latestB = Math.max(...b[1].map(m => parseInt(m.year) || 0));
+      return latestB - latestA;
+    }).map(([name, items]) => {
+      const sortedItems = [...items].sort((a, b) => naturalSort(a.title, b.title));
+      return [name, sortedItems];
+    });
+  }, [movies, languageFilter, genreFilter, yearFilter, search, matchesType, normalize, naturalSort]);
 
+  const seriesGroups = useMemo(() => {
+    const filtered = movies.filter(item => {
+      const isSeriesType = !["movie", "movies"].includes(normalize(item.type));
+      const matchSearch = normalize(item.seriesTitle || item.title).includes(normalize(search));
+      return isSeriesType && matchesType(item.type) && matchSearch;
+    });
+
+    const groups = {};
+    filtered.forEach(item => {
       const title = item.seriesTitle || item.title || "Unknown Series";
-      const sNum = item.season || "1";
+      const season = item.season || "1";
+      if (!groups[title]) groups[title] = { seasons: {}, latestYear: 0 };
+      
+      const yr = parseInt(item.year) || 0;
+      if (yr > groups[title].latestYear) groups[title].latestYear = yr;
 
-      if (!grouped[title]) grouped[title] = {};
-      if (!grouped[title][sNum]) grouped[title][sNum] = [];
-      grouped[title][sNum].push(item);
+      if (!groups[title].seasons[season]) groups[title].seasons[season] = [];
+      groups[title].seasons[season].push(item);
     });
 
-    const sortedGrouped = {};
-    Object.keys(grouped)
-      .sort(naturalSort)
-      .forEach(title => {
-        sortedGrouped[title] = grouped[title];
-        Object.keys(sortedGrouped[title]).forEach(season => {
-          sortedGrouped[title][season].sort((a, b) => {
-            const epA = String(a.episode || "0");
-            const epB = String(b.episode || "0");
-            return epA.localeCompare(epB, undefined, { numeric: true });
-          });
-        });
-      });
+    return Object.entries(groups).sort((a, b) => b[1].latestYear - a[1].latestYear);
+  }, [movies, matchesType, normalize, search]);
 
-    return sortedGrouped;
-  }, [filteredContent, normalize, naturalSort]);
+  // =========================
+  // SCROLL RESTORATION LOGIC
+  // =========================
+  useEffect(() => {
+    if (isDataLoaded && movieGroups.length > 0) {
+      const savedCollectionName = sessionStorage.getItem("activeCollection");
+      const savedPos = sessionStorage.getItem("scrollPos");
+
+      if (savedCollectionName) {
+        // Find the group that matches the saved name
+        const group = movieGroups.find(([name]) => name === savedCollectionName);
+        if (group) {
+          setSelectedCollection({ name: group[0], items: group[1] });
+          // If we were inside a collection, we don't restore the main page scroll yet
+          sessionStorage.removeItem("activeCollection");
+        }
+      }
+
+      if (savedPos) {
+        setTimeout(() => {
+          window.scrollTo(0, parseInt(savedPos));
+          sessionStorage.removeItem("scrollPos");
+        }, 150);
+      }
+    }
+  }, [isDataLoaded, movieGroups]);
+
+  // Reset filters on tab change
+  useEffect(() => {
+    setLanguageFilter("all");
+    setGenreFilter("all");
+    setYearFilter("all");
+    setSearch("");
+    setSelectedCollection(null);
+  }, [type]);
+
+  // =========================
+  // ACTIONS
+  // =========================
+  const handleOpenCollection = (name, items) => {
+    setSavedScrollPos(window.scrollY); 
+    setSelectedCollection({ name, items });
+    window.scrollTo(0, 0); 
+  };
+
+  const handleCloseCollection = () => {
+    setSelectedCollection(null);
+    setTimeout(() => {
+      window.scrollTo(0, savedScrollPos);
+    }, 0);
+  };
+
+  const playMovie = (movie) => {
+    // 1. Save general scroll position
+    sessionStorage.setItem("scrollPos", window.scrollY);
+    // 2. If inside a collection, save WHICH collection it was
+    if (selectedCollection) {
+      sessionStorage.setItem("activeCollection", selectedCollection.name);
+      // Also save the background scroll position so we can go back twice
+      sessionStorage.setItem("bgScrollPos", savedScrollPos);
+    }
+    navigate("/player", { state: { movie } });
+  };
+
+  const playRandom = () => {
+    const flatList = movieGroups.flatMap(g => g[1]);
+    if (!flatList.length) return;
+    playMovie(flatList[Math.floor(Math.random() * flatList.length)]);
+  };
+
+  const startVoiceSearch = () => {
+    const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRec) return alert("Voice search not supported");
+    const recognition = new SpeechRec();
+    recognition.onstart = () => setIsListening(true);
+    recognition.onend = () => setIsListening(false);
+    recognition.onresult = (e) => {
+      setSearch(e.results[0][0].transcript);
+      setIsListening(false);
+    };
+    recognition.start();
+  };
 
   const availableLanguages = useMemo(() => 
     [...new Set(movies.filter(m => matchesType(m.type)).map(m => normalize(m.language)))].filter(Boolean).sort()
@@ -143,121 +207,106 @@ export default function Home({ type = "all" }) {
     [...new Set(movies.filter(m => matchesType(m.type)).map(m => m.year))].filter(Boolean).sort((a, b) => b - a)
   , [movies, matchesType]);
 
-  // =========================
-  // ACTIONS
-  // =========================
-  const playMovie = (movie) => {
-    // SAVE SCROLL POSITION BEFORE NAVIGATING
-    sessionStorage.setItem("scrollPos", window.scrollY);
-    navigate("/player", { state: { movie } });
-  };
-  
-  const playRandom = () => {
-    if (!filteredContent.length) return;
-    const random = filteredContent[Math.floor(Math.random() * filteredContent.length)];
-    playMovie(random);
-  };
-
-  const scrollToTop = () => window.scrollTo({ top: 0, behavior: "smooth" });
-
-  const startVoiceSearch = () => {
-    const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRec) return alert("Voice search not supported");
-    const recognition = new SpeechRec();
-    recognition.lang = "en-IN";
-    recognition.onstart = () => setIsListening(true);
-    recognition.onresult = (e) => setSearch(e.results[0][0].transcript);
-    recognition.onerror = () => setIsListening(false);
-    recognition.onend = () => setIsListening(false);
-    recognition.start();
-  };
-
   return (
     <div className="movies-page">
       <div className="fixed-controls">
-        <button className="control-btn shuffle-btn" onClick={playRandom} title="Random Play">
-          <img src={shuffleGif} alt="shuffle" />
-        </button>
-        <button className="control-btn top-btn" onClick={scrollToTop} title="Scroll to Top">
-          <img src={topGif} alt="top" />
-        </button>
+        <button className="control-btn shuffle-btn" onClick={playRandom}><img src={shuffleGif} alt="shuffle" /></button>
+        <button className="control-btn top-btn" onClick={() => window.scrollTo({top:0, behavior:'smooth'})}><img src={topGif} alt="top" /></button>
       </div>
 
       <div className="search-bar">
-        <input
-          className="search-input"
-          placeholder={isListening ? "Listening..." : "Search movies, series..."}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
+        <input 
+          className="search-input" 
+          value={search} 
+          onChange={(e) => setSearch(e.target.value)} 
+          placeholder={isListening ? "Listening..." : "Search..."} 
         />
-        <button 
-          className={`mic-btn ${isListening ? "listening" : ""}`} 
-          onClick={startVoiceSearch}
-        >
-          <span className="icon-symbol">
-            {isListening ? "⏹" : "🎙"}
-          </span>
+        <button className={`mic-btn ${isListening ? "listening-active" : ""}`} onClick={startVoiceSearch}>
+          {isListening ? "🛑" : "🎙️"}
         </button>
       </div>
 
       <div className="filter-bar">
         <select value={languageFilter} onChange={(e) => setLanguageFilter(e.target.value)}>
-          <option value="all">All Languages</option>
+          <option value="all">Languages</option>
           {availableLanguages.map(l => <option key={l} value={l}>{l.toUpperCase()}</option>)}
         </select>
-
         <select value={genreFilter} onChange={(e) => setGenreFilter(e.target.value)}>
-          <option value="all">All Genres</option>
+          <option value="all">Genres</option>
           {availableGenres.map(g => <option key={g} value={g}>{g.toUpperCase()}</option>)}
         </select>
-
         <select value={yearFilter} onChange={(e) => setYearFilter(e.target.value)}>
-          <option value="all">All Years</option>
+          <option value="all">Years</option>
           {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
         </select>
       </div>
 
-      {movieItems.length > 0 && (
-        <section className="content-section">
-          <h2 className="section-title">Latest Updates</h2>
+      {selectedCollection ? (
+        <section className="collection-view slide-down">
+          <button className="back-btn" onClick={handleCloseCollection}>← Back to Home</button>
+          <h2 className="section-title">{selectedCollection.name} Collection</h2>
           <div className="grid">
-            {movieItems.map((m) => (
+            {selectedCollection.items.map(m => (
               <div key={m.id} className="card" onClick={() => playMovie(m)}>
                 <img src={m.img || "https://via.placeholder.com/300x450"} alt={m.title} loading="lazy" />
                 <div className="card-info">
                   <h3>{m.title}</h3>
-                  <p>{m.language} • {m.year}</p>
+                  <p>{m.year}</p>
                 </div>
               </div>
             ))}
           </div>
         </section>
-      )}
-
-      {Object.entries(seriesGrouped).map(([title, seasons]) => (
-        <section key={title} className="series-section">
-          <h2 className="series-main-title">{title}</h2>
-          {Object.entries(seasons).map(([season, eps]) => (
-            <div key={season} className="season-container">
-              <h3 className="season-title">Season {season}</h3>
+      ) : (
+        <>
+          {movieGroups.length > 0 && (
+            <section className="content-section">
+              <h2 className="section-title">Movies & Anime</h2>
               <div className="grid">
-                {eps.map((ep) => (
-                  <div key={ep.id} className="card episode-card" onClick={() => playMovie(ep)}>
-                    <img src={ep.img || "https://via.placeholder.com/300x450"} alt={ep.title} loading="lazy" />
+                {movieGroups.map(([name, items]) => (
+                  <div 
+                    key={name} 
+                    className={`card ${items.length > 1 ? "is-collection" : ""}`}
+                    onClick={() => items.length > 1 ? handleOpenCollection(name, items) : playMovie(items[0])}
+                  >
+                    <img src={items[0].img || "https://via.placeholder.com/300x450"} alt={name} loading="lazy" />
+                    {items.length > 1 && <div className="collection-badge">{items.length} Parts</div>}
                     <div className="card-info">
-                      <h3>{ep.title}</h3>
-                      <p>Episode {ep.episode || "Special"}</p>
+                      <h3>{items.length > 1 ? `${name} (Collection)` : items[0].title}</h3>
+                      <p>{items.length > 1 ? "Multi-Part Series" : `${items[0].language} • ${items[0].year}`}</p>
                     </div>
                   </div>
                 ))}
               </div>
-            </div>
-          ))}
-        </section>
-      ))}
+            </section>
+          )}
 
-      {filteredContent.length === 0 && (
-        <div className="no-results">No results found for your search/filter.</div>
+          {seriesGroups.map(([title, data]) => (
+            <section key={title} className="series-section">
+              <h2 className="series-main-title">{title}</h2>
+              {Object.entries(data.seasons).sort((a, b) => parseInt(a[0]) - parseInt(b[0])).map(([sNum, eps]) => (
+                <div key={sNum} className="season-container">
+                  <h3 className="season-title">Season {sNum}</h3>
+                  <div className="grid">
+                    {eps.sort((a, b) => naturalSort(String(a.episode), String(b.episode))).map(ep => (
+                      <div key={ep.id} className="card episode-card" onClick={() => playMovie(ep)}>
+                        <img src={ep.img || "https://via.placeholder.com/300x450"} alt={ep.title} loading="lazy" />
+                        <div className="card-info">
+                          <h3>{ep.title}</h3>
+                          <p>Episode {ep.episode || "Special"}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </section>
+          ))}
+        </>
+      )}
+
+      {(movieGroups.length === 0 && seriesGroups.length === 0) && (
+        <div className="no-results">No items found.</div>
       )}
     </div>
   );
