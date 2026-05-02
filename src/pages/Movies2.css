@@ -1,182 +1,305 @@
-/* 1. RESET & BASE WRAPPER */
+/* =========================
+   FULLSCREEN PLAYER WRAPPER
+========================= */
 .player-page-bg {
   position: fixed;
   inset: 0;
-  width: 100vw;
-  height: 100dvh; /* Uses Dynamic Viewport Height to account for mobile browser bars */
+  width: 100%;
+  height: 100dvh;
   background: #000;
-  margin: 0;
-  padding: 0;
   display: flex;
   justify-content: center;
   align-items: center;
   overflow: hidden;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  margin: 0;
+  padding: 0;
+  z-index: 1;
 }
 
-/* 2. THE MAIN CONTAINER */
+/* =========================
+   MAIN PLAYER CARD
+========================= */
 .ultra-card {
   width: 100%;
-  max-width: 1400px; /* Limits width on ultra-wide monitors */
-  height: 100%;
-  display: flex;
-  flex-direction: column; /* Stacks Header -> Video -> Bottom */
+  max-width: 1100px;
+  height: 100dvh;
   background: #000;
   position: relative;
-}
-
-/* 3. RESPONSIVE HEADER (Back Button + Title) */
-.player-header {
-  width: 100%;
-  height: 60px;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 20px;
-  background: linear-gradient(to bottom, rgba(0,0,0,0.9) 0%, transparent 100%);
-  z-index: 100;
-  box-sizing: border-box;
-}
-
-.movie-title-text {
-  color: #fff;
-  font-size: 1.1rem;
-  font-weight: 500;
-  margin: 0;
-  text-align: center;
-  flex: 1; /* Centers title between back button and empty spacer */
-  white-space: nowrap;
+  flex-direction: column;
   overflow: hidden;
-  text-overflow: ellipsis;
-  padding: 0 15px;
+  border-radius: 0;
+  border: 1px solid #181818;
+  box-shadow: 0 0 50px rgba(0, 0, 0, 0.95);
 }
 
-/* 4. THE BACK BUTTON */
-.over-back-btn {
-  background: rgba(255, 255, 255, 0.15);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  color: white;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  padding: 8px 18px;
-  border-radius: 50px;
-  cursor: pointer;
-  font-size: 0.9rem;
-  transition: all 0.2s ease;
+/* =========================
+   HEADER
+========================= */
+.player-header {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  z-index: 5000;
   display: flex;
   align-items: center;
-  z-index: 101;
+  justify-content: center;
+  padding: env(safe-area-inset-top) 16px 12px;
+  min-height: 60px;
+  background: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.88),
+    rgba(0, 0, 0, 0.45),
+    transparent
+  );
+  pointer-events: none;
+}
+
+/* =========================
+   BACK BUTTON
+========================= */
+.over-back-btn {
+  position: absolute;
+  left: 12px;
+  top: calc(env(safe-area-inset-top) + 10px);
+  z-index: 6000;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+
+  color: #fff;
+  font-size: 15px;
+  font-weight: 500;
+
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 999px;
+
+  padding: 8px 16px;
+  cursor: pointer;
+
+  transition: all 0.25s ease;
+  pointer-events: auto;
 }
 
 .over-back-btn:hover {
-  background: rgba(255, 255, 255, 0.25);
-  transform: scale(1.05);
+  background: rgba(255, 255, 255, 0.12);
+  transform: scale(1.04);
 }
 
-/* 5. VIDEO VIEWPORT (The "Zoom" Box) */
+.over-back-btn:active {
+  transform: scale(0.96);
+}
+
+/* =========================
+   MOVIE TITLE
+========================= */
+.movie-title-text {
+  color: #fff;
+  font-size: clamp(15px, 2vw, 22px);
+  font-weight: 600;
+  text-align: center;
+  max-width: 70%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  margin: 0;
+  pointer-events: auto;
+}
+
+/* =========================
+   VIDEO VIEWPORT
+========================= */
 .video-viewport {
-  flex: 1; /* Takes up all remaining vertical space */
   width: 100%;
-  position: relative;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
+  position: relative;
   background: #000;
+  overflow: hidden;
 }
 
-/* 6. PLAYERS (Video & Iframe) */
-.native-video, 
+/* =========================
+   VIDEO + IFRAME
+========================= */
+.native-video,
 .iframe-video {
   width: 100%;
   height: 100%;
-  max-height: 100%;
   border: none;
   background: #000;
-  object-fit: contain; /* Ensures video keeps aspect ratio without cropping */
+  object-fit: contain;
+  display: block;
 }
 
-/* 7. LOADING SPINNER */
+/* Better fullscreen feel */
+.native-video::-webkit-media-controls {
+  z-index: 9999;
+}
+
+/* =========================
+   LOADER
+========================= */
 .player-loader {
   position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
+  inset: 0;
+  z-index: 7000;
+  background: rgba(0, 0, 0, 0.92);
+
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
+
   color: #fff;
-  z-index: 10;
+  font-size: 15px;
+  font-weight: 500;
+  gap: 14px;
 }
 
+/* Spinner */
 .spinner {
-  width: 40px;
-  height: 40px;
-  border: 3px solid rgba(255, 255, 255, 0.1);
-  border-top: 3px solid #3498db;
+  width: 52px;
+  height: 52px;
+  border: 4px solid rgba(255, 255, 255, 0.15);
+  border-top-color: #fff;
   border-radius: 50%;
-  animation: spin 1s linear infinite;
-  margin-bottom: 10px;
+  animation: spin 0.9s linear infinite;
 }
 
 @keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
-/* 8. DEVICE SPECIFIC ADJUSTMENTS */
-
-/* Tablets & Small Laptops */
-@media (max-width: 1024px) {
-  .ultra-card {
-    max-width: 100%;
+  to {
+    transform: rotate(360deg);
   }
 }
 
-/* Mobile Phones (Portrait) */
+/* =========================
+   ERROR TOAST
+========================= */
+.player-error-toast {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 8000;
+
+  background: rgba(255, 60, 60, 0.12);
+  color: #ffb3b3;
+
+  padding: 10px 18px;
+  border-radius: 12px;
+
+  border: 1px solid rgba(255, 80, 80, 0.35);
+  backdrop-filter: blur(10px);
+
+  font-size: 14px;
+  font-weight: 500;
+
+  max-width: 90%;
+  text-align: center;
+}
+
+/* =========================
+   ERROR SCREEN
+========================= */
+.error-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  color: white;
+  gap: 18px;
+}
+
+.error-container h2 {
+  font-size: 24px;
+  margin: 0;
+}
+
+/* =========================
+   MOBILE OPTIMIZATION
+========================= */
 @media (max-width: 768px) {
-  .player-header {
-    height: 50px;
-    padding: 0 10px;
+  .player-page-bg {
+    align-items: flex-start;
   }
-  
+
+  .ultra-card {
+    width: 100%;
+    height: 100dvh;
+    border-radius: 0;
+    border: none;
+  }
+
+  .player-header {
+    padding-top: calc(env(safe-area-inset-top) + 4px);
+    min-height: 56px;
+  }
+
   .movie-title-text {
-    font-size: 0.95rem;
-    max-width: 200px; /* Prevents title from pushing back button off screen */
+    max-width: 62%;
+    font-size: 15px;
   }
 
   .over-back-btn {
-    padding: 6px 14px;
-    font-size: 0.85rem;
+    top: calc(env(safe-area-inset-top) + 8px);
+    left: 8px;
+    padding: 7px 14px;
+    font-size: 14px;
+  }
+
+  .spinner {
+    width: 44px;
+    height: 44px;
+  }
+
+  .player-loader span {
+    font-size: 14px;
+  }
+
+  .player-error-toast {
+    bottom: 18px;
+    font-size: 13px;
+    padding: 9px 14px;
   }
 }
 
-/* Mobile Landscape (Theater Mode Optimization) */
+/* =========================
+   SMALL DEVICES
+========================= */
+@media (max-width: 480px) {
+  .movie-title-text {
+    font-size: 14px;
+    max-width: 58%;
+  }
+
+  .over-back-btn {
+    padding: 6px 12px;
+    font-size: 13px;
+  }
+}
+
+/* =========================
+   LANDSCAPE MOBILE
+========================= */
 @media (max-height: 500px) and (orientation: landscape) {
   .player-header {
-    position: absolute; /* Overlays the video to save vertical space */
-    background: linear-gradient(to bottom, rgba(0,0,0,0.7), transparent);
+    min-height: 48px;
   }
-  
+
   .movie-title-text {
-    display: none; /* Hide title in landscape to give video 100% height */
+    font-size: 14px;
   }
 
-  .video-viewport {
-    height: 100dvh;
+  .over-back-btn {
+    padding: 5px 12px;
+    font-size: 13px;
   }
-}
-
-/* Error Toast Styling */
-.player-error-toast {
-  position: absolute;
-  bottom: 30px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: #ff4d4d;
-  color: white;
-  padding: 10px 20px;
-  border-radius: 8px;
-  font-size: 0.9rem;
-  box-shadow: 0 4px 15px rgba(0,0,0,0.5);
-  z-index: 1000;
 }
