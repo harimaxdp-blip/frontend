@@ -10,27 +10,21 @@ export default function IntroVideo({ onFinish }) {
 
   useEffect(() => {
     const handleResize = () => {
-      // Check if it's a mobile width OR if the screen is taller than it is wide
       const isPortrait = window.innerHeight > window.innerWidth;
       const isSmallScreen = window.innerWidth <= 768;
-      
       const nextSrc = (isPortrait || isSmallScreen) ? mobileVideo : tvVideo;
-      
-      if (nextSrc !== videoSrc) {
-        setVideoSrc(nextSrc);
-      }
+      if (nextSrc !== videoSrc) setVideoSrc(nextSrc);
     };
-
     handleResize();
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, [videoSrc]);
 
-  const handleStart = async () => {
+  const handleStart = async (e) => {
+    e.preventDefault();          // stop browser default (text copy, etc.)
+    e.stopPropagation();         // don't bubble up
     if (!videoRef.current) return;
-    
     try {
-      // Browsers allow audio ONLY after this click event
       videoRef.current.muted = false;
       videoRef.current.volume = 1.0;
       await videoRef.current.play();
@@ -43,23 +37,30 @@ export default function IntroVideo({ onFinish }) {
   if (!videoSrc) return null;
 
   return (
-    <div className="intro-screen" onClick={!isPlaying ? handleStart : null}>
+    <div
+      className="intro-screen"
+      onClick={!isPlaying ? handleStart : null}
+      // Disable text selection on the whole screen
+      style={{ userSelect: "none", WebkitUserSelect: "none" }}
+    >
       <video
         ref={videoRef}
-        key={videoSrc} // Forces reload when switching mobile/desktop
+        key={videoSrc}
         className={`intro-video ${isPlaying ? "visible" : "hidden"}`}
         playsInline
         onEnded={onFinish}
-        // Start muted just in case, handleStart will unmute it
-        muted={!isPlaying} 
+        muted={!isPlaying}
       >
         <source src={videoSrc} type="video/mp4" />
       </video>
 
       {!isPlaying && (
         <div className="overlay">
-          <div className="play-button">
-             <span>ENTER</span>
+          <div
+            className="play-button"
+            onMouseDown={(e) => e.preventDefault()} // prevents text selection on mousedown
+          >
+            <span>ENTER</span>
           </div>
         </div>
       )}
