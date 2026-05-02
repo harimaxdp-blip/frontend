@@ -10,13 +10,34 @@ export default function MoviePlayer() {
 
   const videoRef = useRef(null);
   const hlsRef = useRef(null);
+  const containerRef = useRef(null);
 
-  const [mode, setMode] = useState("iframe"); // iframe | direct
+  const [mode, setMode] = useState("iframe"); 
   const [directUrl, setDirectUrl] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  // 1. Scraping & Fallback Logic
+  // LAYER 1: Ad-Blocking Mutation Observer
+  // Detects and removes anti-user elements added by 3rd party scripts
+  useEffect(() => {
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach(() => {
+        // Find common ad-related patterns or unwanted overlays
+        const overlays = document.querySelectorAll(
+          'div[style*="z-index: 2147483647"], iframe[id*="google_ads"], .ad-container'
+        );
+        overlays.forEach(el => el.remove());
+      });
+    });
+
+    if (containerRef.current) {
+      observer.observe(containerRef.current, { childList: true, subtree: true });
+    }
+
+    return () => observer.disconnect();
+  }, []);
+
+  // 2. Scraping & Fallback Logic
   useEffect(() => {
     if (!movie?.link) {
       setError("No movie source found.");
@@ -29,26 +50,21 @@ export default function MoviePlayer() {
     const getDirectSource = async () => {
       try {
         setLoading(true);
-        // We fetch the link to see if we can extract a raw .mp4 or .m3u8
         const response = await fetch(movie.link, { signal: controller.signal });
         const html = await response.text();
 
-        // Looks for standard video extensions in the source code
         const videoRegex = /["'](https?:\/\/[^"']+\.(mp4|m3u8)[^"']*)["']/i;
         const match = html.match(videoRegex);
 
         if (match) {
-          // Clean up escaped slashes if found (common in JS scripts)
           const cleanUrl = match[1].replace(/\\/g, "");
           setDirectUrl(cleanUrl);
           setMode("direct");
         } else {
-          // No direct link found, use Iframe fallback
           setMode("iframe");
         }
       } catch (err) {
         if (err.name !== "AbortError") {
-          console.warn("Direct fetch failed or blocked by CORS. Using iframe.");
           setMode("iframe");
         }
       }
@@ -62,35 +78,25 @@ export default function MoviePlayer() {
     };
   }, [movie]);
 
-  // 2. Video Initialization (Direct Mode)
+  // 3. Video Initialization (HLS/Direct)
   useEffect(() => {
     if (mode !== "direct" || !directUrl || !videoRef.current) return;
 
     const video = videoRef.current;
+    if (hlsRef.current) hlsRef.current.destroy();
 
     if (directUrl.includes(".m3u8")) {
       if (Hls.isSupported()) {
-        const hls = new Hls({
-          enableWorker: true, // Improves performance on mobile
-          lowLatencyMode: true,
-        });
+        const hls = new Hls({ enableWorker: true, lowLatencyMode: true });
         hlsRef.current = hls;
         hls.loadSource(directUrl);
         hls.attachMedia(video);
-        
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
           setLoading(false);
           video.play().catch(() => {});
         });
-
-        hls.on(Hls.Events.ERROR, (_, data) => {
-          if (data.fatal) {
-            setMode("iframe"); // Drop back to iframe if stream fails
-          }
-        });
-      } 
-      // Native Safari/iOS support
-      else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+        hls.on(Hls.Events.ERROR, (_, data) => { if (data.fatal) setMode("iframe"); });
+      } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
         video.src = directUrl;
         video.addEventListener("loadedmetadata", () => {
           setLoading(false);
@@ -98,7 +104,6 @@ export default function MoviePlayer() {
         });
       }
     } else {
-      // Standard MP4 handling
       video.src = directUrl;
       video.onloadeddata = () => {
         setLoading(false);
@@ -119,10 +124,9 @@ export default function MoviePlayer() {
   }
 
   return (
-    <div className="player-page-bg">
+    <div className="player-page-bg" ref={containerRef}>
       <div className="ultra-card">
         
-        {/* Responsive Header */}
         <div className="player-header">
           <button className="over-back-btn" onClick={() => navigate(-1)}>
             ← Back
@@ -132,12 +136,11 @@ export default function MoviePlayer() {
           </h2>
         </div>
 
-        {/* Video Area */}
         <div className="video-viewport">
           {loading && (
             <div className="player-loader">
               <div className="spinner"></div>
-              <span>Initializing Stream...</span>
+              <span>Cleaning Stream & Loading...</span>
             </div>
           )}
 
@@ -150,13 +153,16 @@ export default function MoviePlayer() {
               className="native-video"
             />
           ) : (
+            /* LAYER 2 & 3: AD-BLOCKING IFRAME */
+            /* Note: We exclude 'allow-popups' and 'allow-modals' to kill ads */
             <iframe
               src={movie.link}
               title={movie.title}
               allowFullScreen
               frameBorder="0"
               scrolling="no"
-              sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-presentation"
+              /* STRIC TEST SANDBOX: No popups, no forms, no top-level navigation */
+              sandbox="allow-scripts allow-same-origin allow-presentation"
               onLoad={() => setLoading(false)}
               className="iframe-video"
             />
