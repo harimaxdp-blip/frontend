@@ -50,7 +50,7 @@ export default function Home({ type = "all" }) {
   }, []);
 
   // =========================
-  // GROUPING LOGIC
+  // FILTER & GROUPING LOGIC
   // =========================
   const matchesType = useCallback((itemType) => {
     const clean = normalize(itemType);
@@ -116,8 +116,7 @@ export default function Home({ type = "all" }) {
   // BROWSER BACK BUTTON LOGIC
   // =========================
   useEffect(() => {
-    const handlePopState = (event) => {
-      // If we are currently viewing a collection, close it
+    const handlePopState = () => {
       if (selectedCollection) {
         setSelectedCollection(null);
         const bgPos = sessionStorage.getItem("bgScrollPos");
@@ -143,14 +142,12 @@ export default function Home({ type = "all" }) {
       if (savedCollectionName) {
         const group = movieGroups.find(([name]) => name === savedCollectionName);
         if (group) {
-          // Re-open the collection
           setSelectedCollection({ name: group[0], items: group[1] });
-          // If we re-opened, set the background scroll position memory
           if (bgPos) setSavedScrollPos(parseInt(bgPos));
           
-          // Push a dummy state so the browser back button closes the collection next time
+          // Ensure history state is updated so next back press works
           if (!window.history.state || window.history.state.collection !== group[0]) {
-            window.history.pushState({ collection: group[0] }, "");
+            window.history.replaceState({ collection: group[0] }, "");
           }
           sessionStorage.removeItem("activeCollection");
         }
@@ -179,8 +176,9 @@ export default function Home({ type = "all" }) {
   const handleOpenCollection = (name, items) => {
     const currentScroll = window.scrollY;
     setSavedScrollPos(currentScroll);
-    sessionStorage.setItem("bgScrollPos", currentScroll); // Critical for back button memory
+    sessionStorage.setItem("bgScrollPos", currentScroll); 
     
+    // Push dummy state to capture next back-button click
     window.history.pushState({ collection: name }, "");
     setSelectedCollection({ name, items });
     window.scrollTo(0, 0); 
@@ -190,7 +188,6 @@ export default function Home({ type = "all" }) {
     sessionStorage.setItem("scrollPos", window.scrollY);
     if (selectedCollection) {
       sessionStorage.setItem("activeCollection", selectedCollection.name);
-      // We don't remove bgScrollPos here because we need it when we return to Home -> Collection -> Back to Home
     }
     navigate("/player", { state: { movie } });
   };
@@ -226,6 +223,30 @@ export default function Home({ type = "all" }) {
     [...new Set(movies.filter(m => matchesType(m.type)).map(m => m.year))].filter(Boolean).sort((a, b) => b - a)
   , [movies, matchesType]);
 
+  // =========================
+  // CARD COMPONENT
+  // =========================
+  const MovieCard = ({ item, label, subLabel, typePill, isCollection, badgeCount, onClick }) => (
+    <div className={`card${isCollection ? " is-collection" : ""}`} onClick={onClick}>
+      <div className="card-thumb">
+        <img src={item.img || "https://via.placeholder.com/300x450"} alt={label} loading="lazy" />
+        <div className="card-shine" />
+        <div className="card-hover-overlay">
+          <div className="hover-label">▶ Play Now</div>
+          <div className="hover-title">{label}</div>
+        </div>
+        {typePill && <div className="card-type-pill">{typePill}</div>}
+        {isCollection && badgeCount > 1 && (
+          <div className="collection-badge">{badgeCount} Parts</div>
+        )}
+      </div>
+      <div className="card-info">
+        <h3 title={label}>{label}</h3>
+        <p>{subLabel}</p>
+      </div>
+    </div>
+  );
+
   return (
     <div className="movies-page">
       <div className="fixed-controls">
@@ -238,7 +259,7 @@ export default function Home({ type = "all" }) {
           className="search-input" 
           value={search} 
           onChange={(e) => setSearch(e.target.value)} 
-          placeholder={isListening ? "Listening..." : "Search..."} 
+          placeholder={isListening ? "Listening..." : "Search movies, anime, series..."} 
         />
         <button className={`mic-btn ${isListening ? "listening-active" : ""}`} onClick={startVoiceSearch}>
           {isListening ? "🛑" : "🎙️"}
@@ -265,13 +286,14 @@ export default function Home({ type = "all" }) {
           <h2 className="section-title">{selectedCollection.name} Collection</h2>
           <div className="grid">
             {selectedCollection.items.map(m => (
-              <div key={m.id} className="card" onClick={() => playMovie(m)}>
-                <img src={m.img || "https://via.placeholder.com/300x450"} alt={m.title} loading="lazy" />
-                <div className="card-info">
-                  <h3>{m.title}</h3>
-                  <p>{m.year}</p>
-                </div>
-              </div>
+              <MovieCard 
+                key={m.id}
+                item={m}
+                label={m.title}
+                subLabel={`${m.language?.toUpperCase() || ''} · ${m.year || ''}`}
+                typePill={m.type?.toUpperCase()}
+                onClick={() => playMovie(m)}
+              />
             ))}
           </div>
         </section>
@@ -281,20 +303,21 @@ export default function Home({ type = "all" }) {
             <section className="content-section">
               <h2 className="section-title">Movies & Anime</h2>
               <div className="grid">
-                {movieGroups.map(([name, items]) => (
-                  <div 
-                    key={name} 
-                    className={`card ${items.length > 1 ? "is-collection" : ""}`}
-                    onClick={() => items.length > 1 ? handleOpenCollection(name, items) : playMovie(items[0])}
-                  >
-                    <img src={items[0].img || "https://via.placeholder.com/300x450"} alt={name} loading="lazy" />
-                    {items.length > 1 && <div className="collection-badge">{items.length} Parts</div>}
-                    <div className="card-info">
-                      <h3>{items.length > 1 ? `${name} (Collection)` : items[0].title}</h3>
-                      <p>{items.length > 1 ? "Multi-Part Series" : `${items[0].language} • ${items[0].year}`}</p>
-                    </div>
-                  </div>
-                ))}
+                {movieGroups.map(([name, items]) => {
+                  const isCol = items.length > 1;
+                  return (
+                    <MovieCard 
+                      key={name}
+                      item={items[0]}
+                      label={isCol ? `${name} (Collection)` : items[0].title}
+                      subLabel={isCol ? `${items.length} Parts` : `${items[0].language?.toUpperCase() || ''} · ${items[0].year || ''}`}
+                      isCollection={isCol}
+                      badgeCount={items.length}
+                      typePill={isCol ? "COLLECTION" : items[0].type?.toUpperCase()}
+                      onClick={() => isCol ? handleOpenCollection(name, items) : playMovie(items[0])}
+                    />
+                  );
+                })}
               </div>
             </section>
           )}
@@ -307,13 +330,14 @@ export default function Home({ type = "all" }) {
                   <h3 className="season-title">Season {sNum}</h3>
                   <div className="grid">
                     {eps.sort((a, b) => naturalSort(String(a.episode), String(b.episode))).map(ep => (
-                      <div key={ep.id} className="card episode-card" onClick={() => playMovie(ep)}>
-                        <img src={ep.img || "https://via.placeholder.com/300x450"} alt={ep.title} loading="lazy" />
-                        <div className="card-info">
-                          <h3>{ep.title}</h3>
-                          <p>Episode {ep.episode || "Special"}</p>
-                        </div>
-                      </div>
+                      <MovieCard 
+                        key={ep.id}
+                        item={ep}
+                        label={ep.title}
+                        subLabel={`Episode ${ep.episode || "Special"}`}
+                        typePill="EPISODE"
+                        onClick={() => playMovie(ep)}
+                      />
                     ))}
                   </div>
                 </div>
