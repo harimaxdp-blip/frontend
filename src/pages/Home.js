@@ -19,15 +19,37 @@ export default function Home({ type = "all" }) {
   const [yearFilter, setYearFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [isListening, setIsListening] = useState(false);
+  const [isDataLoaded, setIsDataLoaded] = useState(false); // Track if initial data is ready
 
   const navigate = useNavigate();
+
+  const naturalSort = useCallback((a, b) => {
+    return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+  }, []);
 
   const normalize = useCallback((value) => {
     return String(value || "").toLowerCase().trim();
   }, []);
 
   // =========================
-  // FETCH & SHUFFLE DATA
+  // SCROLL RESTORATION LOGIC
+  // =========================
+  useEffect(() => {
+    // Only attempt to scroll once data is loaded and rendered
+    if (isDataLoaded) {
+      const savedPosition = sessionStorage.getItem("scrollPos");
+      if (savedPosition) {
+        // Delay slightly to allow the browser to paint the grid items
+        setTimeout(() => {
+          window.scrollTo(0, parseInt(savedPosition));
+          sessionStorage.removeItem("scrollPos"); // Clear it so it doesn't stick forever
+        }, 100);
+      }
+    }
+  }, [isDataLoaded]);
+
+  // =========================
+  // FETCH DATA
   // =========================
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "movies"), (snapshot) => {
@@ -36,13 +58,8 @@ export default function Home({ type = "all" }) {
         ...doc.data(),
       })) || [];
 
-      // FISHER-YATES SHUFFLE: Randomize order on every reload/fetch
-      for (let i = data.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [data[i], data[j]] = [data[j], data[i]];
-      }
-
       setMovies(data);
+      setIsDataLoaded(true); // Signal that we have data
     });
     return () => unsub();
   }, []);
@@ -78,27 +95,10 @@ export default function Home({ type = "all" }) {
     });
   }, [movies, languageFilter, genreFilter, yearFilter, search, normalize, matchesType]);
 
-  // =========================
-  // DYNAMIC OPTIONS
-  // =========================
-  const availableLanguages = useMemo(() => 
-    [...new Set(movies.filter(m => matchesType(m.type)).map(m => normalize(m.language)))].filter(Boolean).sort()
-  , [movies, matchesType, normalize]);
-
-  const availableGenres = useMemo(() => 
-    [...new Set(movies.filter(m => matchesType(m.type)).map(m => normalize(m.genre)))].filter(Boolean).sort()
-  , [movies, matchesType, normalize]);
-
-  const availableYears = useMemo(() => 
-    [...new Set(movies.filter(m => matchesType(m.type)).map(m => m.year))].filter(Boolean).sort((a, b) => b - a)
-  , [movies, matchesType]);
-
-  // =========================
-  // GROUPING & SORTING EPISODES
-  // =========================
-  const movieItems = useMemo(() => 
-    filteredContent.filter(m => ["movie", "movies", "anime"].includes(normalize(m.type)))
-  , [filteredContent, normalize]);
+  const movieItems = useMemo(() => {
+    const items = filteredContent.filter(m => ["movie", "movies", "anime"].includes(normalize(m.type)));
+    return items.sort((a, b) => naturalSort(a.title, b.title));
+  }, [filteredContent, normalize, naturalSort]);
 
   const seriesGrouped = useMemo(() => {
     const grouped = {};
@@ -114,22 +114,43 @@ export default function Home({ type = "all" }) {
       grouped[title][sNum].push(item);
     });
 
-    // SORTING LOGIC: Sort episodes numerically within each season
-    Object.keys(grouped).forEach(title => {
-      Object.keys(grouped[title]).forEach(season => {
-        grouped[title][season].sort((a, b) => {
-          return (Number(a.episode) || 0) - (Number(b.episode) || 0);
+    const sortedGrouped = {};
+    Object.keys(grouped)
+      .sort(naturalSort)
+      .forEach(title => {
+        sortedGrouped[title] = grouped[title];
+        Object.keys(sortedGrouped[title]).forEach(season => {
+          sortedGrouped[title][season].sort((a, b) => {
+            const epA = String(a.episode || "0");
+            const epB = String(b.episode || "0");
+            return epA.localeCompare(epB, undefined, { numeric: true });
+          });
         });
       });
-    });
 
-    return grouped;
-  }, [filteredContent, normalize]);
+    return sortedGrouped;
+  }, [filteredContent, normalize, naturalSort]);
+
+  const availableLanguages = useMemo(() => 
+    [...new Set(movies.filter(m => matchesType(m.type)).map(m => normalize(m.language)))].filter(Boolean).sort()
+  , [movies, matchesType, normalize]);
+
+  const availableGenres = useMemo(() => 
+    [...new Set(movies.filter(m => matchesType(m.type)).map(m => normalize(m.genre)))].filter(Boolean).sort()
+  , [movies, matchesType, normalize]);
+
+  const availableYears = useMemo(() => 
+    [...new Set(movies.filter(m => matchesType(m.type)).map(m => m.year))].filter(Boolean).sort((a, b) => b - a)
+  , [movies, matchesType]);
 
   // =========================
   // ACTIONS
   // =========================
-  const playMovie = (movie) => navigate("/player", { state: { movie } });
+  const playMovie = (movie) => {
+    // SAVE SCROLL POSITION BEFORE NAVIGATING
+    sessionStorage.setItem("scrollPos", window.scrollY);
+    navigate("/player", { state: { movie } });
+  };
   
   const playRandom = () => {
     if (!filteredContent.length) return;
