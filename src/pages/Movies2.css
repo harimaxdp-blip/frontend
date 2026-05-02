@@ -1,85 +1,182 @@
-/* FULLSCREEN WRAPPER */
+/* 1. RESET & BASE WRAPPER */
 .player-page-bg {
   position: fixed;
   inset: 0;
-  width: 100%;
-  height: 100dvh;
+  width: 100vw;
+  height: 100dvh; /* Uses Dynamic Viewport Height to account for mobile browser bars */
   background: #000;
-
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-
   margin: 0;
   padding: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
   overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
-/* MAIN CARD */
+/* 2. THE MAIN CONTAINER */
 .ultra-card {
   width: 100%;
-  max-width: 1100px;
-
-  height: 100dvh;
-  max-height: 100dvh;
-
+  max-width: 1400px; /* Limits width on ultra-wide monitors */
+  height: 100%;
+  display: flex;
+  flex-direction: column; /* Stacks Header -> Video -> Bottom */
   background: #000;
   position: relative;
+}
+
+/* 3. RESPONSIVE HEADER (Back Button + Title) */
+.player-header {
+  width: 100%;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  background: linear-gradient(to bottom, rgba(0,0,0,0.9) 0%, transparent 100%);
+  z-index: 100;
+  box-sizing: border-box;
+}
+
+.movie-title-text {
+  color: #fff;
+  font-size: 1.1rem;
+  font-weight: 500;
+  margin: 0;
+  text-align: center;
+  flex: 1; /* Centers title between back button and empty spacer */
+  white-space: nowrap;
   overflow: hidden;
-
-  border-radius: 0;
-  border: 1px solid #222;
-  box-shadow: 0 0 50px rgba(0, 0, 0, 1);
+  text-overflow: ellipsis;
+  padding: 0 15px;
 }
 
-/* VIDEO CONTAINER */
-.video-zoom-box {
-  width: 100%;
-  height: 100%;
-  position: relative;
-}
-
-/* VIDEO */
-.video-zoom-box video {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  background: black;
-  border-radius: 12px;
-}
-
-/* BACK BUTTON */
+/* 4. THE BACK BUTTON */
 .over-back-btn {
-  position: absolute;
-  top: 10px;
-  left: 10px;
-  z-index: 5000;
-
-  background: rgba(0, 0, 0, 0.7);
+  background: rgba(255, 255, 255, 0.15);
   backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   color: white;
-
   border: 1px solid rgba(255, 255, 255, 0.2);
-  padding: 6px 14px;
-  border-radius: 30px;
+  padding: 8px 18px;
+  border-radius: 50px;
   cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  z-index: 101;
 }
 
-/* MOBILE FIX */
-@media (max-width: 768px) {
-  .player-page-bg {
-    align-items: flex-start;
-  }
+.over-back-btn:hover {
+  background: rgba(255, 255, 255, 0.25);
+  transform: scale(1.05);
+}
 
+/* 5. VIDEO VIEWPORT (The "Zoom" Box) */
+.video-viewport {
+  flex: 1; /* Takes up all remaining vertical space */
+  width: 100%;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+}
+
+/* 6. PLAYERS (Video & Iframe) */
+.native-video, 
+.iframe-video {
+  width: 100%;
+  height: 100%;
+  max-height: 100%;
+  border: none;
+  background: #000;
+  object-fit: contain; /* Ensures video keeps aspect ratio without cropping */
+}
+
+/* 7. LOADING SPINNER */
+.player-loader {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  color: #fff;
+  z-index: 10;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid rgba(255, 255, 255, 0.1);
+  border-top: 3px solid #3498db;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 10px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* 8. DEVICE SPECIFIC ADJUSTMENTS */
+
+/* Tablets & Small Laptops */
+@media (max-width: 1024px) {
   .ultra-card {
-    width: 100%;
-    height: 100dvh;
-    border-radius: 0;
+    max-width: 100%;
+  }
+}
+
+/* Mobile Phones (Portrait) */
+@media (max-width: 768px) {
+  .player-header {
+    height: 50px;
+    padding: 0 10px;
+  }
+  
+  .movie-title-text {
+    font-size: 0.95rem;
+    max-width: 200px; /* Prevents title from pushing back button off screen */
   }
 
   .over-back-btn {
-    top: 8px;
-    left: 8px;
-    padding: 5px 12px;
+    padding: 6px 14px;
+    font-size: 0.85rem;
   }
+}
+
+/* Mobile Landscape (Theater Mode Optimization) */
+@media (max-height: 500px) and (orientation: landscape) {
+  .player-header {
+    position: absolute; /* Overlays the video to save vertical space */
+    background: linear-gradient(to bottom, rgba(0,0,0,0.7), transparent);
+  }
+  
+  .movie-title-text {
+    display: none; /* Hide title in landscape to give video 100% height */
+  }
+
+  .video-viewport {
+    height: 100dvh;
+  }
+}
+
+/* Error Toast Styling */
+.player-error-toast {
+  position: absolute;
+  bottom: 30px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #ff4d4d;
+  color: white;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+  z-index: 1000;
 }
