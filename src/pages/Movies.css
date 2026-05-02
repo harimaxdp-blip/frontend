@@ -1,615 +1,825 @@
-/* HARI MOVIE - ANIME STYLE OTT UI
-   Movies + Series UNIFIED DESIGN
-*/
+/* ================================================
+   HARI OTT — PROFESSIONAL STREAMING PLATFORM CSS
+   Full rebuild: animations, loading, Android ripple
+   ================================================ */
 
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700&display=swap');
+
+/* ================================================
+   CSS VARIABLES
+================================================ */
 :root {
-  --primary: #ff0000;
-  --primary-low: rgba(255, 0, 0, 0.2);
-  --bg-deep: #050505;
+  --red:        #e50914;
+  --red-dim:    rgba(229, 9, 20, 0.15);
+  --red-glow:   rgba(229, 9, 20, 0.4);
+  --gold:       #f5c518;
+  --gold-dim:   rgba(245, 197, 24, 0.15);
 
-  --card-bg: linear-gradient(
-    145deg,
-    rgba(25,25,25,0.9),
-    rgba(15,15,15,0.95)
-  );
+  --bg:         #080808;
+  --bg-card:    #111111;
+  --bg-card-2:  #181818;
+  --bg-surface: #1a1a1a;
+  --bg-glass:   rgba(255,255,255,0.04);
 
-  --glass: rgba(255, 255, 255, 0.05);
-  --glass-border: rgba(255, 255, 255, 0.12);
+  --border:     rgba(255,255,255,0.08);
+  --border-md:  rgba(255,255,255,0.13);
 
-  --text-main: #ffffff;
-  --text-dim: #b0b0b0;
+  --text:       #ffffff;
+  --text-dim:   #aaaaaa;
+  --text-muted: #666666;
 
-  --bezier: cubic-bezier(0.23, 1, 0.32, 1);
+  --radius-sm:  8px;
+  --radius-md:  14px;
+  --radius-lg:  20px;
+  --radius-xl:  28px;
+
+  --ease:       cubic-bezier(0.22, 1, 0.36, 1);
+  --spring:     cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  --font-display: 'Bebas Neue', sans-serif;
+  --font-body:    'Outfit', system-ui, sans-serif;
 }
 
-/* =========================
-   GLOBAL
-========================= */
-* {
+/* ================================================
+   RESET & BASE
+================================================ */
+*, *::before, *::after {
   box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html {
+  scroll-behavior: smooth;
 }
 
 body {
-  margin: 0;
-  background: var(--bg-deep);
-  color: var(--text-main);
-  font-family: 'Inter', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.5;
   overflow-x: hidden;
+  min-height: 100vh;
 }
 
-/* Background glow */
+/* Cinematic background */
 body::before {
   content: '';
   position: fixed;
   inset: 0;
-  background: radial-gradient(circle at center, #1a0000 0%, #050505 100%);
-  z-index: -1;
-  opacity: 0.7;
+  background:
+    radial-gradient(ellipse 80% 50% at 20% 0%, rgba(229,9,20,0.06) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 80% 100%, rgba(229,9,20,0.04) 0%, transparent 50%);
+  pointer-events: none;
+  z-index: 0;
 }
 
-/* =========================
-   PAGE
-========================= */
+/* ================================================
+   PAGE WRAPPER
+================================================ */
 .movies-page {
-  padding: 40px 5%;
-  max-width: 1920px;
-  margin: auto;
-}
-
-/* =========================
-   GRID (FIXED)
-========================= */
-.grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 22px;
-  align-items: stretch;
-  padding: 20px 0;
-}
-
-/* =========================
-   UNIFIED ANIME CARD
-   (MOVIE + SERIES SAME)
-========================= */
-.card,
-.episode-card {
-  background: var(--card-bg);
-  border-radius: 18px;
-  overflow: hidden;
-
-  border: 1px solid rgba(255,255,255,0.08);
-
-  display: flex;
-  flex-direction: column;
-
-  cursor: pointer;
   position: relative;
-
-  transition: transform 0.35s var(--bezier),
-              box-shadow 0.35s var(--bezier);
+  z-index: 1;
+  padding: 32px 5% 100px;
+  max-width: 1800px;
+  margin: 0 auto;
 }
 
-/* =========================
-   IMAGE (FIXED UNIFORM)
-========================= */
-.card img,
-.episode-card img {
-  width: 100%;
-  height: 310px;
+/* ================================================
+   PAGE ENTRY ANIMATION
+================================================ */
+.movies-page > * {
+  animation: pageFadeIn 0.5s var(--ease) both;
+}
+.movies-page > *:nth-child(1) { animation-delay: 0.05s; }
+.movies-page > *:nth-child(2) { animation-delay: 0.1s; }
+.movies-page > *:nth-child(3) { animation-delay: 0.15s; }
+.movies-page > *:nth-child(4) { animation-delay: 0.2s; }
 
-  object-fit: cover;
-  object-position: center;
-
-  display: block;
-
-  transition: transform 0.6s var(--bezier),
-              filter 0.3s ease;
+@keyframes pageFadeIn {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
-/* =========================
-   HOVER EFFECT (ANIME STYLE)
-========================= */
-.card:hover,
-.episode-card:hover {
-  transform: translateY(-10px) scale(1.02);
-
-  box-shadow:
-    0 20px 50px rgba(0,0,0,0.8),
-    0 0 25px rgba(255,0,0,0.15);
-}
-
-.card:hover img,
-.episode-card:hover img {
-  transform: scale(1.12);
-  filter: brightness(1.1) saturate(1.2);
-}
-
-/* =========================
-   SHINE EFFECT
-========================= */
-.card::before,
-.episode-card::before {
-  content: "";
-  position: absolute;
-  top: -50%;
-  left: -60%;
-  width: 40%;
-  height: 200%;
-
-  background: linear-gradient(
-    120deg,
-    transparent,
-    rgba(255,255,255,0.08),
-    transparent
-  );
-
-  transform: rotate(25deg);
-  transition: all 0.7s ease;
-}
-
-.card:hover::before,
-.episode-card:hover::before {
-  left: 120%;
-}
-
-/* =========================
-   TEXT AREA
-========================= */
-.card h3,
-.episode-card h3 {
-  font-size: 0.95rem;
-  margin: 10px 12px 4px;
-  color: #fff;
-
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.card p,
-.episode-card p {
-  margin: 0 12px 12px;
-  font-size: 0.8rem;
-  color: #b8b8b8;
-}
-
-/* =========================
+/* ================================================
    SEARCH BAR
-========================= */
+================================================ */
 .search-bar {
-  max-width: 800px;
-  margin: 0 auto 40px;
-
-  background: rgba(255,255,255,0.05);
-  backdrop-filter: blur(25px);
-
-  border: 1px solid var(--glass-border);
-  border-radius: 100px;
-
-  padding: 8px 24px;
-
+  max-width: 680px;
+  margin: 0 auto 28px;
   display: flex;
   align-items: center;
+  gap: 10px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-md);
+  border-radius: 100px;
+  padding: 10px 18px;
+  transition: border-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+.search-bar:focus-within {
+  border-color: var(--red);
+  box-shadow: 0 0 0 3px var(--red-dim);
 }
 
 .search-input {
   flex: 1;
   background: transparent;
   border: none;
-  color: white;
-  font-size: 1.1rem;
   outline: none;
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 1rem;
+  font-weight: 400;
 }
 
-/* =========================
-   FILTER BAR
-========================= */
-.filter-bar {
-  display: flex;
-  justify-content: center;
-  gap: 15px;
-  margin-bottom: 40px;
-  flex-wrap: wrap;
+.search-input::placeholder {
+  color: var(--text-muted);
 }
 
-.filter-bar select {
-  background: #121212;
-  color: white;
-
-  border: 1px solid var(--glass-border);
-  border-radius: 12px;
-
-  padding: 12px 18px;
-}
-
-/* =========================
-   FLOATING CONTROLS
-========================= */
-.fixed-controls {
-  position: fixed;
-  bottom: 30px;
-  right: 30px;
-
-  display: flex;
-  flex-direction: column;
-  gap: 15px;
-
-  z-index: 2000;
-}
-
-.control-btn {
-  position: relative;
-  overflow: hidden;
-
-  width: 54px;
-  height: 54px;
-
-  border-radius: 16px;
-  border: 1px solid var(--glass-border);
-
-  background: rgba(255,255,255,0.08);
-  backdrop-filter: blur(12px);
-
-  cursor: pointer;
-
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  transition: transform 0.15s ease,
-              background 0.25s ease;
-}
-
-.control-btn img {
-  width: 26px;
-  height: 26px;
-}
-
-.control-btn:hover {
-  background: rgba(255,255,255,0.14);
-}
-
-.control-btn:active {
-  transform: scale(0.92);
-  box-shadow: inset 0 0 0 8px rgba(255, 255, 255, 0.05);
-}
-
-.control-btn::after,
-.tv-button::after,
-.back-btn::after,
-.mic-btn::after,
-.card::after,
-.episode-card::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: radial-gradient(circle, rgba(255,255,255,0.28) 0%, transparent 60%);
-  transform: scale(0);
-  opacity: 0;
-  pointer-events: none;
-  transition: transform 0.35s ease, opacity 0.35s ease;
-}
-
-.control-btn:active::after,
-.tv-button:active::after,
-.back-btn:active::after,
-.mic-btn:active::after,
-.card:active::after,
-.episode-card:active::after {
-  transform: scale(2.5);
-  opacity: 0.18;
-  transition: transform 0.18s ease, opacity 0.18s ease;
-}
-
-.tv-button:active,
-.back-btn:active,
-.mic-btn:active,
-.card:active,
-.episode-card:active {
-  transform: scale(0.98);
-  opacity: 0.95;
-}
-
-.tv-button {
-  transition: background 0.2s ease, transform 0.12s ease, opacity 0.12s ease;
-}
-
-.back-btn {
-  transition: background 0.2s ease, transform 0.12s ease, opacity 0.12s ease;
-}
-
-.mic-btn {
-  transition: transform 0.15s ease, opacity 0.12s ease;
-}
-
-.card,
-.episode-card {
-  transition: transform 0.35s var(--bezier), box-shadow 0.35s var(--bezier), opacity 0.12s ease;
-}
-
-/* =========================
-   RESPONSIVE
-========================= */
-@media (max-width: 900px) {
-  .grid {
-    grid-template-columns: repeat(3, 1fr);
-  }
-
-  .card img,
-  .episode-card img {
-    height: 260px;
-  }
-}
-
-@media (max-width: 600px) {
-  .grid {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 14px;
-  }
-
-  .card img,
-  .episode-card img {
-    height: 220px;
-  }
-
-  .movies-page {
-    padding: 20px 4%;
-  }
-
-  .series-main-title {
-    font-size: 1.5rem;
-  }
-}
-
+/* ================================================
+   MIC BUTTON
+================================================ */
 .mic-btn {
   position: relative;
   overflow: hidden;
   background: transparent;
   border: none;
+  color: var(--text-dim);
+  font-size: 1.3rem;
   cursor: pointer;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 8px;
-  transition: transform 0.2s ease;
+  transition: color 0.2s ease, background 0.2s ease;
+  flex-shrink: 0;
 }
 
-.icon-symbol {
-  font-size: 1.5rem; /* Adjust icon size here */
-  color: #ffffff;
-  line-height: 1;
+.mic-btn:hover {
+  background: var(--bg-glass);
+  color: var(--text);
 }
 
-.mic-btn.listening .icon-symbol {
-  color: #ff4444; /* Turns red when listening */
-  animation: pulse-mic 1.2s infinite ease-in-out;
+.mic-btn.listening-active {
+  color: var(--red);
+  animation: micPulse 1.4s infinite var(--ease);
 }
 
-@keyframes pulse-mic {
-  0% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(1.2); opacity: 0.7; }
-  100% { transform: scale(1); opacity: 1; }
+@keyframes micPulse {
+  0%, 100% { transform: scale(1); }
+  50%       { transform: scale(1.2); }
 }
 
-/* =========================
-   UPLOAD SECTION (MATTE)
-========================= */
-
-/* The Container Box */
-.tv-upload {
-  max-width: 800px;
-  margin: 20px auto 60px;
-  background: #161616; /* Solid dark grey */
-  border: 1px solid #333333;
-  border-radius: 12px;
-  padding: 40px;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+/* ================================================
+   FILTER BAR
+================================================ */
+.filter-bar {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 40px;
+  flex-wrap: wrap;
 }
 
-/* Header Text */
-.tv-title {
-  text-align: center;
-  font-size: 1.8rem;
-  margin-bottom: 30px;
-  color: #ffffff;
-  text-transform: uppercase;
-  font-weight: 800;
-  letter-spacing: 1px;
-}
-
-/* Form Grid Layout */
-.tv-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 15px;
-}
-
-/* Inputs & Select Boxes */
-.tv-input {
-  width: 100%;
-  padding: 12px 16px;
-  background: #222222; /* Solid matte background */
-  border: 1px solid #444444;
-  border-radius: 6px;
-  color: #ffffff;
-  font-size: 0.95rem;
+.filter-bar select {
+  background: var(--bg-surface);
+  color: var(--text);
+  border: 1px solid var(--border-md);
+  border-radius: var(--radius-md);
+  padding: 10px 36px 10px 16px;
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  cursor: pointer;
   outline: none;
-  transition: border-color 0.2s ease;
-}
-
-/* Focus State (Only Border Changes) */
-.tv-input:focus {
-  border-color: #e50914; /* Netflix Red */
-}
-
-/* Dropdown Arrow & Option Styling */
-select.tv-input {
-  cursor: pointer;
   appearance: none;
-  background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='white' width='18px' height='18px'%3E%3Cpath d='M7 10l5 5 5-5z'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' fill='none'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23888' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
-  background-position: right 10px center;
+  background-position: right 12px center;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
 }
 
-/* Fixes the "white on white" dropdown error in browsers */
-.tv-input option {
-  background-color: #1a1a1a;
-  color: #ffffff;
+.filter-bar select:hover,
+.filter-bar select:focus {
+  border-color: rgba(255,255,255,0.25);
+  background-color: #222;
 }
 
-/* Grid Spanning Classes */
-.span-2 { grid-column: span 2; }
-.span-3 { grid-column: span 3; }
+.filter-bar select option {
+  background: #1a1a1a;
+  color: #fff;
+}
 
-/* The Upload Button */
-.tv-button {
-  position: relative;
-  overflow: hidden;
+/* ================================================
+   SECTION TITLES
+================================================ */
+.section-title {
+  font-family: var(--font-display);
+  font-size: 2rem;
+  letter-spacing: 0.06em;
+  color: var(--text);
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
 
-  width: 100%;
-  margin-top: 25px;
-  padding: 15px;
-  background: #e50914;
-  color: #ffffff;
-  border: none;
-  border-radius: 6px;
-  font-weight: 700;
+.section-title::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(to right, var(--border-md), transparent);
+  margin-left: 8px;
+}
+
+.series-main-title {
+  font-family: var(--font-display);
+  font-size: 1.8rem;
+  letter-spacing: 0.06em;
+  color: var(--text);
   text-transform: uppercase;
-  cursor: pointer;
-  transition: background 0.2s ease, transform 0.12s ease, opacity 0.12s ease;
-  box-shadow: none; /* No glow */
+  margin-bottom: 6px;
 }
 
-.tv-button:hover {
-  background: #b20710; /* Darker red on hover */
+.season-title {
+  font-family: var(--font-body);
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--gold);
+  border-left: 3px solid var(--gold);
+  padding-left: 12px;
+  margin-bottom: 18px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
 
-/* Responsive Adjustments */
-@media (max-width: 768px) {
-  .tv-grid { grid-template-columns: 1fr 1fr; }
-  .span-2, .span-3 { grid-column: span 2; }
+/* ================================================
+   GRID
+================================================ */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 18px;
+  padding: 16px 0 8px;
 }
 
-@media (max-width: 500px) {
-  .tv-grid { grid-template-columns: 1fr; }
-  .span-2, .span-3 { grid-column: span 1; }
-}
-/* --- Collection Specific Styles --- */
-
-/* The 'is-collection' class adds a "stacked" effect behind the card */
-.card.is-collection {
+/* ================================================
+   CARD — BASE
+================================================ */
+.card,
+.episode-card {
   position: relative;
-  border: 1px solid rgba(255, 215, 0, 0.4);
-  box-shadow: 
-    4px 4px 0px rgba(0, 0, 0, 0.2), 
-    8px 8px 0px rgba(255, 215, 0, 0.1); /* Golden stack effect */
-  transition: transform 0.3s ease;
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  /* Android-safe ripple base */
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  transform: translateZ(0); /* GPU layer */
+  will-change: transform;
+  transition:
+    transform 0.38s var(--ease),
+    box-shadow 0.38s var(--ease),
+    border-color 0.3s ease;
+}
+
+.card:hover,
+.episode-card:hover {
+  transform: translateY(-8px) scale(1.02);
+  border-color: rgba(255,255,255,0.18);
+  box-shadow:
+    0 24px 60px rgba(0,0,0,0.7),
+    0 0 0 1px rgba(255,255,255,0.06);
+}
+
+/* Active press — Android feel */
+.card:active,
+.episode-card:active {
+  transform: scale(0.97) !important;
+  transition: transform 0.1s ease !important;
+}
+
+/* ================================================
+   CARD IMAGE
+================================================ */
+.card img,
+.episode-card img {
+  width: 100%;
+  height: 285px;
+  object-fit: cover;
+  object-position: center top;
+  display: block;
+  transition: transform 0.55s var(--ease), filter 0.4s ease;
+}
+
+.card:hover img,
+.episode-card:hover img {
+  transform: scale(1.07);
+  filter: brightness(1.05);
+}
+
+/* ================================================
+   CARD GRADIENT OVERLAY
+================================================ */
+.card::after,
+.episode-card::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 55%;
+  background: linear-gradient(
+    to top,
+    rgba(0,0,0,0.95) 0%,
+    rgba(0,0,0,0.5) 50%,
+    transparent 100%
+  );
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* ================================================
+   RIPPLE EFFECT (ANDROID)
+================================================ */
+.ripple-wave {
+  position: absolute;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.18);
+  transform: scale(0);
+  animation: rippleExpand 0.55s var(--ease) forwards;
+  pointer-events: none;
+  z-index: 10;
+}
+
+@keyframes rippleExpand {
+  to {
+    transform: scale(4);
+    opacity: 0;
+  }
+}
+
+/* ================================================
+   CARD INFO
+================================================ */
+.card-info {
+  position: relative;
+  z-index: 2;
+  padding: 10px 12px 14px;
+  margin-top: auto;
+}
+
+.card-info h3 {
+  font-family: var(--font-body);
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 3px;
+}
+
+.card-info p {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  font-weight: 400;
+}
+
+/* ================================================
+   COLLECTION CARD
+================================================ */
+.card.is-collection {
+  border-color: rgba(245, 197, 24, 0.3);
+}
+
+.card.is-collection::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(135deg, rgba(245,197,24,0.04) 0%, transparent 60%);
+  z-index: 0;
+  pointer-events: none;
 }
 
 .card.is-collection:hover {
-  transform: translate(-4px, -4px); /* Moves slightly when hovered */
+  border-color: rgba(245, 197, 24, 0.55);
+  box-shadow:
+    0 24px 60px rgba(0,0,0,0.7),
+    0 0 30px rgba(245,197,24,0.12);
 }
 
-/* Badge that shows number of parts (e.g., "3 Parts") */
 .collection-badge {
   position: absolute;
   top: 10px;
   right: 10px;
-  background: #ffd700;
+  background: var(--gold);
   color: #000;
-  padding: 5px 10px;
-  font-size: 0.75rem;
-  font-weight: 800;
-  border-radius: 4px;
+  padding: 4px 9px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  border-radius: var(--radius-sm);
   text-transform: uppercase;
-  z-index: 2;
-  box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+  letter-spacing: 0.06em;
+  z-index: 5;
 }
 
-/* --- Collection View Overlay (The "Folder" View) --- */
+/* ================================================
+   EPISODE CARD SPECIFICS
+================================================ */
+.episode-card .card-info p {
+  color: var(--gold);
+  font-weight: 600;
+  font-size: 0.75rem;
+}
 
+/* ================================================
+   COLLECTION VIEW
+================================================ */
 .collection-view {
-  animation: fadeIn 0.4s ease-out;
+  animation: slideDown 0.38s var(--ease) both;
 }
 
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ================================================
+   BACK BUTTON
+================================================ */
 .back-btn {
   position: relative;
   overflow: hidden;
-
-  background: #222;
-  color: #fff;
-  border: 1px solid #444;
-  padding: 10px 20px;
-  border-radius: 50px;
-  cursor: pointer;
-  margin-bottom: 30px;
-  font-weight: 600;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 8px;
-  transition: background 0.2s, transform 0.12s ease, opacity 0.12s ease;
+  background: var(--bg-surface);
+  color: var(--text);
+  border: 1px solid var(--border-md);
+  border-radius: 100px;
+  padding: 10px 22px;
+  font-family: var(--font-body);
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  margin-bottom: 28px;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.12s ease;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .back-btn:hover {
-  background: #ffd700;
-  color: #000;
-  border-color: #ffd700;
+  background: #222;
+  border-color: var(--gold);
+  color: var(--gold);
 }
 
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+.back-btn:active {
+  transform: scale(0.96);
 }
 
-/* --- Series & Seasons Layout --- */
-
+/* ================================================
+   SERIES SECTION
+================================================ */
 .series-section {
-  margin-top: 50px;
-  border-top: 1px solid #333;
-  padding-top: 20px;
-}
-
-.series-main-title {
-  font-size: 2rem;
-  color: #fff;
-  text-transform: uppercase;
-  letter-spacing: 2px;
-  margin-bottom: 10px;
+  margin-top: 56px;
+  padding-top: 28px;
+  border-top: 1px solid var(--border);
 }
 
 .season-container {
-  margin-bottom: 40px;
-  padding-left: 10px;
+  margin-bottom: 44px;
 }
 
-.season-title {
-  color: #aaa;
-  font-size: 1.2rem;
-  border-left: 4px solid #ffd700;
-  padding-left: 15px;
-  margin-bottom: 20px;
+/* ================================================
+   FLOATING CONTROLS
+================================================ */
+.fixed-controls {
+  position: fixed;
+  bottom: 28px;
+  right: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  z-index: 1000;
 }
 
-/* Episode Card Specifics */
-.episode-card .card-info h3 {
-  font-size: 0.95rem;
-  color: #eee;
+.control-btn {
+  position: relative;
+  overflow: hidden;
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  border: 1px solid var(--border-md);
+  background: rgba(20,20,20,0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.18s var(--spring), background 0.2s ease, border-color 0.2s ease;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.episode-card .card-info p {
-  color: #ffd700; /* Highlight episode number */
-  font-weight: bold;
+.control-btn img {
+  width: 24px;
+  height: 24px;
+  pointer-events: none;
 }
 
-.mic-btn.listening-active {
-  background-color: #ff3b3b;
-  box-shadow: 0 0 15px rgba(255, 59, 59, 0.6);
-  animation: pulse-red 1.5s infinite;
+.control-btn:hover {
+  background: rgba(35,35,35,0.95);
+  border-color: rgba(255,255,255,0.2);
+  transform: scale(1.08);
 }
 
-@keyframes pulse-red {
-  0% { transform: scale(1); }
-  50% { transform: scale(1.1); }
-  100% { transform: scale(1); }
+.control-btn:active {
+  transform: scale(0.93) !important;
+}
+
+/* ================================================
+   LOADING SKELETON SYSTEM
+================================================ */
+
+/* Shimmer keyframe */
+@keyframes shimmer {
+  0%   { background-position: -800px 0; }
+  100% { background-position: 800px 0; }
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    #1a1a1a 25%,
+    #252525 50%,
+    #1a1a1a 75%
+  );
+  background-size: 800px 100%;
+  animation: shimmer 1.6s infinite linear;
+  border-radius: var(--radius-md);
+}
+
+/* Card skeleton */
+.card-skeleton {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.card-skeleton .skel-img {
+  height: 285px;
+  background: linear-gradient(
+    90deg,
+    #1a1a1a 25%,
+    #252525 50%,
+    #1a1a1a 75%
+  );
+  background-size: 800px 100%;
+  animation: shimmer 1.6s infinite linear;
+}
+
+.card-skeleton .skel-title {
+  height: 13px;
+  margin: 12px 12px 6px;
+  border-radius: 6px;
+  background: linear-gradient(
+    90deg,
+    #1a1a1a 25%,
+    #252525 50%,
+    #1a1a1a 75%
+  );
+  background-size: 800px 100%;
+  animation: shimmer 1.6s infinite linear;
+}
+
+.card-skeleton .skel-sub {
+  height: 10px;
+  width: 60%;
+  margin: 0 12px 14px;
+  border-radius: 6px;
+  background: linear-gradient(
+    90deg,
+    #1a1a1a 25%,
+    #252525 50%,
+    #1a1a1a 75%
+  );
+  background-size: 800px 100%;
+  animation: shimmer 1.6s infinite linear;
+}
+
+/* Full-page loading overlay */
+.loading-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 24px;
+  animation: fadeOutOverlay 0.4s ease 0.8s both;
+}
+
+@keyframes fadeOutOverlay {
+  to { opacity: 0; pointer-events: none; }
+}
+
+.loading-logo {
+  font-family: var(--font-display);
+  font-size: 3rem;
+  letter-spacing: 0.2em;
+  color: var(--red);
+  animation: logoPulse 1.2s ease-in-out infinite;
+}
+
+@keyframes logoPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.6; transform: scale(0.97); }
+}
+
+.loading-bar-track {
+  width: 200px;
+  height: 2px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.loading-bar-fill {
+  height: 100%;
+  background: var(--red);
+  border-radius: 2px;
+  animation: loadProgress 1s var(--ease) both;
+}
+
+@keyframes loadProgress {
+  from { width: 0; }
+  to   { width: 100%; }
+}
+
+/* ================================================
+   MOVIE PLAYER LOADING SCREEN
+================================================ */
+.player-loading {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  z-index: 5000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  animation: playerFadeIn 0.25s ease both;
+}
+
+@keyframes playerFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.player-loading-spinner {
+  width: 52px;
+  height: 52px;
+  border: 3px solid rgba(255,255,255,0.08);
+  border-top-color: var(--red);
+  border-radius: 50%;
+  animation: spin 0.75s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.player-loading-title {
+  font-family: var(--font-body);
+  font-size: 1rem;
+  color: var(--text-dim);
+  letter-spacing: 0.04em;
+  max-width: 280px;
+  text-align: center;
+}
+
+.player-loading-title strong {
+  display: block;
+  color: var(--text);
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+/* ================================================
+   CARD APPEAR ANIMATION (stagger on load)
+================================================ */
+@keyframes cardAppear {
+  from { opacity: 0; transform: translateY(22px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.card,
+.episode-card {
+  animation: cardAppear 0.45s var(--ease) both;
+}
+
+/* Grid stagger — JS sets --i on each card via style */
+.card { animation-delay: calc(var(--i, 0) * 60ms); }
+.episode-card { animation-delay: calc(var(--i, 0) * 50ms); }
+
+/* ================================================
+   NO RESULTS
+================================================ */
+.no-results {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 1rem;
+  padding: 80px 20px;
+  letter-spacing: 0.04em;
+}
+
+/* ================================================
+   CONTENT SECTION
+================================================ */
+.content-section {
+  margin-bottom: 52px;
+}
+
+/* ================================================
+   SCROLL BAR
+================================================ */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #333; border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: #555; }
+
+/* ================================================
+   RESPONSIVE
+================================================ */
+@media (max-width: 960px) {
+  .grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+  }
+  .card img,
+  .episode-card img { height: 240px; }
+  .card-skeleton .skel-img { height: 240px; }
+}
+
+@media (max-width: 620px) {
+  .movies-page { padding: 20px 3.5% 90px; }
+
+  .grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
+
+  .card img,
+  .episode-card img { height: 210px; }
+  .card-skeleton .skel-img { height: 210px; }
+
+  .section-title { font-size: 1.5rem; }
+  .series-main-title { font-size: 1.45rem; }
+
+  .filter-bar { gap: 8px; }
+  .filter-bar select { padding: 9px 28px 9px 12px; font-size: 0.8rem; }
+
+  .fixed-controls { bottom: 18px; right: 16px; }
+  .control-btn { width: 46px; height: 46px; border-radius: 13px; }
+
+  /* Disable hover transforms on touch */
+  .card:hover,
+  .episode-card:hover {
+    transform: none;
+    box-shadow: none;
+  }
+  .card:hover img,
+  .episode-card:hover img {
+    transform: none;
+    filter: none;
+  }
+  .control-btn:hover {
+    transform: none;
+  }
+}
+
+@media (max-width: 380px) {
+  .grid { gap: 10px; }
+  .card img,
+  .episode-card img { height: 185px; }
+  .card-skeleton .skel-img { height: 185px; }
 }
