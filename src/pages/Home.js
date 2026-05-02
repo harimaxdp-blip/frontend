@@ -12,27 +12,25 @@ import "./Movies.css";
 import shuffleGif from "../assets/dice-game.gif";
 import topGif from "../assets/up.gif";
 
-// ─── Android-style ripple helper ───────────────────────────────────────────
-function createRipple(e, element) {
-  const rect = element.getBoundingClientRect();
+// ─── Android ripple helper ──────────────────────────────────────────────────
+function triggerRipple(e, el) {
+  const rect = el.getBoundingClientRect();
   const size = Math.max(rect.width, rect.height);
-  const x = (e.clientX || e.touches?.[0]?.clientX || rect.left + rect.width / 2) - rect.left - size / 2;
-  const y = (e.clientY || e.touches?.[0]?.clientY || rect.top + rect.height / 2) - rect.top - size / 2;
+  const clientX = e.clientX ?? e.touches?.[0]?.clientX ?? rect.left + rect.width / 2;
+  const clientY = e.clientY ?? e.touches?.[0]?.clientY ?? rect.top + rect.height / 2;
+  const x = clientX - rect.left - size / 2;
+  const y = clientY - rect.top - size / 2;
 
-  const ripple = document.createElement("span");
-  ripple.className = "ripple-wave";
-  ripple.style.cssText = `
-    width:${size}px; height:${size}px;
-    left:${x}px; top:${y}px;
-    position:absolute; border-radius:50%;
-    background:rgba(255,255,255,0.18);
-    transform:scale(0);
-    animation:rippleExpand 0.55s cubic-bezier(0.22,1,0.36,1) forwards;
-    pointer-events:none; z-index:10;
-  `;
-
-  element.appendChild(ripple);
-  setTimeout(() => ripple.remove(), 600);
+  const span = document.createElement("span");
+  span.className = "ripple-wave";
+  Object.assign(span.style, {
+    width: `${size}px`,
+    height: `${size}px`,
+    left: `${x}px`,
+    top: `${y}px`,
+  });
+  el.appendChild(span);
+  setTimeout(() => span.remove(), 650);
 }
 
 // ─── Skeleton card ──────────────────────────────────────────────────────────
@@ -46,7 +44,7 @@ function SkeletonCard() {
   );
 }
 
-// ─── Player loading screen ──────────────────────────────────────────────────
+// ─── Player loading overlay ─────────────────────────────────────────────────
 function PlayerLoading({ title }) {
   return (
     <div className="player-loading">
@@ -61,20 +59,19 @@ function PlayerLoading({ title }) {
 
 // ─── Main Component ─────────────────────────────────────────────────────────
 export default function Home({ type = "all" }) {
-  const [movies, setMovies]                   = useState([]);
-  const [languageFilter, setLanguageFilter]   = useState("all");
-  const [genreFilter, setGenreFilter]         = useState("all");
-  const [yearFilter, setYearFilter]           = useState("all");
-  const [search, setSearch]                   = useState("");
-  const [isListening, setIsListening]         = useState(false);
-  const [isDataLoaded, setIsDataLoaded]       = useState(false);
+  const [movies, setMovies]             = useState([]);
+  const [languageFilter, setLanguageFilter] = useState("all");
+  const [genreFilter, setGenreFilter]   = useState("all");
+  const [yearFilter, setYearFilter]     = useState("all");
+  const [search, setSearch]             = useState("");
+  const [isListening, setIsListening]   = useState(false);
+  const [isDataLoaded, setIsDataLoaded] = useState(false);
   const [selectedCollection, setSelectedCollection] = useState(null);
-  const [savedScrollPos, setSavedScrollPos]   = useState(0);
-  const [playerLoading, setPlayerLoading]     = useState(null); // movie title
+  const [savedScrollPos, setSavedScrollPos] = useState(0);
+  const [playerLoading, setPlayerLoading]   = useState(null);
 
   const navigate = useNavigate();
 
-  // ── Helpers ────────────────────────────────────────────────────────────────
   const naturalSort = useCallback((a, b) =>
     a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" })
   , []);
@@ -83,7 +80,9 @@ export default function Home({ type = "all" }) {
     String(value || "").toLowerCase().trim()
   , []);
 
-  // ── Firestore ──────────────────────────────────────────────────────────────
+  // =========================
+  // DATA FETCH
+  // =========================
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "movies"), (snapshot) => {
       const data = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
@@ -93,7 +92,9 @@ export default function Home({ type = "all" }) {
     return () => unsub();
   }, []);
 
-  // ── Type matching ──────────────────────────────────────────────────────────
+  // =========================
+  // GROUPING LOGIC
+  // =========================
   const matchesType = useCallback((itemType) => {
     const clean = normalize(itemType);
     if (type === "all")    return true;
@@ -103,18 +104,15 @@ export default function Home({ type = "all" }) {
     return true;
   }, [type, normalize]);
 
-  // ── Movie groups ───────────────────────────────────────────────────────────
   const movieGroups = useMemo(() => {
     const filtered = movies.filter((item) => {
       const isMovieType = ["movie", "movies", "anime"].includes(normalize(item.type));
-      return (
-        isMovieType &&
-        matchesType(item.type) &&
-        (languageFilter === "all" || normalize(item.language) === normalize(languageFilter)) &&
-        (genreFilter   === "all" || normalize(item.genre)    === normalize(genreFilter)) &&
-        (yearFilter    === "all" || String(item.year)        === String(yearFilter)) &&
-        normalize(item.title).includes(normalize(search))
-      );
+      const matchType   = matchesType(item.type);
+      const matchLang   = languageFilter === "all" || normalize(item.language) === normalize(languageFilter);
+      const matchGen    = genreFilter    === "all" || normalize(item.genre)    === normalize(genreFilter);
+      const matchYear   = yearFilter     === "all" || String(item.year)        === String(yearFilter);
+      const matchSearch = normalize(item.title).includes(normalize(search));
+      return isMovieType && matchType && matchLang && matchGen && matchYear && matchSearch;
     });
 
     const groups = {};
@@ -133,15 +131,11 @@ export default function Home({ type = "all" }) {
       .map(([name, items]) => [name, [...items].sort((a, b) => naturalSort(a.title, b.title))]);
   }, [movies, languageFilter, genreFilter, yearFilter, search, matchesType, normalize, naturalSort]);
 
-  // ── Series groups ──────────────────────────────────────────────────────────
   const seriesGroups = useMemo(() => {
     const filtered = movies.filter((item) => {
       const isSeriesType = !["movie", "movies"].includes(normalize(item.type));
-      return (
-        isSeriesType &&
-        matchesType(item.type) &&
-        normalize(item.seriesTitle || item.title).includes(normalize(search))
-      );
+      const matchSearch  = normalize(item.seriesTitle || item.title).includes(normalize(search));
+      return isSeriesType && matchesType(item.type) && matchSearch;
     });
 
     const groups = {};
@@ -158,7 +152,9 @@ export default function Home({ type = "all" }) {
     return Object.entries(groups).sort((a, b) => b[1].latestYear - a[1].latestYear);
   }, [movies, matchesType, normalize, search]);
 
-  // ── Browser back button ────────────────────────────────────────────────────
+  // =========================
+  // BROWSER BACK BUTTON
+  // =========================
   useEffect(() => {
     const handlePopState = () => {
       if (selectedCollection) {
@@ -171,7 +167,9 @@ export default function Home({ type = "all" }) {
     return () => window.removeEventListener("popstate", handlePopState);
   }, [selectedCollection, savedScrollPos]);
 
-  // ── Scroll restoration ─────────────────────────────────────────────────────
+  // =========================
+  // SCROLL RESTORATION
+  // =========================
   useEffect(() => {
     if (!isDataLoaded || movieGroups.length === 0) return;
 
@@ -199,7 +197,6 @@ export default function Home({ type = "all" }) {
     }
   }, [isDataLoaded, movieGroups]);
 
-  // ── Reset on type change ───────────────────────────────────────────────────
   useEffect(() => {
     setLanguageFilter("all");
     setGenreFilter("all");
@@ -208,7 +205,9 @@ export default function Home({ type = "all" }) {
     setSelectedCollection(null);
   }, [type]);
 
-  // ── Actions ────────────────────────────────────────────────────────────────
+  // =========================
+  // ACTIONS
+  // =========================
   const handleOpenCollection = (name, items) => {
     const currentScroll = window.scrollY;
     setSavedScrollPos(currentScroll);
@@ -219,16 +218,14 @@ export default function Home({ type = "all" }) {
   };
 
   const playMovie = (movie) => {
-    // Show player loading screen
     setPlayerLoading(movie.title);
     sessionStorage.setItem("scrollPos", window.scrollY);
     if (selectedCollection) {
       sessionStorage.setItem("activeCollection", selectedCollection.name);
     }
-    // Brief delay for UX feedback, then navigate
     setTimeout(() => {
       navigate("/player", { state: { movie } });
-    }, 600);
+    }, 550);
   };
 
   const playRandom = () => {
@@ -247,13 +244,12 @@ export default function Home({ type = "all" }) {
     recognition.start();
   };
 
-  // ── Ripple handler ─────────────────────────────────────────────────────────
-  const handleCardClick = (e, callback) => {
-    createRipple(e, e.currentTarget);
-    callback();
+  // ripple + action
+  const handleClick = (e, action) => {
+    triggerRipple(e, e.currentTarget);
+    action();
   };
 
-  // ── Filter options ─────────────────────────────────────────────────────────
   const availableLanguages = useMemo(() =>
     [...new Set(movies.filter((m) => matchesType(m.type)).map((m) => normalize(m.language)))]
       .filter(Boolean).sort()
@@ -269,17 +265,8 @@ export default function Home({ type = "all" }) {
       .filter(Boolean).sort((a, b) => b - a)
   , [movies, matchesType]);
 
-  // ── Loading skeleton grid ──────────────────────────────────────────────────
-  const SkeletonGrid = () => (
-    <div className="grid">
-      {Array.from({ length: 10 }).map((_, i) => <SkeletonCard key={i} />)}
-    </div>
-  );
-
-  // ─────────────────────────────────────────────────────────────────────────
   return (
     <>
-      {/* Player loading overlay */}
       {playerLoading && <PlayerLoading title={playerLoading} />}
 
       <div className="movies-page">
@@ -288,17 +275,15 @@ export default function Home({ type = "all" }) {
         <div className="fixed-controls">
           <button
             className="control-btn shuffle-btn"
-            onClick={(e) => { createRipple(e, e.currentTarget); playRandom(); }}
-            title="Play random"
+            onClick={(e) => handleClick(e, playRandom)}
           >
-            <img src={shuffleGif} alt="Shuffle" />
+            <img src={shuffleGif} alt="shuffle" />
           </button>
           <button
             className="control-btn top-btn"
-            onClick={(e) => { createRipple(e, e.currentTarget); window.scrollTo({ top: 0, behavior: "smooth" }); }}
-            title="Back to top"
+            onClick={(e) => handleClick(e, () => window.scrollTo({ top: 0, behavior: "smooth" }))}
           >
-            <img src={topGif} alt="Top" />
+            <img src={topGif} alt="top" />
           </button>
         </div>
 
@@ -308,7 +293,7 @@ export default function Home({ type = "all" }) {
             className="search-input"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder={isListening ? "Listening…" : "Search titles…"}
+            placeholder={isListening ? "Listening..." : "Search..."}
           />
           <button
             className={`mic-btn ${isListening ? "listening-active" : ""}`}
@@ -321,34 +306,30 @@ export default function Home({ type = "all" }) {
         {/* Filters */}
         <div className="filter-bar">
           <select value={languageFilter} onChange={(e) => setLanguageFilter(e.target.value)}>
-            <option value="all">All Languages</option>
-            {availableLanguages.map((l) => (
-              <option key={l} value={l}>{l.toUpperCase()}</option>
-            ))}
+            <option value="all">Languages</option>
+            {availableLanguages.map((l) => <option key={l} value={l}>{l.toUpperCase()}</option>)}
           </select>
           <select value={genreFilter} onChange={(e) => setGenreFilter(e.target.value)}>
-            <option value="all">All Genres</option>
-            {availableGenres.map((g) => (
-              <option key={g} value={g}>{g.charAt(0).toUpperCase() + g.slice(1)}</option>
-            ))}
+            <option value="all">Genres</option>
+            {availableGenres.map((g) => <option key={g} value={g}>{g.toUpperCase()}</option>)}
           </select>
           <select value={yearFilter} onChange={(e) => setYearFilter(e.target.value)}>
-            <option value="all">All Years</option>
-            {availableYears.map((y) => (
-              <option key={y} value={y}>{y}</option>
-            ))}
+            <option value="all">Years</option>
+            {availableYears.map((y) => <option key={y} value={y}>{y}</option>)}
           </select>
         </div>
 
-        {/* Content */}
+        {/* Loading skeletons */}
         {!isDataLoaded ? (
           <section className="content-section">
             <h2 className="section-title">Loading…</h2>
-            <SkeletonGrid />
+            <div className="grid">
+              {Array.from({ length: 10 }).map((_, i) => <SkeletonCard key={i} />)}
+            </div>
           </section>
         ) : selectedCollection ? (
-          /* ── Collection view ── */
-          <section className="collection-view">
+          /* Collection view */
+          <section className="collection-view slide-down">
             <button
               className="back-btn"
               onClick={() => {
@@ -360,20 +341,16 @@ export default function Home({ type = "all" }) {
             >
               ← Back
             </button>
-            <h2 className="section-title">{selectedCollection.name} — Collection</h2>
+            <h2 className="section-title">{selectedCollection.name} Collection</h2>
             <div className="grid">
               {selectedCollection.items.map((m, i) => (
                 <div
                   key={m.id}
                   className="card"
                   style={{ "--i": i }}
-                  onClick={(e) => handleCardClick(e, () => playMovie(m))}
+                  onClick={(e) => handleClick(e, () => playMovie(m))}
                 >
-                  <img
-                    src={m.img || "https://via.placeholder.com/300x450?text=No+Image"}
-                    alt={m.title}
-                    loading="lazy"
-                  />
+                  <img src={m.img || "https://via.placeholder.com/300x450"} alt={m.title} loading="lazy" />
                   <div className="card-info">
                     <h3>{m.title}</h3>
                     <p>{m.year}</p>
@@ -384,7 +361,6 @@ export default function Home({ type = "all" }) {
           </section>
         ) : (
           <>
-            {/* ── Movies & Anime grid ── */}
             {movieGroups.length > 0 && (
               <section className="content-section">
                 <h2 className="section-title">Movies &amp; Anime</h2>
@@ -395,7 +371,7 @@ export default function Home({ type = "all" }) {
                       className={`card ${items.length > 1 ? "is-collection" : ""}`}
                       style={{ "--i": i }}
                       onClick={(e) =>
-                        handleCardClick(e, () =>
+                        handleClick(e, () =>
                           items.length > 1
                             ? handleOpenCollection(name, items)
                             : playMovie(items[0])
@@ -403,7 +379,7 @@ export default function Home({ type = "all" }) {
                       }
                     >
                       <img
-                        src={items[0].img || "https://via.placeholder.com/300x450?text=No+Image"}
+                        src={items[0].img || "https://via.placeholder.com/300x450"}
                         alt={name}
                         loading="lazy"
                       />
@@ -412,11 +388,7 @@ export default function Home({ type = "all" }) {
                       )}
                       <div className="card-info">
                         <h3>{items.length > 1 ? `${name} (Collection)` : items[0].title}</h3>
-                        <p>
-                          {items.length > 1
-                            ? "Multi-Part Series"
-                            : `${items[0].language} • ${items[0].year}`}
-                        </p>
+                        <p>{items.length > 1 ? "Multi-Part Series" : `${items[0].language} • ${items[0].year}`}</p>
                       </div>
                     </div>
                   ))}
@@ -424,7 +396,6 @@ export default function Home({ type = "all" }) {
               </section>
             )}
 
-            {/* ── Series sections ── */}
             {seriesGroups.map(([title, data]) => (
               <section key={title} className="series-section">
                 <h2 className="series-main-title">{title}</h2>
@@ -441,10 +412,10 @@ export default function Home({ type = "all" }) {
                               key={ep.id}
                               className="card episode-card"
                               style={{ "--i": i }}
-                              onClick={(e) => handleCardClick(e, () => playMovie(ep))}
+                              onClick={(e) => handleClick(e, () => playMovie(ep))}
                             >
                               <img
-                                src={ep.img || "https://via.placeholder.com/300x450?text=No+Image"}
+                                src={ep.img || "https://via.placeholder.com/300x450"}
                                 alt={ep.title}
                                 loading="lazy"
                               />
@@ -462,9 +433,8 @@ export default function Home({ type = "all" }) {
           </>
         )}
 
-        {/* Empty state */}
         {isDataLoaded && movieGroups.length === 0 && seriesGroups.length === 0 && (
-          <div className="no-results">No titles found. Try a different search or filter.</div>
+          <div className="no-results">No items found.</div>
         )}
       </div>
     </>
