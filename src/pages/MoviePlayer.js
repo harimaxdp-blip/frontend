@@ -10,14 +10,51 @@ export default function MoviePlayer() {
 
   const videoRef = useRef(null);
   const hlsRef = useRef(null);
+  
+  // Audio Sync Refs
+  const audioCtxRef = useRef(null);
+  const delayNodeRef = useRef(null);
+  const sourceNodeRef = useRef(null);
 
-  const [mode, setMode] = useState("loading"); 
-  // loading | direct | iframe
-
+  const [mode, setMode] = useState("loading");
   const [directUrl, setDirectUrl] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [audioOffset, setAudioOffset] = useState(0); // In seconds
 
+  // --- Audio Sync Logic ---
+  const setupAudioGraph = () => {
+    if (!videoRef.current || audioCtxRef.current || mode !== "direct") return;
+
+    try {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      const ctx = new AudioContext();
+      
+      // Create nodes
+      const source = ctx.createMediaElementSource(videoRef.current);
+      const delayNode = ctx.createDelay(5.0); // Max 5 second buffer
+
+      delayNode.delayTime.value = audioOffset;
+
+      // Connect: Video -> Delay -> Speakers
+      source.connect(delayNode);
+      delayNode.connect(ctx.destination);
+
+      audioCtxRef.current = ctx;
+      delayNodeRef.current = delayNode;
+      sourceNodeRef.current = source;
+    } catch (e) {
+      console.error("AudioContext failed. Direct audio sync unavailable.", e);
+    }
+  };
+
+  useEffect(() => {
+    if (delayNodeRef.current) {
+      delayNodeRef.current.delayTime.value = Math.max(0, audioOffset);
+    }
+  }, [audioOffset]);
+
+  // --- Data Fetching Logic ---
   useEffect(() => {
     if (!movie?.link) {
       setError("No movie source found.");
@@ -26,38 +63,23 @@ export default function MoviePlayer() {
     }
 
     const controller = new AbortController();
-
     const getBestSource = async () => {
       try {
         setLoading(true);
-        setError("");
-
-        // If already direct link
-        if (
-          movie.link.includes(".mp4") ||
-          movie.link.includes(".m3u8")
-        ) {
+        if (movie.link.includes(".mp4") || movie.link.includes(".m3u8")) {
           setDirectUrl(movie.link);
           setMode("direct");
           return;
         }
 
-        // Try scraping page
-        const response = await fetch(movie.link, {
-          signal: controller.signal,
-        });
-
+        const response = await fetch(movie.link, { signal: controller.signal });
         const html = await response.text();
-
         const patterns = [
           /["'](https?:\/\/[^"']+\.m3u8(\?[^"']*)?)["']/i,
           /["'](https?:\/\/[^"']+\.mp4(\?[^"']*)?)["']/i,
-          /file:\s*["']([^"']+)["']/i,
-          /source:\s*["']([^"']+)["']/i,
         ];
 
         let found = null;
-
         for (const regex of patterns) {
           const match = html.match(regex);
           if (match) {
@@ -70,16 +92,10 @@ export default function MoviePlayer() {
           setDirectUrl(found);
           setMode("direct");
         } else {
-          // Safe iframe fallback
           setMode("iframe");
         }
       } catch (err) {
-        if (err.name !== "AbortError") {
-          console.warn("Direct extraction failed:", err);
-
-          // Fallback instead of blocking
-          setMode("iframe");
-        }
+        if (err.name !== "AbortError") setMode("iframe");
       }
     };
 
@@ -87,145 +103,84 @@ export default function MoviePlayer() {
 
     return () => {
       controller.abort();
-
-      if (hlsRef.current) {
-        hlsRef.current.destroy();
-      }
+      if (hlsRef.current) hlsRef.current.destroy();
+      if (audioCtxRef.current) audioCtxRef.current.close();
     };
   }, [movie]);
 
-  // Direct Player Logic
+  // --- Player Initialization ---
   useEffect(() => {
     if (mode !== "direct" || !directUrl || !videoRef.current) return;
 
     const video = videoRef.current;
-
-    if (hlsRef.current) {
-      hlsRef.current.destroy();
-    }
+    if (hlsRef.current) hlsRef.current.destroy();
 
     if (directUrl.includes(".m3u8")) {
       if (Hls.isSupported()) {
-        const hls = new Hls({
-          enableWorker: true,
-          lowLatencyMode: true,
-        });
-
+        const hls = new Hls({ enableWorker: true });
         hlsRef.current = hls;
-
         hls.loadSource(directUrl);
         hls.attachMedia(video);
-
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
           setLoading(false);
           video.play().catch(() => {});
         });
-
-        hls.on(Hls.Events.ERROR, (_, data) => {
-          if (data.fatal) {
-            setMode("iframe");
-          }
-        });
-      } else if (
-        video.canPlayType("application/vnd.apple.mpegurl")
-      ) {
+      } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
         video.src = directUrl;
-
-        video.addEventListener("loadedmetadata", () => {
-          setLoading(false);
-          video.play().catch(() => {});
-        });
-      } else {
-        setMode("iframe");
+        video.onloadedmetadata = () => { setLoading(false); video.play(); };
       }
     } else {
       video.src = directUrl;
-
-      video.onloadeddata = () => {
-        setLoading(false);
-        video.play().catch(() => {});
-      };
-
-      video.onerror = () => {
-        setMode("iframe");
-      };
+      video.onloadeddata = () => setLoading(false);
     }
   }, [mode, directUrl]);
-
-  if (!movie) {
-    return (
-      <div className="player-page-bg">
-        <div className="ultra-card error-container">
-          <h2>No Data Found</h2>
-          <button
-            className="over-back-btn"
-            onClick={() => navigate(-1)}
-          >
-            ← Back
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="player-page-bg">
       <div className="ultra-card">
-        {/* Header */}
         <div className="player-header">
-          <button
-            className="over-back-btn"
-            onClick={() => navigate(-1)}
-          >
-            ← Back
-          </button>
-
-
+          <button className="over-back-btn" onClick={() => navigate(-1)}>← Back</button>
         </div>
 
-        {/* Video Area */}
         <div className="video-viewport">
-          {loading && (
-            <div className="player-loader">
-              <div className="spinner"></div>
-              <span>Initializing Stream...</span>
-            </div>
-          )}
+          {loading && <div className="player-loader"><div className="spinner"></div></div>}
 
-          {/* Direct Player */}
           {mode === "direct" && (
             <video
               ref={videoRef}
               controls
               autoPlay
-              playsInline
-              controlsList="nodownload noplaybackrate"
-              disablePictureInPicture
+              crossOrigin="anonymous" // Required for Web Audio API
+              onPlay={setupAudioGraph}
               className="native-video"
             />
           )}
 
-          {/* Fallback iframe */}
           {mode === "iframe" && (
             <iframe
               src={movie.link}
               title={movie.title}
               allowFullScreen
-              frameBorder="0"
-              scrolling="no"
-              sandbox="allow-scripts allow-same-origin allow-presentation"
-              referrerPolicy="no-referrer"
               className="iframe-video"
               onLoad={() => setLoading(false)}
             />
           )}
         </div>
 
-        {error && (
-          <div className="player-error-toast">
-            {error}
+        {/* Sync Controls UI */}
+        {mode === "direct" && (
+          <div className="sync-control-panel">
+            <p>Audio Sync: <strong>{audioOffset.toFixed(2)}s</strong></p>
+            <div className="sync-buttons">
+              <button onClick={() => setAudioOffset(prev => prev - 0.1)}>-0.1s</button>
+              <button onClick={() => setAudioOffset(0)}>Reset</button>
+              <button onClick={() => setAudioOffset(prev => prev + 0.1)}>+0.1s</button>
+            </div>
+            <small>Use + if audio is ahead of video, - if it's behind.</small>
           </div>
         )}
+
+        {error && <div className="player-error-toast">{error}</div>}
       </div>
     </div>
   );
