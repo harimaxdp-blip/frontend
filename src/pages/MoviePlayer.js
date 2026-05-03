@@ -16,14 +16,14 @@ export default function MoviePlayer() {
 
   const [mode, setMode] = useState("loading");
   const [directUrl, setDirectUrl] = useState("");
+  const [iframeUrl, setIframeUrl] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [isSyncActive, setIsSyncActive] = useState(false);
   
-  // Starting at 1.0s gives us a "buffer" to move audio both forward and backward
   const [audioOffset, setAudioOffset] = useState(1.0); 
 
-  // --- Improved Audio Sync Logic with CORS Fallback ---
+  // --- Audio Sync Logic ---
   const setupAudioGraph = async () => {
     if (!videoRef.current || audioCtxRef.current || mode !== "direct") return;
 
@@ -33,8 +33,6 @@ export default function MoviePlayer() {
       
       if (ctx.state === "suspended") await ctx.resume();
 
-      // This is where the CORS error happens. 
-      // If the server blocks us, this will throw an error or silence the video.
       const source = ctx.createMediaElementSource(videoRef.current);
       const delayNode = ctx.createDelay(10.0);
 
@@ -47,9 +45,8 @@ export default function MoviePlayer() {
       delayNodeRef.current = delayNode;
       setIsSyncActive(true);
     } catch (e) {
-      console.warn("CORS/Security Block: Audio Sync disabled to allow playback.", e);
+      console.warn("CORS/Security Block: Audio Sync disabled.", e);
       setIsSyncActive(false);
-      // We don't throw an error here so the user can still watch the movie.
     }
   };
 
@@ -60,7 +57,7 @@ export default function MoviePlayer() {
     }
   }, [audioOffset]);
 
-  // --- Source Discovery ---
+  // --- Source Discovery & YouTube Fix ---
   useEffect(() => {
     if (!movie?.link) {
       setError("No movie source found.");
@@ -68,40 +65,60 @@ export default function MoviePlayer() {
       return;
     }
 
-    const controller = new AbortController();
     const getBestSource = async () => {
       try {
         setLoading(true);
-        if (movie.link.match(/\.(mp4|m3u8|webm)($|\?)/i)) {
-          setDirectUrl(movie.link);
+        const url = movie.link;
+
+        // 1. Handle YouTube Specifically
+        const ytMatch = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|v\/|shorts\/))([\w-]{11})/);
+        if (ytMatch) {
+          const videoId = ytMatch[1];
+          // use youtube-nocookie for better privacy/ad reduction
+          setIframeUrl(`https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&modestbranding=1&rel=0`);
+          setMode("iframe");
+          return;
+        }
+
+        // 2. Handle Direct Video Files
+        if (url.match(/\.(mp4|m3u8|webm)($|\?)/i)) {
+          setDirectUrl(url);
           setMode("direct");
           return;
         }
 
-        const response = await fetch(movie.link, { signal: controller.signal });
-        const html = await response.text();
-        const patterns = [
-          /["'](https?:\/\/[^"']+\.m3u8[^"']*)["']/i,
-          /["'](https?:\/\/[^"']+\.mp4[^"']*)["']/i,
-        ];
+        // 3. Fallback/Scraping for other links
+        const response = await fetch(url).catch(() => null);
+        if (response) {
+          const html = await response.text();
+          const patterns = [
+            /["'](https?:\/\/[^"']+\.m3u8[^"']*)["']/i,
+            /["'](https?:\/\/[^"']+\.mp4[^"']*)["']/i,
+          ];
 
-        let found = null;
-        for (const regex of patterns) {
-          const match = html.match(regex);
-          if (match) {
-            found = match[1].replace(/\\/g, "");
-            break;
+          let found = null;
+          for (const regex of patterns) {
+            const match = html.match(regex);
+            if (match) {
+              found = match[1].replace(/\\/g, "");
+              break;
+            }
           }
-        }
 
-        if (found) {
-          setDirectUrl(found);
-          setMode("direct");
+          if (found) {
+            setDirectUrl(found);
+            setMode("direct");
+          } else {
+            setIframeUrl(url);
+            setMode("iframe");
+          }
         } else {
+          setIframeUrl(url);
           setMode("iframe");
         }
       } catch (err) {
-        if (err.name !== "AbortError") setMode("iframe");
+        setIframeUrl(movie.link);
+        setMode("iframe");
       } finally {
         setLoading(false);
       }
@@ -110,16 +127,14 @@ export default function MoviePlayer() {
     getBestSource();
 
     return () => {
-      controller.abort();
       if (hlsRef.current) hlsRef.current.destroy();
       if (audioCtxRef.current) audioCtxRef.current.close();
     };
   }, [movie]);
 
-  // --- HLS Initialization ---
+  // --- HLS Init ---
   useEffect(() => {
     if (mode !== "direct" || !directUrl || !videoRef.current) return;
-
     const video = videoRef.current;
     if (hlsRef.current) hlsRef.current.destroy();
 
@@ -129,9 +144,7 @@ export default function MoviePlayer() {
         hlsRef.current = hls;
         hls.loadSource(directUrl);
         hls.attachMedia(video);
-        hls.on(Hls.Events.MANIFEST_PARSED, () => {
-          video.play().catch(() => {});
-        });
+        hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}));
       } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
         video.src = directUrl;
       }
@@ -155,8 +168,6 @@ export default function MoviePlayer() {
               ref={videoRef}
               controls
               autoPlay
-              // We try anonymous first. If image_0a615f.png persists, 
-              // the server simply doesn't support CORS.
               crossOrigin="anonymous" 
               onPlay={setupAudioGraph}
               className="native-video"
@@ -165,8 +176,9 @@ export default function MoviePlayer() {
 
           {mode === "iframe" && (
             <iframe
-              src={movie.link}
-              title={movie.title}
+              src={iframeUrl}
+              title={movie?.title}
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
               allowFullScreen
               className="iframe-video"
               onLoad={() => setLoading(false)}
@@ -174,7 +186,8 @@ export default function MoviePlayer() {
           )}
         </div>
 
-        {isSyncActive && (
+        {/* Sync Controls */}
+        {isSyncActive && mode === "direct" && (
           <div className="sync-control-panel">
             <div className="sync-info">
               <span>Audio Delay: <strong>{audioOffset.toFixed(2)}s</strong></span>
@@ -185,16 +198,6 @@ export default function MoviePlayer() {
               value={audioOffset} 
               onChange={(e) => setAudioOffset(parseFloat(e.target.value))} 
             />
-            <div className="sync-labels">
-              <small>← Audio Ahead</small>
-              <small>Audio Behind →</small>
-            </div>
-          </div>
-        )}
-
-        {!isSyncActive && mode === "direct" && !loading && (
-          <div className="sync-disabled-note">
-            <small>Sync controls disabled due to server security (CORS).</small>
           </div>
         )}
 
