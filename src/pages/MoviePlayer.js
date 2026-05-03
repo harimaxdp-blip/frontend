@@ -11,50 +11,56 @@ export default function MoviePlayer() {
   const videoRef = useRef(null);
   const hlsRef = useRef(null);
   
-  // Audio Sync Refs
   const audioCtxRef = useRef(null);
   const delayNodeRef = useRef(null);
-  const sourceNodeRef = useRef(null);
 
   const [mode, setMode] = useState("loading");
   const [directUrl, setDirectUrl] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [audioOffset, setAudioOffset] = useState(0); // In seconds
+  const [isSyncActive, setIsSyncActive] = useState(false);
+  
+  // Starting at 1.0s gives us a "buffer" to move audio both forward and backward
+  const [audioOffset, setAudioOffset] = useState(1.0); 
 
-  // --- Audio Sync Logic ---
-  const setupAudioGraph = () => {
+  // --- Improved Audio Sync Logic with CORS Fallback ---
+  const setupAudioGraph = async () => {
     if (!videoRef.current || audioCtxRef.current || mode !== "direct") return;
 
     try {
       const AudioContext = window.AudioContext || window.webkitAudioContext;
       const ctx = new AudioContext();
       
-      // Create nodes
+      if (ctx.state === "suspended") await ctx.resume();
+
+      // This is where the CORS error happens. 
+      // If the server blocks us, this will throw an error or silence the video.
       const source = ctx.createMediaElementSource(videoRef.current);
-      const delayNode = ctx.createDelay(5.0); // Max 5 second buffer
+      const delayNode = ctx.createDelay(10.0);
 
-      delayNode.delayTime.value = audioOffset;
+      delayNode.delayTime.setValueAtTime(audioOffset, ctx.currentTime);
 
-      // Connect: Video -> Delay -> Speakers
       source.connect(delayNode);
       delayNode.connect(ctx.destination);
 
       audioCtxRef.current = ctx;
       delayNodeRef.current = delayNode;
-      sourceNodeRef.current = source;
+      setIsSyncActive(true);
     } catch (e) {
-      console.error("AudioContext failed. Direct audio sync unavailable.", e);
+      console.warn("CORS/Security Block: Audio Sync disabled to allow playback.", e);
+      setIsSyncActive(false);
+      // We don't throw an error here so the user can still watch the movie.
     }
   };
 
   useEffect(() => {
-    if (delayNodeRef.current) {
-      delayNodeRef.current.delayTime.value = Math.max(0, audioOffset);
+    if (delayNodeRef.current && audioCtxRef.current) {
+      const now = audioCtxRef.current.currentTime;
+      delayNodeRef.current.delayTime.setTargetAtTime(Math.max(0, audioOffset), now, 0.05);
     }
   }, [audioOffset]);
 
-  // --- Data Fetching Logic ---
+  // --- Source Discovery ---
   useEffect(() => {
     if (!movie?.link) {
       setError("No movie source found.");
@@ -66,7 +72,7 @@ export default function MoviePlayer() {
     const getBestSource = async () => {
       try {
         setLoading(true);
-        if (movie.link.includes(".mp4") || movie.link.includes(".m3u8")) {
+        if (movie.link.match(/\.(mp4|m3u8|webm)($|\?)/i)) {
           setDirectUrl(movie.link);
           setMode("direct");
           return;
@@ -75,8 +81,8 @@ export default function MoviePlayer() {
         const response = await fetch(movie.link, { signal: controller.signal });
         const html = await response.text();
         const patterns = [
-          /["'](https?:\/\/[^"']+\.m3u8(\?[^"']*)?)["']/i,
-          /["'](https?:\/\/[^"']+\.mp4(\?[^"']*)?)["']/i,
+          /["'](https?:\/\/[^"']+\.m3u8[^"']*)["']/i,
+          /["'](https?:\/\/[^"']+\.mp4[^"']*)["']/i,
         ];
 
         let found = null;
@@ -96,6 +102,8 @@ export default function MoviePlayer() {
         }
       } catch (err) {
         if (err.name !== "AbortError") setMode("iframe");
+      } finally {
+        setLoading(false);
       }
     };
 
@@ -108,7 +116,7 @@ export default function MoviePlayer() {
     };
   }, [movie]);
 
-  // --- Player Initialization ---
+  // --- HLS Initialization ---
   useEffect(() => {
     if (mode !== "direct" || !directUrl || !videoRef.current) return;
 
@@ -117,21 +125,18 @@ export default function MoviePlayer() {
 
     if (directUrl.includes(".m3u8")) {
       if (Hls.isSupported()) {
-        const hls = new Hls({ enableWorker: true });
+        const hls = new Hls({ enableWorker: true, lowLatencyMode: true });
         hlsRef.current = hls;
         hls.loadSource(directUrl);
         hls.attachMedia(video);
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
-          setLoading(false);
           video.play().catch(() => {});
         });
       } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
         video.src = directUrl;
-        video.onloadedmetadata = () => { setLoading(false); video.play(); };
       }
     } else {
       video.src = directUrl;
-      video.onloadeddata = () => setLoading(false);
     }
   }, [mode, directUrl]);
 
@@ -150,7 +155,9 @@ export default function MoviePlayer() {
               ref={videoRef}
               controls
               autoPlay
-              crossOrigin="anonymous" // Required for Web Audio API
+              // We try anonymous first. If image_0a615f.png persists, 
+              // the server simply doesn't support CORS.
+              crossOrigin="anonymous" 
               onPlay={setupAudioGraph}
               className="native-video"
             />
@@ -167,16 +174,27 @@ export default function MoviePlayer() {
           )}
         </div>
 
-        {/* Sync Controls UI */}
-        {mode === "direct" && (
+        {isSyncActive && (
           <div className="sync-control-panel">
-            <p>Audio Sync: <strong>{audioOffset.toFixed(2)}s</strong></p>
-            <div className="sync-buttons">
-              <button onClick={() => setAudioOffset(prev => prev - 0.1)}>-0.1s</button>
-              <button onClick={() => setAudioOffset(0)}>Reset</button>
-              <button onClick={() => setAudioOffset(prev => prev + 0.1)}>+0.1s</button>
+            <div className="sync-info">
+              <span>Audio Delay: <strong>{audioOffset.toFixed(2)}s</strong></span>
+              <button onClick={() => setAudioOffset(1.0)}>Reset</button>
             </div>
-            <small>Use + if audio is ahead of video, - if it's behind.</small>
+            <input 
+              type="range" min="0" max="4" step="0.05" 
+              value={audioOffset} 
+              onChange={(e) => setAudioOffset(parseFloat(e.target.value))} 
+            />
+            <div className="sync-labels">
+              <small>← Audio Ahead</small>
+              <small>Audio Behind →</small>
+            </div>
+          </div>
+        )}
+
+        {!isSyncActive && mode === "direct" && !loading && (
+          <div className="sync-disabled-note">
+            <small>Sync controls disabled due to server security (CORS).</small>
           </div>
         )}
 
