@@ -661,7 +661,7 @@ body::before {
 @media (max-width: 480px) {
   .no-results-img {
     width: 70vw;
-    max-width: 250px;
+    max-width: 300px;
   }
 }
 
