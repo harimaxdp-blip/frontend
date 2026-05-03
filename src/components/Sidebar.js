@@ -20,6 +20,7 @@ export default function Sidebar({ active, close }) {
           key={item.name}
           className={`item ${active === item.name ? "active" : ""}`}
           onClick={() => {
+            window.scrollTo({ top: 0, behavior: "smooth" });
             navigate(item.path);
             close();
           }}

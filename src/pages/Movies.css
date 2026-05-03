@@ -792,16 +792,7 @@ select.tv-input {
   .span-2, .span-3 { grid-column: span 1; }
 }
 
-.section-title {
-  display: flex;
-  align-items: center;
-  gap: 6px; /* reduced space between image and text */
-  font-size: 2rem;
-  font-weight: bold;
-  margin: 0;
-  padding: 0;
-  line-height: 1;
-}
+
 
 .section-icon {
   width: 100px;   /* adjust based on your preferred size */
