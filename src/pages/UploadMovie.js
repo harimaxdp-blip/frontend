@@ -19,30 +19,43 @@ export default function UploadMovie() {
   });
 
   const genres = [
-  "Action",
-  "Adventure",
-  "Comedy",
-  "Drama",
-  "Horror",
-  "Thriller",
-  "Romance",
-  "Sci-Fi",
-  "Fantasy",
-  "Animation",
-  "Documentary",
-  "Mystery",
-  "Zombie",
-];
-  const languages = ["Tamil", "English", "Telugu", "Malayalam", "Hindi","Korean", "Chinese", "Japanese"];
+    "Action",
+    "Adventure",
+    "Comedy",
+    "Drama",
+    "Horror",
+    "Thriller",
+    "Romance",
+    "Sci-Fi",
+    "Fantasy",
+    "Animation",
+    "Documentary",
+    "Mystery",
+    "Zombie",
+  ];
+
+  const languages = [
+    "Tamil",
+    "English",
+    "Telugu",
+    "Malayalam",
+    "Hindi",
+    "Korean",
+    "Chinese",
+    "Japanese",
+  ];
+
   const handleUpload = async () => {
     try {
       const { title, year, language, genre, link, img, type } = movie;
 
+      // Validation
       if (!title || !year || !language || !genre || !link || !img) {
         alert("⚠️ Please fill all required fields");
         return;
       }
 
+      // Upload to Firestore
       await addDoc(collection(db, "movies"), {
         title: title.trim(),
         year: Number(year),
@@ -53,19 +66,22 @@ export default function UploadMovie() {
         type,
         season: type === "movie" ? null : Number(movie.season) || 1,
         episode: type === "movie" ? null : Number(movie.episode) || 1,
-        createdAt: new Date()
+        createdAt: new Date(),
       });
 
+      // Success message
       alert("🎬 Upload Success!");
-      
-      setMovie({
-        title: "", year: currentYear, language: "", genre: "",
-        link: "", img: "", type: "movie", season: "", episode: ""
-      });
+
+      /*
+        IMPORTANT:
+        DO NOT RESET ANY FIELD AFTER UPLOAD
+        All fields stay exactly the same
+        User manually edits next upload
+      */
 
     } catch (err) {
       console.error("UPLOAD ERROR:", err);
-      alert("Upload failed");
+      alert("❌ Upload failed");
     }
   };
 
@@ -75,51 +91,76 @@ export default function UploadMovie() {
         <h1 className="tv-title">🎬 Add Content</h1>
 
         <div className="tv-grid">
-          {/* Row 1: Title & Year */}
+          {/* Movie Title */}
           <input
             className="tv-input span-2"
             placeholder="Movie Title"
             value={movie.title}
-            onChange={(e) => setMovie({ ...movie, title: e.target.value })}
+            onChange={(e) =>
+              setMovie({ ...movie, title: e.target.value })
+            }
           />
+
+          {/* Year */}
           <input
             className="tv-input"
             type="number"
             placeholder="Year"
             value={movie.year}
-            onChange={(e) => setMovie({ ...movie, year: e.target.value })}
+            onChange={(e) =>
+              setMovie({ ...movie, year: e.target.value })
+            }
           />
 
-          {/* Row 2: Type, Lang, Genre */}
+          {/* Type */}
           <select
             className="tv-input"
             value={movie.type}
-            onChange={(e) => setMovie({ ...movie, type: e.target.value })}
+            onChange={(e) =>
+              setMovie({
+                ...movie,
+                type: e.target.value,
+              })
+            }
           >
             <option value="movie">Movie</option>
             <option value="series">Series</option>
             <option value="anime">Anime</option>
           </select>
 
+          {/* Language */}
           <select
             className="tv-input"
             value={movie.language}
-            onChange={(e) => setMovie({ ...movie, language: e.target.value })}
+            onChange={(e) =>
+              setMovie({ ...movie, language: e.target.value })
+            }
           >
             <option value="">Select Language</option>
-            {languages.map((l) => <option key={l} value={l}>{l}</option>)}
+            {languages.map((l) => (
+              <option key={l} value={l}>
+                {l}
+              </option>
+            ))}
           </select>
 
+          {/* Genre */}
           <select
             className="tv-input"
             value={movie.genre}
-            onChange={(e) => setMovie({ ...movie, genre: e.target.value })}
+            onChange={(e) =>
+              setMovie({ ...movie, genre: e.target.value })
+            }
           >
             <option value="">Select Genre</option>
-            {genres.map((g) => <option key={g} value={g}>{g}</option>)}
+            {genres.map((g) => (
+              <option key={g} value={g}>
+                {g}
+              </option>
+            ))}
           </select>
 
-          {/* Conditional Row: Season & Episode */}
+          {/* Season & Episode (Only for Series/Anime) */}
           {movie.type !== "movie" && (
             <>
               <input
@@ -127,33 +168,45 @@ export default function UploadMovie() {
                 placeholder="Season Number"
                 type="number"
                 value={movie.season}
-                onChange={(e) => setMovie({ ...movie, season: e.target.value })}
+                onChange={(e) =>
+                  setMovie({ ...movie, season: e.target.value })
+                }
               />
+
               <input
                 className="tv-input span-2"
                 placeholder="Episode Number"
                 type="number"
                 value={movie.episode}
-                onChange={(e) => setMovie({ ...movie, episode: e.target.value })}
+                onChange={(e) =>
+                  setMovie({ ...movie, episode: e.target.value })
+                }
               />
             </>
           )}
 
-          {/* Row 3: URLs */}
+          {/* Image URL */}
           <input
             className="tv-input span-3"
             placeholder="Image URL (Poster)"
             value={movie.img}
-            onChange={(e) => setMovie({ ...movie, img: e.target.value })}
+            onChange={(e) =>
+              setMovie({ ...movie, img: e.target.value })
+            }
           />
+
+          {/* Video Link */}
           <input
             className="tv-input span-3"
             placeholder="Video Link (Direct URL)"
             value={movie.link}
-            onChange={(e) => setMovie({ ...movie, link: e.target.value })}
+            onChange={(e) =>
+              setMovie({ ...movie, link: e.target.value })
+            }
           />
         </div>
 
+        {/* Upload Button */}
         <button className="tv-button" onClick={handleUpload}>
           CONFIRM UPLOAD
         </button>
