@@ -301,21 +301,11 @@ export default function MoviePlayer() {
 
   // Hide scrollbar ONLY on player page (fixes Vercel right-side gap)
   useEffect(() => {
-    const prevBody = document.body.style.overflow;
-    const prevHtml = document.documentElement.style.overflow;
-    const prevBodyW = document.body.style.width;
-    const prevHtmlW = document.documentElement.style.width;
-
-    document.body.style.overflow = "hidden";
-    document.body.style.width = "100%";
-    document.documentElement.style.overflow = "hidden";
-    document.documentElement.style.width = "100%";
-
+    document.documentElement.classList.add("player-active");
+    document.body.classList.add("player-active");
     return () => {
-      document.body.style.overflow = prevBody;
-      document.body.style.width = prevBodyW;
-      document.documentElement.style.overflow = prevHtml;
-      document.documentElement.style.width = prevHtmlW;
+      document.documentElement.classList.remove("player-active");
+      document.body.classList.remove("player-active");
     };
   }, []);
 
