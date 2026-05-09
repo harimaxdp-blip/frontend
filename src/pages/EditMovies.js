@@ -8,7 +8,7 @@ export default function EditMovies() {
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState({});
 
-  const genres = ["Action", "Adventure", "Comedy", "Drama", "Horror", "Thriller", "Romance", "Sci-Fi", "Fantasy", "Animation", "Documentary", "Mystery","Zombie"];
+  const genres = ["Action", "Adventure", "Comedy", "Drama", "Horror", "Thriller", "Romance", "Sci-Fi", "Fantasy", "Animation", "Documentary", "Mystery", "Zombie"];
   const languages = ["Tamil", "English", "Telugu", "Malayalam", "Hindi", "Korean", "Chinese", "Japanese"];
 
   const fetchMovies = async () => {
@@ -18,7 +18,29 @@ export default function EditMovies() {
         id: doc.id,
         ...doc.data(),
       }));
-      setMovies(movieData);
+
+      // ✅ SORT: movies first, then series/anime with season/episode order
+      const sorted = movieData.sort((a, b) => {
+        if (a.type === "movie" && b.type !== "movie") return -1;
+        if (a.type !== "movie" && b.type === "movie") return 1;
+
+        const titleA = (a.title || "").toLowerCase();
+        const titleB = (b.title || "").toLowerCase();
+
+        if (titleA !== titleB) return titleA.localeCompare(titleB);
+
+        const seasonA = Number(a.season || 0);
+        const seasonB = Number(b.season || 0);
+
+        if (seasonA !== seasonB) return seasonA - seasonB;
+
+        const episodeA = Number(a.episode || 0);
+        const episodeB = Number(b.episode || 0);
+
+        return episodeA - episodeB;
+      });
+
+      setMovies(sorted);
     } catch (err) {
       console.error("Fetch Error:", err);
     }
@@ -48,6 +70,7 @@ export default function EditMovies() {
   const handleUpdate = async () => {
     try {
       const movieRef = doc(db, "movies", editingId);
+
       await updateDoc(movieRef, {
         ...editForm,
         title: editForm.title.trim(),
@@ -57,6 +80,7 @@ export default function EditMovies() {
         season: editForm.type === "movie" ? null : Number(editForm.season) || 1,
         episode: editForm.type === "movie" ? null : Number(editForm.episode) || 1,
       });
+
       alert("Updated successfully!");
       setEditingId(null);
       fetchMovies();
@@ -69,75 +93,158 @@ export default function EditMovies() {
   return (
     <div className="edit-container">
       <h1 className="edit-title">🎬 Manage Content</h1>
-      
+
       <div className="movie-list">
         {movies.map((m) => (
           <div key={m.id} className="movie-card">
+
             {editingId === m.id ? (
               <div className="edit-mode-form">
-                <input 
+
+                <input
                   className="edit-input"
-                  value={editForm.title} 
-                  onChange={(e) => setEditForm({...editForm, title: e.target.value})}
+                  value={editForm.title}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, title: e.target.value })
+                  }
                   placeholder="Title"
                 />
-                
+
                 <div className="edit-row">
-                  <input 
+                  <input
                     className="edit-input"
                     type="number"
-                    value={editForm.year} 
-                    onChange={(e) => setEditForm({...editForm, year: e.target.value})}
+                    value={editForm.year}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, year: e.target.value })
+                    }
                   />
-                  <select 
+
+                  <select
                     className="edit-input"
-                    value={editForm.language} 
-                    onChange={(e) => setEditForm({...editForm, language: e.target.value})}
+                    value={editForm.language}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, language: e.target.value })
+                    }
                   >
-                    {languages.map(l => <option key={l} value={l}>{l}</option>)}
+                    {languages.map((l) => (
+                      <option key={l} value={l}>
+                        {l}
+                      </option>
+                    ))}
                   </select>
-                  <select 
+
+                  <select
                     className="edit-input"
-                    value={editForm.genre} 
-                    onChange={(e) => setEditForm({...editForm, genre: e.target.value})}
+                    value={editForm.genre}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, genre: e.target.value })
+                    }
                   >
-                    {genres.map(g => <option key={g} value={g}>{g}</option>)}
+                    {genres.map((g) => (
+                      <option key={g} value={g}>
+                        {g}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
-                <input 
+                {/* Season / Episode only for series/anime */}
+                {editForm.type !== "movie" && (
+                  <div className="edit-row">
+                    <input
+                      className="edit-input"
+                      type="number"
+                      placeholder="Season"
+                      value={editForm.season || ""}
+                      onChange={(e) =>
+                        setEditForm({ ...editForm, season: e.target.value })
+                      }
+                    />
+
+                    <input
+                      className="edit-input"
+                      type="number"
+                      placeholder="Episode"
+                      value={editForm.episode || ""}
+                      onChange={(e) =>
+                        setEditForm({ ...editForm, episode: e.target.value })
+                      }
+                    />
+                  </div>
+                )}
+
+                <input
                   className="edit-input"
-                  value={editForm.img} 
-                  onChange={(e) => setEditForm({...editForm, img: e.target.value})}
+                  value={editForm.img}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, img: e.target.value })
+                  }
                   placeholder="Poster URL"
                 />
 
-                <input 
+                <input
                   className="edit-input"
-                  value={editForm.link} 
-                  onChange={(e) => setEditForm({...editForm, link: e.target.value})}
+                  value={editForm.link}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, link: e.target.value })
+                  }
                   placeholder="Video URL (Link)"
                 />
 
                 <div className="btn-group">
-                  <button className="save-btn" onClick={handleUpdate}>SAVE CHANGES</button>
-                  <button className="cancel-btn" onClick={() => setEditingId(null)}>CANCEL</button>
+                  <button className="save-btn" onClick={handleUpdate}>
+                    SAVE CHANGES
+                  </button>
+                  <button
+                    className="cancel-btn"
+                    onClick={() => setEditingId(null)}
+                  >
+                    CANCEL
+                  </button>
                 </div>
               </div>
             ) : (
               <div className="view-mode">
+
                 <img src={m.img} alt={m.title} className="edit-poster" />
+
                 <div className="movie-info">
-                  <h3>{m.title} ({m.year})</h3>
-                  <p>{m.language} | {m.genre}</p>
-                  <code className="link-preview">{m.link.substring(0, 40)}...</code>
+                  <h3>
+                    {m.title} ({m.year})
+                  </h3>
+
+                  <p>
+                    {m.language} | {m.genre}
+                  </p>
+
+                  {/* ✅ Season/Episode Display FIX */}
+                  {m.type !== "movie" && (
+                    <p className="episode-info">
+                      Season {m.season || 1} • Episode {m.episode || 1}
+                    </p>
+                  )}
+
+                  <code className="link-preview">
+                    {(m.link || "").substring(0, 40)}...
+                  </code>
                 </div>
+
                 <div className="action-btns">
-                  <button className="edit-btn" onClick={() => startEdit(m)}>Edit</button>
-                  <button className="delete-btn" onClick={() => handleDelete(m.id)}>Delete</button>
+                  <button className="edit-btn" onClick={() => startEdit(m)}>
+                    Edit
+                  </button>
+                  <button
+                    className="delete-btn"
+                    onClick={() => handleDelete(m.id)}
+                  >
+                    Delete
+                  </button>
                 </div>
+
               </div>
             )}
+
           </div>
         ))}
       </div>
