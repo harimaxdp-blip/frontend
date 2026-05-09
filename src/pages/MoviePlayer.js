@@ -8,11 +8,14 @@ export default function MoviePlayer() {
   const location = useLocation();
   const movie = location.state?.movie;
 
+  // playlist = sorted episode array passed from Home.jsx
+  // currentIndex = which episode we started on
   const playlist     = location.state?.playlist     ?? null;
   const startIndex   = location.state?.currentIndex ?? 0;
 
   const [currentIndex, setCurrentIndex] = useState(startIndex);
 
+  // isSeries is true when a playlist with >1 episode was passed
   const isSeries      = Array.isArray(playlist) && playlist.length > 1;
   const currentEpisode = isSeries ? playlist[currentIndex] : movie;
 
@@ -32,43 +35,17 @@ export default function MoviePlayer() {
   const [audioOffset, setAudioOffset]   = useState(1.0);
   const [countdown, setCountdown]       = useState(null);
 
-  // Lock mode state
-  const [isLocked, setIsLocked] = useState(false);
-  const [showUnlockHint, setShowUnlockHint] = useState(false);
-  const unlockHintTimerRef = useRef(null);
-
   const hasNext = isSeries && currentIndex < playlist.length - 1;
   const hasPrev = isSeries && currentIndex > 0;
   const TOTAL_SECS = 5;
-
-  // ─── Lock Mode handlers ───────────────────────────────────────────────────
-  const handleLock = () => {
-    setIsLocked(true);
-    setShowUnlockHint(true);
-    if (unlockHintTimerRef.current) clearTimeout(unlockHintTimerRef.current);
-    unlockHintTimerRef.current = setTimeout(() => setShowUnlockHint(false), 2500);
-  };
-
-  const handleUnlock = () => {
-    setShowUnlockHint(true);
-    if (unlockHintTimerRef.current) clearTimeout(unlockHintTimerRef.current);
-    unlockHintTimerRef.current = setTimeout(() => {
-      setIsLocked(false);
-      setShowUnlockHint(false);
-    }, 1500);
-  };
-
-  useEffect(() => {
-    return () => { if (unlockHintTimerRef.current) clearTimeout(unlockHintTimerRef.current); };
-  }, []);
 
   // ─── Go to episode ────────────────────────────────────────────────────────
   const goToEpisode = useCallback(
     (index) => {
       if (!isSeries || index < 0 || index >= playlist.length) return;
-      if (audioCtxRef.current)  { audioCtxRef.current.close();         audioCtxRef.current = null; delayNodeRef.current = null; }
-      if (hlsRef.current)       { hlsRef.current.destroy();             hlsRef.current = null; }
-      if (countdownRef.current) { clearInterval(countdownRef.current);  countdownRef.current = null; }
+      if (audioCtxRef.current)  { audioCtxRef.current.close();          audioCtxRef.current = null; delayNodeRef.current = null; }
+      if (hlsRef.current)       { hlsRef.current.destroy();              hlsRef.current = null; }
+      if (countdownRef.current) { clearInterval(countdownRef.current);   countdownRef.current = null; }
       endTriggeredRef.current = false;
       setCountdown(null);
       setCurrentIndex(index);
@@ -82,7 +59,7 @@ export default function MoviePlayer() {
     [isSeries, playlist]
   );
 
-  // ─── 5-second countdown then go to next (NO auto-play) ───────────────────
+  // ─── 5-second countdown then auto-play next ───────────────────────────────
   const startAutoPlayCountdown = useCallback(() => {
     if (!hasNext || countdownRef.current || endTriggeredRef.current) return;
     endTriggeredRef.current = true;
@@ -99,7 +76,6 @@ export default function MoviePlayer() {
     }, 1000);
   }, [hasNext]);
 
-  // When countdown hits 0 → navigate to next episode but DO NOT auto-play
   useEffect(() => {
     if (countdown === 0) goToEpisode(currentIndex + 1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -137,7 +113,7 @@ export default function MoviePlayer() {
     }
   }, [audioOffset]);
 
-  // ─── Source discovery ─────────────────────────────────────────────────────
+  // ─── Source discovery (re-runs on every episode change) ──────────────────
   useEffect(() => {
     const source = currentEpisode;
     if (!source?.link) { setError("No source found."); setLoading(false); return; }
@@ -151,9 +127,8 @@ export default function MoviePlayer() {
           /(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|v\/|shorts\/))([\w-]{11})/
         );
         if (ytMatch) {
-          // NO autoplay=1 for YouTube
           setIframeUrl(
-            `https://www.youtube-nocookie.com/embed/${ytMatch[1]}?autoplay=0&modestbranding=1&rel=0&enablejsapi=1`
+            `https://www.youtube-nocookie.com/embed/${ytMatch[1]}?autoplay=1&modestbranding=1&rel=0&enablejsapi=1`
           );
           setMode("iframe"); return;
         }
@@ -194,7 +169,7 @@ export default function MoviePlayer() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentIndex, movie]);
 
-  // ─── HLS / Direct init — NO autoplay ─────────────────────────────────────
+  // ─── HLS / Direct init ────────────────────────────────────────────────────
   useEffect(() => {
     if (mode !== "direct" || !directUrl || !videoRef.current) return;
     const video = videoRef.current;
@@ -206,13 +181,13 @@ export default function MoviePlayer() {
         hlsRef.current = hls;
         hls.loadSource(directUrl);
         hls.attachMedia(video);
-        // MANIFEST_PARSED → do NOT call video.play()
+        hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}));
       } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
         video.src = directUrl;
       }
     } else {
       video.src = directUrl;
-      // Do NOT call video.play() — user must press play
+      video.play().catch(() => {});
     }
   }, [mode, directUrl]);
 
@@ -234,7 +209,7 @@ export default function MoviePlayer() {
     return () => window.removeEventListener("message", handleMessage);
   }, [mode, hasNext, startAutoPlayCountdown]);
 
-  // ─── Duration-based polling ───────────────────────────────────────────────
+  // ─── Duration-based polling (if episode has duration field) ───────────────
   useEffect(() => {
     if (mode !== "iframe" || !hasNext) return;
     const epDuration = currentEpisode?.duration ?? null;
@@ -281,18 +256,8 @@ export default function MoviePlayer() {
     <div className="player-page-bg">
       <div className="ultra-card">
 
-        {/* ── Lock overlay (covers everything when locked) ── */}
-        {isLocked && (
-          <div className="lock-overlay" onClick={handleUnlock}>
-            <div className={`lock-unlock-hint ${showUnlockHint ? "lock-unlock-hint--visible" : ""}`}>
-              <span className="lock-icon">🔒</span>
-              <span>Hold to unlock</span>
-            </div>
-          </div>
-        )}
-
         {/* Header */}
-        <div className={`player-header${isLocked ? " player-header--hidden" : ""}`}>
+        <div className="player-header">
           <button className="over-back-btn" onClick={() => navigate(-1)}>← Back</button>
           <div className="player-title-block">
             <span className="player-movie-title">
@@ -302,14 +267,6 @@ export default function MoviePlayer() {
               <span className="player-episode-badge">{episodeLabel}</span>
             )}
           </div>
-          {/* Lock button — mobile only */}
-          <button className="lock-btn" onClick={handleLock} title="Lock screen">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-              <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-            </svg>
-            <span className="lock-btn-label">Lock</span>
-          </button>
         </div>
 
         {/* Video */}
@@ -319,7 +276,7 @@ export default function MoviePlayer() {
           {mode === "direct" && (
             <video
               ref={videoRef}
-              controls
+              controls autoPlay
               crossOrigin="anonymous"
               onPlay={setupAudioGraph}
               onEnded={startAutoPlayCountdown}
@@ -338,7 +295,7 @@ export default function MoviePlayer() {
             />
           )}
 
-          {/* 5-second countdown overlay */}
+          {/* 5-second Auto-play Overlay */}
           {countdown !== null && hasNext && (
             <div className="autoplay-overlay">
               <div className="autoplay-card">
@@ -360,7 +317,7 @@ export default function MoviePlayer() {
                 </div>
 
                 <p className="autoplay-hint">
-                  Going to next in {countdown} second{countdown !== 1 ? "s" : ""}…
+                  Auto-playing in {countdown} second{countdown !== 1 ? "s" : ""}…
                 </p>
 
                 <div className="autoplay-actions">
@@ -380,7 +337,7 @@ export default function MoviePlayer() {
         </div>
 
         {/* Episode Nav Bar */}
-        {isSeries && !isLocked && (
+        {isSeries && (
           <div className="episode-nav-bar">
             <button
               className={`ep-nav-btn${hasPrev ? "" : " ep-nav-btn--disabled"}`}
@@ -414,7 +371,7 @@ export default function MoviePlayer() {
         )}
 
         {/* Audio Sync */}
-        {isSyncActive && mode === "direct" && !isLocked && (
+        {isSyncActive && mode === "direct" && (
           <div className="sync-control-panel">
             <div className="sync-info">
               <span>Audio Delay: <strong>{audioOffset.toFixed(2)}s</strong></span>
