@@ -276,3 +276,180 @@ iframe::-webkit-scrollbar {
   .ep-dot { width: 24px; height: 24px; font-size: 0.58rem; }
   .ep-nav-btn { padding: 6px 10px; font-size: 0.75rem; }
 }
+/* 1. RESET & BASE WRAPPER */
+.player-page-bg {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100dvh;
+  background: #000;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  z-index: 9999;
+}
+
+.ultra-card {
+  width: 100%;
+  height: 100%;
+  max-width: 1440px;
+  display: flex;
+  flex-direction: column;
+  background: #000;
+  position: relative;
+}
+
+/* 2. HEADER, TITLE & BADGE */
+.player-header {
+  width: 100%;
+  height: 70px;
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  background: linear-gradient(to bottom, rgba(0,0,0,0.9) 0%, transparent 100%);
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 100;
+  pointer-events: none;
+}
+
+.player-title-block {
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  margin-left: 20px;
+}
+
+.player-movie-title {
+  color: #ffffff;
+  font-size: 1.25rem;
+  font-weight: 700;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 250px;
+}
+
+.player-episode-badge {
+  background: #e50914;
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  margin-top: 4px;
+  width: fit-content;
+}
+
+.over-back-btn {
+  pointer-events: auto;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 8px 18px;
+  border-radius: 50px;
+  cursor: pointer;
+}
+
+/* 3. VIDEO VIEWPORT */
+.video-viewport {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  position: relative;
+  background: #000;
+}
+
+.native-video, .iframe-video {
+  width: 100%;
+  height: 100%;
+  border: none;
+  object-fit: contain;
+}
+
+/* 4. LOADER & SPINNER */
+.player-loader {
+  position: absolute;
+  inset: 0;
+  background: #000;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 50;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid rgba(255, 255, 255, 0.1);
+  border-top: 3px solid #3498db;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* 5. EPISODE NAV */
+.episode-nav-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 15px;
+  background: #0a0a0a;
+  border-top: 1px solid #222;
+}
+
+.ep-dots-scroll {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  flex: 1;
+  scrollbar-width: none;
+  padding: 5px;
+}
+
+.ep-dot {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 1px solid #333;
+  background: #1a1a1a;
+  color: #ccc;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.ep-dot--active {
+  background: #e50914;
+  border-color: #e50914;
+  color: white;
+  transform: scale(1.1);
+}
+
+.ep-nav-btn {
+  padding: 8px 15px;
+  background: #222;
+  border: none;
+  color: white;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.ep-nav-btn--disabled { opacity: 0.3; cursor: not-allowed; }
+
+/* 6. RESPONSIVE */
+@media (min-width: 768px) {
+  .player-title-block { flex-direction: row; align-items: center; gap: 15px; }
+  .player-movie-title { font-size: 1.5rem; max-width: 500px; }
+  .player-episode-badge { margin-top: 0; font-size: 0.8rem; }
+}
