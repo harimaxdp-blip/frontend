@@ -299,11 +299,24 @@ export default function MoviePlayer() {
     return () => { if (countdownRef.current) clearInterval(countdownRef.current); };
   }, []);
 
-  // Hide body scrollbar ONLY on the player page (fixes Vercel right-side gap)
+  // Hide scrollbar ONLY on player page (fixes Vercel right-side gap)
   useEffect(() => {
-    const prev = document.body.style.overflow;
+    const prevBody = document.body.style.overflow;
+    const prevHtml = document.documentElement.style.overflow;
+    const prevBodyW = document.body.style.width;
+    const prevHtmlW = document.documentElement.style.width;
+
     document.body.style.overflow = "hidden";
-    return () => { document.body.style.overflow = prev; };
+    document.body.style.width = "100%";
+    document.documentElement.style.overflow = "hidden";
+    document.documentElement.style.width = "100%";
+
+    return () => {
+      document.body.style.overflow = prevBody;
+      document.body.style.width = prevBodyW;
+      document.documentElement.style.overflow = prevHtml;
+      document.documentElement.style.width = prevHtmlW;
+    };
   }, []);
 
   const episodeLabel = isSeries
