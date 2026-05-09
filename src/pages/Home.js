@@ -29,6 +29,14 @@ const NO_RESULTS_IMG = {
   anime:  noResultsAnime,
 };
 
+// ─── Pick a random image from an episode list ───────────────────────────────
+function randomImg(episodes) {
+  const withImg = episodes.filter((e) => e.img);
+  if (!withImg.length) return "https://via.placeholder.com/300x450";
+  return withImg[Math.floor(Math.random() * withImg.length)].img;
+}
+
+// ─── Android ripple ──────────────────────────────────────────────────────────
 function triggerRipple(e, el) {
   const rect = el.getBoundingClientRect();
   const size = Math.max(rect.width, rect.height);
@@ -74,6 +82,7 @@ function NoResults({ img }) {
   );
 }
 
+// ─── Main Component ──────────────────────────────────────────────────────────
 export default function Home({ type = "all" }) {
   const [movies, setMovies]                 = useState([]);
   const [languageFilter, setLanguageFilter] = useState("all");
@@ -95,6 +104,7 @@ export default function Home({ type = "all" }) {
   );
   const normalize = useCallback((value) => String(value || "").toLowerCase().trim(), []);
 
+  // ── Firestore ──────────────────────────────────────────────────────────────
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "movies"), (snapshot) => {
       const data = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
@@ -104,6 +114,7 @@ export default function Home({ type = "all" }) {
     return () => unsub();
   }, []);
 
+  // ── Type helpers ───────────────────────────────────────────────────────────
   const isMovieType  = useCallback((t) => ["movie", "movies"].includes(normalize(t)), [normalize]);
   const isSeriesType = useCallback((t) => ["series", "tv", "show"].includes(normalize(t)), [normalize]);
   const isAnimeType  = useCallback((t) => normalize(t) === "anime", [normalize]);
@@ -132,6 +143,7 @@ export default function Home({ type = "all" }) {
     [languageFilter, genreFilter, yearFilter, search, normalize]
   );
 
+  // ── Data groups ────────────────────────────────────────────────────────────
   const movieGroups = useMemo(() => {
     const filtered = movies.filter(
       (item) => isMovieType(item.type) && !isAnimeGenre(item) && matchesTab(item) && passesFilters(item)
@@ -206,6 +218,7 @@ export default function Home({ type = "all" }) {
     return Object.entries(groups).sort((a, b) => b[1].latestYear - a[1].latestYear);
   }, [movies, isAnimeType, isAnimeGenre, passesFilters]);
 
+  // ── Browser back button ────────────────────────────────────────────────────
   useEffect(() => {
     const handlePopState = () => {
       if (selectedSeason) {
@@ -222,6 +235,7 @@ export default function Home({ type = "all" }) {
     return () => window.removeEventListener("popstate", handlePopState);
   }, [selectedCollection, selectedSeason, savedScrollPos]);
 
+  // ── Scroll restoration ─────────────────────────────────────────────────────
   useEffect(() => {
     if (!isDataLoaded) return;
     const savedCollectionName = sessionStorage.getItem("activeCollection");
@@ -234,13 +248,10 @@ export default function Home({ type = "all" }) {
       if (group) {
         setSelectedCollection({ name: group[0], items: group[1] });
         if (bgPos) setSavedScrollPos(parseInt(bgPos));
-        if (!window.history.state || window.history.state.collection !== group[0]) {
+        if (!window.history.state || window.history.state.collection !== group[0])
           window.history.pushState({ collection: group[0] }, "");
-        }
         sessionStorage.removeItem("activeCollection");
-        if (savedPos) {
-          setTimeout(() => { window.scrollTo(0, parseInt(savedPos)); sessionStorage.removeItem("scrollPos"); }, 150);
-        }
+        if (savedPos) setTimeout(() => { window.scrollTo(0, parseInt(savedPos)); sessionStorage.removeItem("scrollPos"); }, 150);
         return;
       }
     }
@@ -255,13 +266,10 @@ export default function Home({ type = "all" }) {
           if (episodes) {
             setSelectedSeason({ seriesTitle, seasonNum, episodes });
             if (bgPos) setSavedScrollPos(parseInt(bgPos));
-            if (!window.history.state || window.history.state.season !== `${seriesTitle}-S${seasonNum}`) {
+            if (!window.history.state || window.history.state.season !== `${seriesTitle}-S${seasonNum}`)
               window.history.pushState({ season: `${seriesTitle}-S${seasonNum}` }, "");
-            }
             sessionStorage.removeItem("activeSeason");
-            if (savedPos) {
-              setTimeout(() => { window.scrollTo(0, parseInt(savedPos)); sessionStorage.removeItem("scrollPos"); }, 150);
-            }
+            if (savedPos) setTimeout(() => { window.scrollTo(0, parseInt(savedPos)); sessionStorage.removeItem("scrollPos"); }, 150);
             return;
           }
         }
@@ -269,9 +277,7 @@ export default function Home({ type = "all" }) {
       sessionStorage.removeItem("activeSeason");
     }
 
-    if (savedPos) {
-      setTimeout(() => { window.scrollTo(0, parseInt(savedPos)); sessionStorage.removeItem("scrollPos"); }, 150);
-    }
+    if (savedPos) setTimeout(() => { window.scrollTo(0, parseInt(savedPos)); sessionStorage.removeItem("scrollPos"); }, 150);
   }, [isDataLoaded, movieGroups, seriesGroups, animeSeriesGroups]);
 
   useEffect(() => {
@@ -283,6 +289,7 @@ export default function Home({ type = "all" }) {
     setSelectedSeason(null);
   }, [type]);
 
+  // ── Actions ────────────────────────────────────────────────────────────────
   const handleOpenCollection = (name, items) => {
     const currentScroll = window.scrollY;
     setSavedScrollPos(currentScroll);
@@ -301,7 +308,7 @@ export default function Home({ type = "all" }) {
     window.scrollTo(0, 0);
   };
 
-  // ─── FIXED: playMovie now passes playlist + currentIndex ─────────────────
+  // passes sorted playlist + index so player can auto-play next episode
   const playMovie = useCallback((movie, playlist = null, currentIndex = 0) => {
     setPlayerLoading(movie.title);
     sessionStorage.setItem("scrollPos", window.scrollY);
@@ -317,11 +324,7 @@ export default function Home({ type = "all" }) {
 
     setTimeout(() => {
       navigate("/player", {
-        state: {
-          movie,          // current episode/movie
-          playlist,       // full episode list (null for standalone movies)
-          currentIndex,   // index in playlist
-        },
+        state: { movie, playlist, currentIndex },
       });
     }, 550);
   }, [navigate, selectedCollection, selectedSeason]);
@@ -350,6 +353,7 @@ export default function Home({ type = "all" }) {
     action();
   };
 
+  // ── Filter options ─────────────────────────────────────────────────────────
   const availableLanguages = useMemo(() =>
     [...new Set(movies.filter((m) => matchesTab(m)).map((m) => normalize(m.language)))]
       .filter(Boolean).sort()
@@ -372,74 +376,7 @@ export default function Home({ type = "all" }) {
     animeMovieGroups.length === 0 &&
     animeSeriesGroups.length === 0;
 
-  // ─── FIXED: renderSeriesSection passes sorted playlist + index ────────────
-  const renderSeriesSection = (title, data) => {
-    const seasons = Object.entries(data.seasons).sort(
-      (a, b) => parseInt(a[0]) - parseInt(b[0])
-    );
-
-    return (
-      <section key={title} className="series-section">
-        <h2 className="series-main-title">{title}</h2>
-
-        {seasons.length === 1 ? (
-          <div>
-            <h3 className="season-title">Season {seasons[0][0]}</h3>
-            <div className="grid">
-              {(() => {
-                // Sort episodes once so playlist order matches display order
-                const sortedEps = [...seasons[0][1]].sort(
-                  (a, b) => naturalSort(String(a.episode), String(b.episode))
-                );
-                return sortedEps.map((ep, i) => (
-                  <div
-                    key={ep.id}
-                    className="card episode-card"
-                    style={{ "--i": i }}
-                    onClick={(e) =>
-                      handleClick(e, () => playMovie(ep, sortedEps, i))
-                    }
-                  >
-                    <img
-                      src={ep.img || "https://via.placeholder.com/300x450"}
-                      alt={ep.title}
-                      loading="lazy"
-                    />
-                    <div className="card-info">
-                      <h3>{ep.title}</h3>
-                      <p>Episode {ep.episode || "Special"}</p>
-                    </div>
-                  </div>
-                ));
-              })()}
-            </div>
-          </div>
-        ) : (
-          <div className="grid">
-            {seasons.map(([sNum, eps], i) => {
-              const coverImg = eps[0]?.img || "https://via.placeholder.com/300x450";
-              return (
-                <div
-                  key={sNum}
-                  className="card is-collection season-card"
-                  style={{ "--i": i }}
-                  onClick={(e) => handleClick(e, () => handleOpenSeason(title, sNum, eps))}
-                >
-                  <img src={coverImg} alt={`Season ${sNum}`} loading="lazy" />
-                  <div className="collection-badge">{eps.length} Eps</div>
-                  <div className="card-info">
-                    <h3>Season {sNum}</h3>
-                    <p>{eps.length} Episodes</p>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </section>
-    );
-  };
-
+  // ── Movie / Anime-movie grid ───────────────────────────────────────────────
   const renderMovieGrid = (groups) =>
     groups.map(([name, items], i) => (
       <div
@@ -454,25 +391,62 @@ export default function Home({ type = "all" }) {
           )
         }
       >
-        <img
-          src={items[0].img || "https://via.placeholder.com/300x450"}
-          alt={name}
-          loading="lazy"
-        />
-        {items.length > 1 && (
-          <div className="collection-badge">{items.length} Parts</div>
-        )}
+        <img src={items[0].img || "https://via.placeholder.com/300x450"} alt={name} loading="lazy" />
+        {items.length > 1 && <div className="collection-badge">{items.length} Parts</div>}
         <div className="card-info">
           <h3>{items.length > 1 ? `${name} (Collection)` : items[0].title}</h3>
-          <p>
-            {items.length > 1
-              ? "Multi-Part Series"
-              : `${items[0].language} • ${items[0].year}`}
-          </p>
+          <p>{items.length > 1 ? "Multi-Part Series" : `${items[0].language} • ${items[0].year}`}</p>
         </div>
       </div>
     ));
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // ── SERIES RENDERER
+  //    • ALWAYS shows season cards (even if only 1 season)
+  //    • Season card image = random episode image from that season
+  //    • Clicking a season card → opens episode list
+  //    • Episode list → clicking an episode plays with full playlist
+  // ─────────────────────────────────────────────────────────────────────────
+  const renderSeriesSection = (seriesTitle, data) => {
+    const seasons = Object.entries(data.seasons).sort(
+      (a, b) => parseInt(a[0]) - parseInt(b[0])
+    );
+
+    return (
+      <section key={seriesTitle} className="series-section">
+        <h2 className="series-main-title">{seriesTitle}</h2>
+
+        {/* Always show season cards — single or multiple */}
+        <div className="grid">
+          {seasons.map(([sNum, eps], i) => {
+            // Random image picked once per render from this season's episodes
+            const coverImg = randomImg(eps);
+            const totalEps = eps.length;
+
+            return (
+              <div
+                key={sNum}
+                className="card is-collection season-card"
+                style={{ "--i": i }}
+                onClick={(e) =>
+                  handleClick(e, () => handleOpenSeason(seriesTitle, sNum, eps))
+                }
+              >
+                <img src={coverImg} alt={`Season ${sNum}`} loading="lazy" />
+                <div className="collection-badge">{totalEps} Ep{totalEps !== 1 ? "s" : ""}</div>
+                <div className="card-info">
+                  <h3>Season {sNum}</h3>
+                  <p>{totalEps} Episode{totalEps !== 1 ? "s" : ""}</p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+    );
+  };
+
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <>
       {playerLoading && <PlayerLoading title={playerLoading} />}
@@ -490,6 +464,8 @@ export default function Home({ type = "all" }) {
       </div>
 
       <div className="movies-page">
+
+        {/* Search */}
         <div className="search-bar">
           <input
             className="search-input"
@@ -505,6 +481,7 @@ export default function Home({ type = "all" }) {
           </button>
         </div>
 
+        {/* Filters */}
         <div className="filter-bar">
           <select value={languageFilter} onChange={(e) => setLanguageFilter(e.target.value)}>
             <option value="all">Languages</option>
@@ -520,6 +497,7 @@ export default function Home({ type = "all" }) {
           </select>
         </div>
 
+        {/* ── Loading ── */}
         {!isDataLoaded ? (
           <section className="content-section">
             <h2 className="section-title">Loading…</h2>
@@ -529,7 +507,7 @@ export default function Home({ type = "all" }) {
           </section>
 
         ) : selectedSeason ? (
-          /* ── SEASON EPISODE VIEW ── */
+          /* ── Episode List (inside a season) ── */
           <section className="collection-view slide-down">
             <h2 className="section-title">
               {selectedSeason.seriesTitle} — Season {selectedSeason.seasonNum}
@@ -562,7 +540,7 @@ export default function Home({ type = "all" }) {
           </section>
 
         ) : selectedCollection ? (
-          /* ── COLLECTION VIEW ── */
+          /* ── Movie collection ── */
           <section className="collection-view slide-down">
             <h2 className="section-title">{selectedCollection.name} Collection</h2>
             <div className="grid">
@@ -585,6 +563,7 @@ export default function Home({ type = "all" }) {
 
         ) : (
           <>
+            {/* Movies */}
             {(type === "all" || type === "movie") && movieGroups.length > 0 && (
               <section className="content-section">
                 <h2 className="section-title">
@@ -594,6 +573,7 @@ export default function Home({ type = "all" }) {
               </section>
             )}
 
+            {/* Series */}
             {(type === "all" || type === "series") && seriesGroups.length > 0 && (
               <section className="content-section">
                 <h2 className="section-title">
@@ -603,6 +583,7 @@ export default function Home({ type = "all" }) {
               </section>
             )}
 
+            {/* Anime Movies */}
             {(type === "all" || type === "anime") && animeMovieGroups.length > 0 && (
               <section className="content-section">
                 <h2 className="section-title">
@@ -612,6 +593,7 @@ export default function Home({ type = "all" }) {
               </section>
             )}
 
+            {/* Anime Series */}
             {(type === "all" || type === "anime") && animeSeriesGroups.length > 0 && (
               <section className="content-section">
                 <h2 className="section-title">
