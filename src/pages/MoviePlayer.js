@@ -3,41 +3,20 @@ import { useNavigate, useLocation } from "react-router-dom";
 import Hls from "hls.js";
 import "./Movies2.css";
 
-// ─── CORS proxies (tried in order until one works) ────────────────────────────
-const CORS_PROXIES = [
-  (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
-  (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-  (url) => `https://cors-anywhere.herokuapp.com/${url}`,
-];
-
-async function fetchWithProxy(url) {
-  // 1. Try direct first (works on localhost / same-origin)
-  try {
-    const r = await fetch(url, { signal: AbortSignal.timeout(5000) });
-    if (r.ok) return r;
-  } catch {}
-
-  // 2. Try each proxy in sequence
-  for (const proxy of CORS_PROXIES) {
-    try {
-      const r = await fetch(proxy(url), { signal: AbortSignal.timeout(7000) });
-      if (r.ok) return r;
-    } catch {}
-  }
-  return null;
-}
-
 export default function MoviePlayer() {
   const navigate = useNavigate();
   const location = useLocation();
   const movie = location.state?.movie;
 
+  // playlist = sorted episode array passed from Home.jsx
+  // currentIndex = which episode we started on
   const playlist     = location.state?.playlist     ?? null;
   const startIndex   = location.state?.currentIndex ?? 0;
 
   const [currentIndex, setCurrentIndex] = useState(startIndex);
 
-  const isSeries       = Array.isArray(playlist) && playlist.length > 1;
+  // isSeries is true when a playlist with >1 episode was passed
+  const isSeries      = Array.isArray(playlist) && playlist.length > 1;
   const currentEpisode = isSeries ? playlist[currentIndex] : movie;
 
   const videoRef        = useRef(null);
@@ -60,13 +39,13 @@ export default function MoviePlayer() {
   const hasPrev = isSeries && currentIndex > 0;
   const TOTAL_SECS = 5;
 
-  // ─── Go to episode ──────────────────────────────────────────────────────────
+  // ─── Go to episode ────────────────────────────────────────────────────────
   const goToEpisode = useCallback(
     (index) => {
       if (!isSeries || index < 0 || index >= playlist.length) return;
-      if (audioCtxRef.current)  { audioCtxRef.current.close();         audioCtxRef.current = null; delayNodeRef.current = null; }
-      if (hlsRef.current)       { hlsRef.current.destroy();             hlsRef.current = null; }
-      if (countdownRef.current) { clearInterval(countdownRef.current);  countdownRef.current = null; }
+      if (audioCtxRef.current)  { audioCtxRef.current.close();          audioCtxRef.current = null; delayNodeRef.current = null; }
+      if (hlsRef.current)       { hlsRef.current.destroy();              hlsRef.current = null; }
+      if (countdownRef.current) { clearInterval(countdownRef.current);   countdownRef.current = null; }
       endTriggeredRef.current = false;
       setCountdown(null);
       setCurrentIndex(index);
@@ -80,7 +59,7 @@ export default function MoviePlayer() {
     [isSeries, playlist]
   );
 
-  // ─── 5-second countdown then auto-play next ────────────────────────────────
+  // ─── 5-second countdown then auto-play next ───────────────────────────────
   const startAutoPlayCountdown = useCallback(() => {
     if (!hasNext || countdownRef.current || endTriggeredRef.current) return;
     endTriggeredRef.current = true;
@@ -108,7 +87,7 @@ export default function MoviePlayer() {
     endTriggeredRef.current = false;
   };
 
-  // ─── Audio sync ─────────────────────────────────────────────────────────────
+  // ─── Audio sync ───────────────────────────────────────────────────────────
   const setupAudioGraph = async () => {
     if (!videoRef.current || audioCtxRef.current || mode !== "direct") return;
     try {
@@ -134,7 +113,7 @@ export default function MoviePlayer() {
     }
   }, [audioOffset]);
 
-  // ─── Source discovery ───────────────────────────────────────────────────────
+  // ─── Source discovery (re-runs on every episode change) ──────────────────
   useEffect(() => {
     const source = currentEpisode;
     if (!source?.link) { setError("No source found."); setLoading(false); return; }
@@ -142,10 +121,8 @@ export default function MoviePlayer() {
     const getBestSource = async () => {
       try {
         setLoading(true);
-        setError("");
         const url = source.link;
 
-        // 1. YouTube
         const ytMatch = url.match(
           /(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|v\/|shorts\/))([\w-]{11})/
         );
@@ -153,64 +130,38 @@ export default function MoviePlayer() {
           setIframeUrl(
             `https://www.youtube-nocookie.com/embed/${ytMatch[1]}?autoplay=1&modestbranding=1&rel=0&enablejsapi=1`
           );
-          setMode("iframe");
-          return;
+          setMode("iframe"); return;
         }
 
-        // 2. Already a direct media URL
         if (url.match(/\.(mp4|m3u8|webm)($|\?)/i)) {
-          setDirectUrl(url);
-          setMode("direct");
-          return;
+          setDirectUrl(url); setMode("direct"); return;
         }
 
-        // 3. Already an embed/iframe URL (contains /embed/ or /player/)
-        if (url.match(/\/(embed|player|iframe)\//i) || url.includes("embed")) {
-          setIframeUrl(url);
-          setMode("iframe");
-          return;
-        }
-
-        // 4. Scrape with CORS proxy to find direct media link
-        const response = await fetchWithProxy(url);
+        const response = await fetch(url).catch(() => null);
         if (response) {
           const html = await response.text();
           const patterns = [
-            /["'`](https?:\/\/[^"'`\s]+\.m3u8[^"'`\s]*)["'`]/i,
-            /["'`](https?:\/\/[^"'`\s]+\.mp4[^"'`\s]*)["'`]/i,
-            /["'`](https?:\/\/[^"'`\s]+\.webm[^"'`\s]*)["'`]/i,
-            // Common player source patterns
-            /file\s*:\s*["'`](https?:\/\/[^"'`]+)["'`]/i,
-            /src\s*:\s*["'`](https?:\/\/[^"'`]+\.(?:mp4|m3u8|webm)[^"'`]*)["'`]/i,
+            /["'](https?:\/\/[^"']+\.m3u8[^"']*)["']/i,
+            /["'](https?:\/\/[^"']+\.mp4[^"']*)["']/i,
           ];
           let found = null;
           for (const re of patterns) {
             const m = html.match(re);
             if (m) { found = m[1].replace(/\\/g, ""); break; }
           }
-          if (found) {
-            setDirectUrl(found);
-            setMode("direct");
-          } else {
-            // Fallback: embed the page in an iframe
-            setIframeUrl(url);
-            setMode("iframe");
-          }
+          if (found) { setDirectUrl(found); setMode("direct"); }
+          else        { setIframeUrl(url);  setMode("iframe"); }
         } else {
-          // Proxy also failed — embed directly as iframe
-          setIframeUrl(url);
-          setMode("iframe");
+          setIframeUrl(url); setMode("iframe");
         }
       } catch {
-        setIframeUrl(currentEpisode.link);
-        setMode("iframe");
+        setIframeUrl(currentEpisode.link); setMode("iframe");
       } finally {
         setLoading(false);
       }
     };
 
     getBestSource();
-
     return () => {
       if (hlsRef.current)      hlsRef.current.destroy();
       if (audioCtxRef.current) audioCtxRef.current.close();
@@ -218,7 +169,7 @@ export default function MoviePlayer() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentIndex, movie]);
 
-  // ─── HLS / Direct init ──────────────────────────────────────────────────────
+  // ─── HLS / Direct init ────────────────────────────────────────────────────
   useEffect(() => {
     if (mode !== "direct" || !directUrl || !videoRef.current) return;
     const video = videoRef.current;
@@ -231,26 +182,16 @@ export default function MoviePlayer() {
         hls.loadSource(directUrl);
         hls.attachMedia(video);
         hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}));
-        hls.on(Hls.Events.ERROR, (_, data) => {
-          if (data.fatal) {
-            // HLS failed — try iframe fallback
-            setDirectUrl("");
-            setIframeUrl(currentEpisode?.link || "");
-            setMode("iframe");
-          }
-        });
       } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
         video.src = directUrl;
-        video.play().catch(() => {});
       }
     } else {
       video.src = directUrl;
       video.play().catch(() => {});
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, directUrl, currentEpisode?.link]);
+  }, [mode, directUrl]);
 
-  // ─── YouTube / iframe postMessage detection ─────────────────────────────────
+  // ─── YouTube / iframe postMessage detection ───────────────────────────────
   useEffect(() => {
     if (mode !== "iframe" || !hasNext) return;
     const handleMessage = (e) => {
@@ -268,7 +209,7 @@ export default function MoviePlayer() {
     return () => window.removeEventListener("message", handleMessage);
   }, [mode, hasNext, startAutoPlayCountdown]);
 
-  // ─── Duration-based polling ─────────────────────────────────────────────────
+  // ─── Duration-based polling (if episode has duration field) ───────────────
   useEffect(() => {
     if (mode !== "iframe" || !hasNext) return;
     const epDuration = currentEpisode?.duration ?? null;
@@ -297,16 +238,6 @@ export default function MoviePlayer() {
   // Cleanup on unmount
   useEffect(() => {
     return () => { if (countdownRef.current) clearInterval(countdownRef.current); };
-  }, []);
-
-  // Hide scrollbar ONLY on player page (fixes Vercel right-side gap)
-  useEffect(() => {
-    document.documentElement.classList.add("player-active");
-    document.body.classList.add("player-active");
-    return () => {
-      document.documentElement.classList.remove("player-active");
-      document.body.classList.remove("player-active");
-    };
   }, []);
 
   const episodeLabel = isSeries
@@ -361,8 +292,6 @@ export default function MoviePlayer() {
               allowFullScreen
               className="iframe-video"
               onLoad={() => setLoading(false)}
-              referrerPolicy="no-referrer"
-              sandbox="allow-scripts allow-same-origin allow-presentation allow-forms allow-popups"
             />
           )}
 

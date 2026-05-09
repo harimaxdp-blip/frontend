@@ -4,17 +4,6 @@ body {
   color: white;
   font-family: Arial, Helvetica, sans-serif;
 }
-/* ── Add these lines to your App.css / index.css (global styles file) ── */
-/* They only fire when the player page is active — zero effect on other pages */
-
-html.player-active,
-body.player-active {
-  overflow: hidden !important;
-  width: 100% !important;
-  height: 100% !important;
-  /* Scrollbar-gutter prevents layout shift on browsers that reserve scrollbar space */
-  scrollbar-gutter: auto !important;
-}
 
 /* =========================
    TOP BAR (FIXED)
