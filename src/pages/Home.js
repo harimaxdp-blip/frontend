@@ -144,23 +144,35 @@ export default function Home({ type = "all" }) {
   );
 
   // ── Data groups ────────────────────────────────────────────────────────────
+
+  // ✅ FIX: movieGroups — sort by latestYear DESC, tie-break by title ASC
   const movieGroups = useMemo(() => {
     const filtered = movies.filter(
       (item) => isMovieType(item.type) && !isAnimeGenre(item) && matchesTab(item) && passesFilters(item)
     );
+
+    // Group by base name (strip trailing punctuation/numbers after dash/dash-like chars)
     const groups = {};
     filtered.forEach((m) => {
-      const baseName = m.title.split(/[-–—0-9]/)[0].trim();
+      const baseName = m.title.split(/\s*[-–—]\s*\d|\d+/)[0].trim() || m.title;
       if (!groups[baseName]) groups[baseName] = [];
       groups[baseName].push(m);
     });
+
     return Object.entries(groups)
       .sort((a, b) => {
+        // Highest year in the group comes first
         const latestA = Math.max(...a[1].map((m) => parseInt(m.year) || 0));
         const latestB = Math.max(...b[1].map((m) => parseInt(m.year) || 0));
-        return latestB - latestA;
+        if (latestB !== latestA) return latestB - latestA; // newer year → top
+        // Same year: alphabetical by group name
+        return a[0].localeCompare(b[0], undefined, { sensitivity: "base" });
       })
-      .map(([name, items]) => [name, [...items].sort((a, b) => naturalSort(a.title, b.title))]);
+      .map(([name, items]) => [
+        name,
+        // Within each group, sort individual parts by title (natural)
+        [...items].sort((a, b) => naturalSort(a.title, b.title)),
+      ]);
   }, [movies, isMovieType, isAnimeGenre, matchesTab, passesFilters, naturalSort]);
 
   const seriesGroups = useMemo(() => {
@@ -180,24 +192,31 @@ export default function Home({ type = "all" }) {
     return Object.entries(groups).sort((a, b) => b[1].latestYear - a[1].latestYear);
   }, [movies, isSeriesType, matchesTab, passesFilters]);
 
+  // ✅ FIX: animeMovieGroups — same sort fix applied
   const animeMovieGroups = useMemo(() => {
     const hasNoEpisode = (ep) => ep === undefined || ep === null || ep === "" || ep === 0 || ep === "0";
     const filtered = movies.filter(
       (item) => (isAnimeType(item.type) || isAnimeGenre(item)) && hasNoEpisode(item.episode) && passesFilters(item)
     );
+
     const groups = {};
     filtered.forEach((m) => {
-      const baseName = m.title.split(/[-–—0-9]/)[0].trim();
+      const baseName = m.title.split(/\s*[-–—]\s*\d|\d+/)[0].trim() || m.title;
       if (!groups[baseName]) groups[baseName] = [];
       groups[baseName].push(m);
     });
+
     return Object.entries(groups)
       .sort((a, b) => {
         const latestA = Math.max(...a[1].map((m) => parseInt(m.year) || 0));
         const latestB = Math.max(...b[1].map((m) => parseInt(m.year) || 0));
-        return latestB - latestA;
+        if (latestB !== latestA) return latestB - latestA;
+        return a[0].localeCompare(b[0], undefined, { sensitivity: "base" });
       })
-      .map(([name, items]) => [name, [...items].sort((a, b) => naturalSort(a.title, b.title))]);
+      .map(([name, items]) => [
+        name,
+        [...items].sort((a, b) => naturalSort(a.title, b.title)),
+      ]);
   }, [movies, isAnimeType, isAnimeGenre, passesFilters, naturalSort]);
 
   const animeSeriesGroups = useMemo(() => {
@@ -308,7 +327,6 @@ export default function Home({ type = "all" }) {
     window.scrollTo(0, 0);
   };
 
-  // passes sorted playlist + index so player can auto-play next episode
   const playMovie = useCallback((movie, playlist = null, currentIndex = 0) => {
     setPlayerLoading(movie.title);
     sessionStorage.setItem("scrollPos", window.scrollY);
@@ -400,13 +418,7 @@ export default function Home({ type = "all" }) {
       </div>
     ));
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // ── SERIES RENDERER
-  //    • ALWAYS shows season cards (even if only 1 season)
-  //    • Season card image = random episode image from that season
-  //    • Clicking a season card → opens episode list
-  //    • Episode list → clicking an episode plays with full playlist
-  // ─────────────────────────────────────────────────────────────────────────
+  // ── Series renderer ────────────────────────────────────────────────────────
   const renderSeriesSection = (seriesTitle, data) => {
     const seasons = Object.entries(data.seasons).sort(
       (a, b) => parseInt(a[0]) - parseInt(b[0])
@@ -416,10 +428,8 @@ export default function Home({ type = "all" }) {
       <section key={seriesTitle} className="series-section">
         <h2 className="series-main-title">{seriesTitle}</h2>
 
-        {/* Always show season cards — single or multiple */}
         <div className="grid">
           {seasons.map(([sNum, eps], i) => {
-            // Random image picked once per render from this season's episodes
             const coverImg = randomImg(eps);
             const totalEps = eps.length;
 
@@ -507,7 +517,7 @@ export default function Home({ type = "all" }) {
           </section>
 
         ) : selectedSeason ? (
-          /* ── Episode List (inside a season) ── */
+          /* ── Episode List ── */
           <section className="collection-view slide-down">
             <h2 className="section-title">
               {selectedSeason.seriesTitle} — Season {selectedSeason.seasonNum}
