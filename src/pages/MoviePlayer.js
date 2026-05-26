@@ -8,8 +8,8 @@ import {
   FaVolumeMute, FaVolumeUp, FaVolumeDown,
   FaStepForward, FaStepBackward,
   FaChevronLeft, FaRedo, FaUndo,
-  FaMusic, FaSync, FaExclamationTriangle,
-  FaDownload, FaCheckCircle, FaTimes,
+  FaExclamationTriangle,
+  FaDownload,
 } from "react-icons/fa";
 
 // ─── Format helpers ───────────────────────────────────────────────────────────
@@ -44,7 +44,6 @@ function isAdUrl(url) {
     return AD_DOMAINS.some(d => h === d || h.endsWith("." + d));
   } catch { return false; }
 }
-// Patch fetch & XHR to block ads
 const _origFetch = window.fetch;
 window.fetch = function(input, init) {
   const url = typeof input === "string" ? input : (input?.url ?? "");
@@ -155,11 +154,8 @@ function VolumeIcon({ muted, volume, size = 16 }) {
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const TOTAL_SECS   = 5;
-const SAVE_EVERY   = 5;   // seconds
-const AUDIO_MIN    = 0;   // seconds (Web Audio DelayNode only supports >= 0)
-const AUDIO_MAX    = 5;
-const AUDIO_STEP   = 0.05;
+const TOTAL_SECS = 5;
+const SAVE_EVERY = 5;
 
 // ══════════════════════════════════════════════════════════════════════════════
 //  MAIN COMPONENT
@@ -188,12 +184,6 @@ export default function MoviePlayer() {
   const containerRef     = useRef(null);
   const hlsRef           = useRef(null);
   const mpegtsRef        = useRef(null);
-  // Audio graph refs — only created when user opens sync panel
-  const audioCtxRef      = useRef(null);
-  const audioSrcRef      = useRef(null); // MediaElementSourceNode
-  const delayNodeRef     = useRef(null);
-  const gainNodeRef      = useRef(null);
-  // Timers / flags
   const countdownRef     = useRef(null);
   const endTriggeredRef  = useRef(false);
   const swReadyRef       = useRef(false);
@@ -201,7 +191,6 @@ export default function MoviePlayer() {
   const adObserverRef    = useRef(null);
   const progressTrackRef = useRef(null);
   const lastSaveRef      = useRef(0);
-  const audioUnlockedRef = useRef(false);
 
   // ─── State ────────────────────────────────────────────────────────────────
   const [mode, setMode]                         = useState("loading");
@@ -212,7 +201,6 @@ export default function MoviePlayer() {
   const [playerEngine, setPlayerEngine]         = useState("");
   const [swStatus, setSwStatus]                 = useState("loading");
 
-  // Playback state
   const [isPlaying, setIsPlaying]               = useState(false);
   const [currentTime, setCurrentTime]           = useState(0);
   const [duration, setDuration]                 = useState(0);
@@ -221,7 +209,6 @@ export default function MoviePlayer() {
   const [isBuffering, setIsBuffering]           = useState(false);
   const [isFullscreen, setIsFullscreen]         = useState(false);
 
-  // UI visibility
   const [showControls, setShowControls]         = useState(true);
   const [showVolumeBar, setShowVolumeBar]       = useState(false);
   const [focusedControl, setFocusedControl]     = useState("play");
@@ -230,14 +217,8 @@ export default function MoviePlayer() {
   const [scrubPercent, setScrubPercent]         = useState(null);
   const [isScrubbing, setIsScrubbing]           = useState(false);
 
-  // Resume
   const [resumeTime, setResumeTime]             = useState(0);
   const [showResumePrompt, setShowResumePrompt] = useState(false);
-
-  // Audio sync panel — Web Audio graph is ONLY built when user opens this
-  const [showAudioPanel, setShowAudioPanel]     = useState(false);
-  const [audioDelay, setAudioDelay]             = useState(0);   // seconds delay
-  const [audioGraphReady, setAudioGraphReady]   = useState(false);
 
   // ─── Controls hide timer ──────────────────────────────────────────────────
   const resetControlsTimer = useCallback(() => {
@@ -281,125 +262,11 @@ export default function MoviePlayer() {
     return () => evts.forEach(e => document.removeEventListener(e, onFS));
   }, []);
 
-  // ─── AUDIO UNLOCK on first user gesture ──────────────────────────────────
-  // This is CRITICAL for Android/Chrome — AudioContext must be resumed
-  // inside a user gesture. We listen globally and unlock once.
-  useEffect(() => {
-    const unlock = () => {
-      if (audioUnlockedRef.current) return;
-      audioUnlockedRef.current = true;
-      // If audio graph already created but suspended, resume it now
-      if (audioCtxRef.current && audioCtxRef.current.state === "suspended") {
-        audioCtxRef.current.resume().catch(() => {});
-      }
-    };
-    window.addEventListener("touchstart", unlock, { passive: true, once: true });
-    window.addEventListener("touchend",   unlock, { passive: true, once: true });
-    window.addEventListener("click",      unlock, { passive: true, once: true });
-    window.addEventListener("keydown",    unlock, { passive: true, once: true });
-    return () => {
-      window.removeEventListener("touchstart", unlock);
-      window.removeEventListener("touchend",   unlock);
-      window.removeEventListener("click",      unlock);
-      window.removeEventListener("keydown",    unlock);
-    };
-  }, []);
-
-  // ─── BUILD AUDIO GRAPH (only when sync panel is opened) ──────────────────
-  // KEY DESIGN: we do NOT call createMediaElementSource on every play.
-  // We only build the graph when the user explicitly opens the audio panel.
-  // This prevents silence from a broken/suspended AudioContext during normal playback.
-  const buildAudioGraph = useCallback(async () => {
-    const video = videoRef.current;
-    if (!video) return;
-
-    // Already built and working
-    if (audioCtxRef.current && audioCtxRef.current.state !== "closed") {
-      // Just resume if suspended
-      if (audioCtxRef.current.state === "suspended") {
-        await audioCtxRef.current.resume().catch(() => {});
-      }
-      setAudioGraphReady(true);
-      return;
-    }
-
-    try {
-      const AC = window.AudioContext || window.webkitAudioContext;
-      if (!AC) { setAudioGraphReady(false); return; }
-
-      const ctx = new AC();
-
-      // Resume — this works because buildAudioGraph is called from a button click (user gesture)
-      if (ctx.state === "suspended") {
-        await ctx.resume();
-      }
-
-      // createMediaElementSource reroutes audio — ONLY do this in the sync panel flow
-      const src   = ctx.createMediaElementSource(video);
-      const delay = ctx.createDelay(AUDIO_MAX + 0.5);
-      const gain  = ctx.createGain();
-
-      delay.delayTime.setValueAtTime(audioDelay, ctx.currentTime);
-      gain.gain.setValueAtTime(1.0, ctx.currentTime);
-
-      // Chain: source → delay → gain → speakers
-      src.connect(delay);
-      delay.connect(gain);
-      gain.connect(ctx.destination);
-
-      audioCtxRef.current  = ctx;
-      audioSrcRef.current  = src;
-      delayNodeRef.current = delay;
-      gainNodeRef.current  = gain;
-      setAudioGraphReady(true);
-    } catch (err) {
-      console.warn("[AudioGraph]", err);
-      setAudioGraphReady(false);
-    }
-  }, [audioDelay]); // eslint-disable-line
-
-  // ─── Destroy audio graph so normal playback isn't affected ───────────────
-  const destroyAudioGraph = useCallback(() => {
-    // Disconnect nodes so audio flows natively through video again
-    try { audioSrcRef.current?.disconnect(); }  catch {}
-    try { delayNodeRef.current?.disconnect(); } catch {}
-    try { gainNodeRef.current?.disconnect(); }  catch {}
-    try { audioCtxRef.current?.close(); }       catch {}
-    audioCtxRef.current  = null;
-    audioSrcRef.current  = null;
-    delayNodeRef.current = null;
-    gainNodeRef.current  = null;
-    setAudioGraphReady(false);
-  }, []);
-
-  // ─── Update delay in real time ────────────────────────────────────────────
-  const applyAudioDelay = useCallback((val) => {
-    const safeVal = clamp(val, AUDIO_MIN, AUDIO_MAX);
-    setAudioDelay(safeVal);
-    if (delayNodeRef.current && audioCtxRef.current && audioCtxRef.current.state === "running") {
-      delayNodeRef.current.delayTime.setTargetAtTime(safeVal, audioCtxRef.current.currentTime, 0.02);
-    }
-  }, []);
-
-  const resetAudioDelay = useCallback(() => applyAudioDelay(0), [applyAudioDelay]);
-
-  // When panel is opened: build graph. When closed: destroy so audio goes back to normal.
-  useEffect(() => {
-    if (showAudioPanel) {
-      buildAudioGraph();
-    } else {
-      // Close panel → destroy graph → video audio plays natively again
-      destroyAudioGraph();
-      setAudioDelay(0);
-    }
-  }, [showAudioPanel]); // eslint-disable-line
-
-  // ─── Destroy players (video engines) ─────────────────────────────────────
+  // ─── Destroy players ─────────────────────────────────────────────────────
   const destroyPlayers = useCallback(() => {
     try { hlsRef.current?.destroy(); }    catch {} hlsRef.current    = null;
     try { mpegtsRef.current?.destroy(); } catch {} mpegtsRef.current = null;
-    destroyAudioGraph();
-  }, [destroyAudioGraph]);
+  }, []);
 
   // ─── Go to episode ────────────────────────────────────────────────────────
   const goToEpisode = useCallback((index) => {
@@ -412,7 +279,6 @@ export default function MoviePlayer() {
     setError(""); setDirectUrl(""); setIframeUrl(""); setPlayerEngine("");
     setCurrentTime(0); setDuration(0); setIsBuffering(false);
     setShowResumePrompt(false); setResumeTime(0);
-    setShowAudioPanel(false); setAudioDelay(0);
   }, [isSeries, playlist, destroyPlayers]);
 
   // ─── Auto-play countdown ──────────────────────────────────────────────────
@@ -486,14 +352,11 @@ export default function MoviePlayer() {
   useEffect(() => {
     const CTRL_ORDER = ["prev", "rewind", "play", "forward", "next", "fullscreen"];
     const onKey = (e) => {
-      // Don't intercept when typing in an input
       if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
-
       resetControlsTimer();
       const v = videoRef.current;
 
       switch (e.key) {
-        // ── D-pad LEFT / RIGHT → seek or move focus ──
         case "ArrowLeft":
           e.preventDefault();
           if (mode === "direct" && v) seekBy(-10);
@@ -504,8 +367,6 @@ export default function MoviePlayer() {
           if (mode === "direct" && v) seekBy(10);
           setFocusedControl(prev => CTRL_ORDER[Math.min(CTRL_ORDER.length - 1, CTRL_ORDER.indexOf(prev) + 1)]);
           break;
-
-        // ── D-pad UP / DOWN → volume ──
         case "ArrowUp":
           e.preventDefault();
           if (v) setVolumeLevel(v.volume + 0.1);
@@ -514,15 +375,11 @@ export default function MoviePlayer() {
           e.preventDefault();
           if (v) setVolumeLevel(v.volume - 0.1);
           break;
-
-        // ── OK / SELECT / ENTER / SPACE → activate focused control ──
         case "Enter":
         case " ":
           e.preventDefault();
           activateFocused();
           break;
-
-        // ── Media keys (Android TV / Bluetooth remote) ──
         case "MediaPlayPause":
           e.preventDefault(); togglePlay(); break;
         case "MediaRewind":
@@ -535,20 +392,15 @@ export default function MoviePlayer() {
           e.preventDefault(); if (hasNext) goToEpisode(currentIndex + 1); break;
         case "MediaTrackPrevious":
           e.preventDefault(); if (hasPrev) goToEpisode(currentIndex - 1); break;
-
-        // ── Keyboard shortcuts ──
         case "k": case "K": togglePlay(); break;
         case "f": case "F": toggleFullscreen(); break;
         case "m": case "M": toggleMute(); break;
-
-        // ── Back / Escape ──
         case "Escape":
         case "GoBack":
         case "XF86Back":
           e.preventDefault();
           if (isFullscreen) toggleFullscreen(); else handleGoBack();
           break;
-
         default: break;
       }
     };
@@ -602,7 +454,6 @@ export default function MoviePlayer() {
     try { progressTrackRef.current?.releasePointerCapture(e.pointerId); } catch {}
   }, [isScrubbing]);
 
-  // Touch scrub (separate for passive touch)
   const onTouchScrubStart = useCallback((e) => {
     e.preventDefault(); resetControlsTimer(); setIsScrubbing(true);
     const pct = getPct(e.touches[0]); if (pct !== null) applySeek(pct);
@@ -635,19 +486,16 @@ export default function MoviePlayer() {
       setLoading(true); setError(""); setShowResumePrompt(false); setResumeTime(0);
       const url = src.link;
       try {
-        // YouTube
         const yt = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|v\/|shorts\/))([\w-]{11})/);
         if (yt) {
           if (cancelled) return;
           setIframeUrl(`https://www.youtube-nocookie.com/embed/${yt[1]}?autoplay=1&modestbranding=1&rel=0&enablejsapi=1`);
           setMode("iframe"); setPlayerEngine("iframe"); setLoading(false); return;
         }
-        // Direct formats
         if (FORMAT_DIRECT_RE.test(url) || FORMAT_DASH_RE.test(url)) {
           if (cancelled) return;
           setDirectUrl(url); setMode("direct"); return;
         }
-        // Try to scrape a media URL from the page
         let scraped = null;
         try {
           const resp = await fetch(url, { signal: AbortSignal.timeout(8000) });
@@ -680,14 +528,9 @@ export default function MoviePlayer() {
     if (isCrossOrigin(directUrl) && swStatus === "loading") return;
 
     const video = videoRef.current;
-
-    // ⚠ DO NOT call destroyPlayers here again — source effect already did it.
-    // Just destroy any previous engine if switching URLs.
     try { hlsRef.current?.destroy(); }    catch {} hlsRef.current    = null;
     try { mpegtsRef.current?.destroy(); } catch {} mpegtsRef.current = null;
-    // Do NOT destroy audio graph here — let it persist if open
 
-    // Check resume position
     const saved = loadPos(currentEpisode?.title);
     if (saved > 10) { setResumeTime(saved); setShowResumePrompt(true); }
 
@@ -705,7 +548,6 @@ export default function MoviePlayer() {
           nudgeOffset: 0.2,
           nudgeMaxRetry: 5,
           startFragPrefetch: true,
-          // Better Android compatibility
           fragLoadingTimeOut: 20000,
           manifestLoadingTimeOut: 15000,
         });
@@ -741,7 +583,7 @@ export default function MoviePlayer() {
       return;
     }
 
-    // ── Native (mp4, webm, mkv, etc.) ──
+    // ── Native ──
     if (swReadyRef.current && isCrossOrigin(directUrl)) video.crossOrigin = "anonymous";
     else video.removeAttribute("crossOrigin");
     video.src = directUrl; video.load(); video.play().catch(() => {});
@@ -920,7 +762,6 @@ export default function MoviePlayer() {
           {mode === "direct" && showControls && !showResumePrompt && (
             <div className="mp-center-controls" onClick={e => e.stopPropagation()}>
 
-              {/* Prev / Rewind */}
               <button
                 className={`mp-ovr-btn mp-ovr-side${focusedControl === "rewind" ? " tv-focus" : ""}`}
                 onClick={() => hasPrev ? goToEpisode(currentIndex - 1) : seekBy(-10)}
@@ -931,7 +772,6 @@ export default function MoviePlayer() {
                 <span className="mp-ovr-label">10s</span>
               </button>
 
-              {/* Play/Pause */}
               <button
                 className={`mp-ovr-btn mp-ovr-play${focusedControl === "play" ? " tv-focus" : ""}`}
                 onClick={() => { togglePlay(); resetControlsTimer(); }}
@@ -941,7 +781,6 @@ export default function MoviePlayer() {
                 {isPlaying ? <FaPause size={26} /> : <FaPlay size={26} />}
               </button>
 
-              {/* Next / Forward */}
               <button
                 className={`mp-ovr-btn mp-ovr-side${focusedControl === "forward" ? " tv-focus" : ""}`}
                 onClick={() => hasNext ? goToEpisode(currentIndex + 1) : seekBy(30)}
@@ -959,14 +798,6 @@ export default function MoviePlayer() {
             <div className={`mp-top-right ${showControls ? "ctrl-show" : "ctrl-hide"}`} onClick={e => e.stopPropagation()}>
               <button className="mp-corner-btn" onClick={toggleMute} title={isMuted ? "Unmute" : "Mute"}>
                 <VolumeIcon muted={isMuted} volume={volume} size={14} />
-              </button>
-              <button
-                className={`mp-corner-btn${showAudioPanel ? " active" : ""}`}
-                onClick={e => { e.stopPropagation(); setShowAudioPanel(p => !p); }}
-                title="Audio Sync"
-              >
-                <FaMusic size={14} />
-                {audioDelay > 0 && <span className="mp-audio-dot" />}
               </button>
               <button
                 className={`mp-corner-btn${focusedControl === "fullscreen" ? " tv-focus" : ""}`}
@@ -1079,66 +910,6 @@ export default function MoviePlayer() {
                 <div className={`mp-track-thumb${isScrubbing ? " scrubbing" : ""}`} style={{ left: `${displayPct}%` }} />
               </div>
               <span className="mp-time">{fmt(duration)}</span>
-            </div>
-          </div>
-        )}
-
-        {/* ══ AUDIO SYNC PANEL ══
-            Audio graph is ONLY built when this panel is open.
-            When closed, destroyAudioGraph() is called → video plays audio natively. */}
-        {mode === "direct" && showAudioPanel && (
-          <div className="mp-audio-panel" onClick={e => e.stopPropagation()}>
-            <div className="mp-audio-header">
-              <FaMusic size={12} />
-              <span>Audio Sync</span>
-              {audioDelay > 0 && (
-                <span className="mp-audio-active-badge">
-                  <FaCheckCircle size={9} /> +{audioDelay.toFixed(2)}s
-                </span>
-              )}
-              {!audioGraphReady && (
-                <span className="mp-audio-warn-badge">tap video to enable</span>
-              )}
-              <button className="mp-audio-close" onClick={() => setShowAudioPanel(false)} title="Close">
-                <FaTimes size={12} />
-              </button>
-            </div>
-
-            <div className="mp-audio-body">
-              <div className="mp-audio-display">
-                <span className={`mp-audio-value${audioDelay > 0 ? " offset-active" : ""}`}>
-                  +{audioDelay.toFixed(2)}
-                </span>
-                <span className="mp-audio-unit">sec delay</span>
-              </div>
-
-              <div className="mp-audio-stepper">
-                <button className="mp-step-btn" onClick={() => applyAudioDelay(audioDelay - 0.5)}>−500ms</button>
-                <button className="mp-step-btn" onClick={() => applyAudioDelay(audioDelay - 0.1)}>−100ms</button>
-                <button className="mp-step-btn" onClick={() => applyAudioDelay(audioDelay - AUDIO_STEP)}>−50ms</button>
-                <button className="mp-step-btn mp-step-reset" onClick={resetAudioDelay}>
-                  <FaSync size={10} /> Reset
-                </button>
-                <button className="mp-step-btn" onClick={() => applyAudioDelay(audioDelay + AUDIO_STEP)}>+50ms</button>
-                <button className="mp-step-btn" onClick={() => applyAudioDelay(audioDelay + 0.1)}>+100ms</button>
-                <button className="mp-step-btn" onClick={() => applyAudioDelay(audioDelay + 0.5)}>+500ms</button>
-              </div>
-
-              <div className="mp-audio-slider-row">
-                <span className="mp-audio-slider-label">0s</span>
-                <input
-                  type="range"
-                  className="mp-audio-slider"
-                  min={0} max={AUDIO_MAX} step="0.01"
-                  value={audioDelay}
-                  onChange={e => applyAudioDelay(parseFloat(e.target.value))}
-                />
-                <span className="mp-audio-slider-label">+{AUDIO_MAX}s</span>
-              </div>
-
-              <p className="mp-audio-hint">
-                If audio lags behind video, increase the delay. Close this panel to restore default audio.
-              </p>
             </div>
           </div>
         )}

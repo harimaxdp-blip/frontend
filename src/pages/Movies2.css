@@ -7,7 +7,6 @@
 
 /* ── VARIABLES ── */
 :root {
-  /* Brand palette — HM red/black */
   --hm-red:         #d10000;
   --hm-red-hover:   #e80000;
   --hm-red-deep:    #9a0000;
@@ -29,11 +28,9 @@
   --hm-text-muted:  rgba(255,255,255,0.28);
   --hm-text-faint:  rgba(255,255,255,0.16);
 
-  /* Focus — clean white ring (no yellow) */
   --focus-ring:     rgba(255,255,255,0.90);
   --focus-shadow:   rgba(255,255,255,0.20);
 
-  /* Safe areas */
   --safe-top:    env(safe-area-inset-top,    0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-left:   env(safe-area-inset-left,   0px);
@@ -397,17 +394,6 @@ button { font-family: var(--font); cursor: pointer; }
 }
 .mp-corner-btn:hover  { background: rgba(40,40,40,0.88); border-color: rgba(255,255,255,0.18); }
 .mp-corner-btn:active { transform: scale(0.90); }
-.mp-corner-btn.active { background: var(--hm-red-subtle); border-color: rgba(209,0,0,0.40); color: var(--hm-white); }
-
-/* Audio dot indicator */
-.mp-audio-dot {
-  position: absolute;
-  top: 5px; right: 5px;
-  width: 5px; height: 5px;
-  background: var(--hm-red);
-  border-radius: 50%;
-  border: 1.5px solid var(--hm-black);
-}
 
 /* ════════════════════════════════════════════
    TV FOCUS RING — white, no yellow
@@ -501,7 +487,6 @@ button { font-family: var(--font); cursor: pointer; }
   margin-bottom: 14px;
   font-variant-numeric: tabular-nums;
 }
-/* Mini progress bar inside resume card */
 .mp-resume-bar {
   width: 100%;
   height: 3px;
@@ -645,180 +630,6 @@ button { font-family: var(--font); cursor: pointer; }
 .mp-track-thumb.scrubbing {
   opacity: 1;
   transform: translate(-50%, -50%) scale(1.35);
-}
-
-/* ════════════════════════════════════════════
-   AUDIO DELAY PANEL
-════════════════════════════════════════════ */
-.mp-audio-panel {
-  position: relative;
-  z-index: 510;
-  background: var(--hm-surface);
-  border-top: 1px solid var(--hm-border);
-  padding: 14px 18px 12px;
-  pointer-events: auto;
-  flex-shrink: 0;
-}
-
-.mp-audio-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 12px;
-  color: var(--hm-text-dim);
-  font-size: 0.74rem;
-  font-weight: 700;
-  letter-spacing: 0.8px;
-  text-transform: uppercase;
-}
-.mp-audio-active-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  background: var(--hm-red-subtle);
-  color: var(--hm-red);
-  border: 1px solid rgba(209,0,0,0.28);
-  border-radius: 100px;
-  padding: 2px 8px;
-  font-size: 0.58rem;
-  font-weight: 800;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-}
-.mp-audio-close {
-  margin-left: auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px; height: 26px;
-  background: rgba(255,255,255,0.05);
-  border: 1px solid rgba(255,255,255,0.07);
-  border-radius: var(--radius-sm);
-  color: var(--hm-text-dim);
-  cursor: pointer;
-  transition: background var(--trans), color var(--trans);
-}
-.mp-audio-close:hover { background: rgba(255,255,255,0.12); color: var(--hm-white); }
-
-.mp-audio-body {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.mp-audio-display {
-  display: flex;
-  align-items: baseline;
-  justify-content: center;
-  gap: 5px;
-  padding: 8px 0 2px;
-}
-.mp-audio-value {
-  font-size: 2.2rem;
-  font-weight: 900;
-  font-variant-numeric: tabular-nums;
-  color: var(--hm-text-dim);
-  line-height: 1;
-  letter-spacing: -1.5px;
-  transition: color var(--trans);
-}
-.mp-audio-value.offset-active { color: var(--hm-red); }
-.mp-audio-unit {
-  font-size: 0.84rem;
-  font-weight: 600;
-  color: var(--hm-text-muted);
-}
-
-.mp-audio-stepper {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  flex-wrap: wrap;
-}
-.mp-step-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  background: var(--hm-surface2);
-  border: 1px solid var(--hm-border);
-  color: var(--hm-text-dim);
-  border-radius: var(--radius);
-  padding: 6px 11px;
-  font-size: 0.72rem;
-  font-weight: 700;
-  font-family: var(--font);
-  cursor: pointer;
-  transition: background var(--trans), border-color var(--trans), color var(--trans), transform 0.10s;
-  white-space: nowrap;
-  letter-spacing: 0.1px;
-}
-.mp-step-btn:hover  { background: var(--hm-surface3); border-color: rgba(255,255,255,0.16); color: var(--hm-white); }
-.mp-step-btn:active { transform: scale(0.93); }
-.mp-step-reset {
-  background: var(--hm-red-subtle);
-  border-color: rgba(209,0,0,0.25);
-  color: var(--hm-red);
-}
-.mp-step-reset:hover {
-  background: rgba(209,0,0,0.20);
-  border-color: rgba(209,0,0,0.50);
-  color: #ff3333;
-}
-
-.mp-audio-slider-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.mp-audio-slider-label {
-  color: var(--hm-text-muted);
-  font-size: 0.66rem;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  min-width: 24px;
-  text-align: center;
-  flex-shrink: 0;
-}
-.mp-audio-slider {
-  flex: 1;
-  -webkit-appearance: none;
-  appearance: none;
-  height: 3px;
-  background: rgba(255,255,255,0.12);
-  border-radius: 4px;
-  outline: none;
-  cursor: pointer;
-  accent-color: var(--hm-red);
-}
-.mp-audio-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 14px; height: 14px;
-  border-radius: 50%;
-  background: var(--hm-white);
-  cursor: pointer;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.65);
-  transition: transform 0.10s;
-}
-.mp-audio-slider::-webkit-slider-thumb:hover { transform: scale(1.3); }
-.mp-audio-slider::-moz-range-thumb {
-  width: 14px; height: 14px;
-  border-radius: 50%;
-  background: var(--hm-white);
-  border: none;
-  cursor: pointer;
-}
-.mp-audio-hint {
-  color: var(--hm-text-muted);
-  font-size: 0.68rem;
-  line-height: 1.5;
-  text-align: center;
-}
-.mp-audio-warn {
-  color: rgba(255,200,0,0.75);
-  font-size: 0.66rem;
-  text-align: center;
-  line-height: 1.4;
 }
 
 /* ════════════════════════════════════════════
@@ -1055,9 +866,6 @@ button { font-family: var(--font); cursor: pointer; }
   .mp-ep-dot    { width: 26px; height: 26px; font-size: 0.58rem; }
   .mp-time      { font-size: 0.64rem; min-width: 30px; }
   .mp-ctrl-bar  { padding: 0 12px; padding-bottom: calc(10px + var(--safe-bottom)); }
-  .mp-audio-value { font-size: 1.7rem; }
-  .mp-step-btn  { padding: 5px 9px; font-size: 0.67rem; }
-  .mp-audio-stepper { gap: 4px; }
   .mp-resume-card { padding: 24px 20px; }
   .mp-corner-btn { width: 34px; height: 34px; }
   .mp-top-right { top: 12px; right: 12px; gap: 6px; }
@@ -1072,8 +880,6 @@ button { font-family: var(--font); cursor: pointer; }
   .mp-ep-dot  { width: 22px; height: 22px; }
   .mp-time    { font-size: 0.62rem; }
   .mp-ovr-play { min-width: 60px; min-height: 60px; }
-  .mp-audio-panel { padding: 9px 14px 8px; }
-  .mp-audio-value { font-size: 1.4rem; }
 }
 
 /* Tablet */
@@ -1089,7 +895,6 @@ button { font-family: var(--font); cursor: pointer; }
   .mp-ep-dot { width: 34px; height: 34px; font-size: 0.70rem; }
   .mp-ctrl-bar { padding: 0 28px; padding-bottom: calc(18px + var(--safe-bottom)); }
   .mp-ovr-play { min-width: 84px; min-height: 84px; }
-  .mp-audio-stepper { gap: 7px; }
 }
 
 /* 4K / TV */
@@ -1106,8 +911,6 @@ button { font-family: var(--font); cursor: pointer; }
   .mp-autoplay-card { padding: 48px 56px; max-width: 440px; }
   .mp-ovr-play  { min-width: 100px; min-height: 100px; }
   .mp-center-controls { gap: 44px; }
-  .mp-audio-value { font-size: 2.8rem; }
-  .mp-step-btn  { padding: 9px 17px; font-size: 0.88rem; }
   .tv-focus {
     border-width: 2.5px !important;
     box-shadow: 0 0 0 4px var(--focus-shadow), 0 0 24px rgba(255,255,255,0.15) !important;
