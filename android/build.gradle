@@ -24,6 +24,16 @@ allprojects {
     }
 }
 
+subprojects {
+    afterEvaluate { project ->
+        if (project.hasProperty('android')) {
+            if (project.android.namespace == null) {
+                project.android.namespace = "com.harimovies.${project.name.replace("-", ".")}"
+            }
+        }
+    }
+}
+
 task clean(type: Delete) {
     delete rootProject.buildDir
 }

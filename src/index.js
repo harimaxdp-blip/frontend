@@ -5,24 +5,30 @@ import { HashRouter } from "react-router-dom";
 import "./index.css";
 import logo from "./assets/logo1.png";
 
+import { App as CapacitorApp } from "@capacitor/app";
+
 // =========================
 // 1. DYNAMIC SCRIPT LOADER
 // =========================
 const loadTorrentEngine = () => {
   return new Promise((resolve) => {
-    // Check if already loaded
+    // Already loaded
     if (window.WebTorrent) return resolve();
 
-    // Set Content Security Policy for WebTorrent
+    // CSP
     const meta = document.createElement("meta");
     meta.httpEquiv = "Content-Security-Policy";
-    meta.content = "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net;";
+    meta.content =
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net;";
     document.head.appendChild(meta);
 
-    // Load WebTorrent CDN
+    // Load WebTorrent
     const script = document.createElement("script");
-    script.src = "https://cdn.jsdelivr.net/npm/webtorrent@latest/webtorrent.min.js";
+    script.src =
+      "https://cdn.jsdelivr.net/npm/webtorrent@latest/webtorrent.min.js";
+
     script.async = true;
+
     script.onload = () => {
       console.log("🎬 Torrent Engine Loaded Successfully");
       resolve();
@@ -33,29 +39,22 @@ const loadTorrentEngine = () => {
       resolve();
     };
 
-    script.onerror = () => {
-      console.error("❌ Failed to load Torrent Engine");
-      resolve(); // Resolve anyway to not block the whole app
-    };
     document.head.appendChild(script);
   });
 };
 
 // =========================
-// 3. SEO & UI SETUP
-// =========================
-document.title = "HARI MOVIES";
-
-// Favicon + Apple Icon
-const setupIcons = () => {
-  let favicon = document.querySelector("link[rel='icon']");
-
 // 2. SEO & UI SETUP
 // =========================
 document.title = "HARI MOVIES";
 
+// =========================
+// ICONS
+// =========================
 const setupIcons = () => {
+  // Favicon
   let favicon = document.querySelector("link[rel='icon']");
+
   if (!favicon) {
     favicon = document.createElement("link");
     favicon.rel = "icon";
@@ -64,13 +63,11 @@ const setupIcons = () => {
 
   favicon.href = logo;
 
+  // Apple Icon
   let appleIcon = document.querySelector(
     "link[rel='apple-touch-icon']"
   );
 
-  favicon.href = logo;
-
-  let appleIcon = document.querySelector("link[rel='apple-touch-icon']");
   if (!appleIcon) {
     appleIcon = document.createElement("link");
     appleIcon.rel = "apple-touch-icon";
@@ -82,7 +79,9 @@ const setupIcons = () => {
 
 setupIcons();
 
-// Meta Tags
+// =========================
+// META TAGS
+// =========================
 const setMetaTag = (property, content, isName = false) => {
   const selector = isName
     ? `meta[name='${property}']`
@@ -114,7 +113,9 @@ setMetaTag(
 setMetaTag("og:title", "HARI MOVIES");
 setMetaTag("og:image", logo);
 
-// Google Material Symbols
+// =========================
+// GOOGLE MATERIAL ICONS
+// =========================
 const fontLink = document.createElement("link");
 
 fontLink.rel = "stylesheet";
@@ -125,55 +126,26 @@ fontLink.href =
 document.head.appendChild(fontLink);
 
 // =========================
-// 4. RENDER APP
+// ANDROID BACK BUTTON
+// =========================
+CapacitorApp.addListener("backButton", ({ canGoBack }) => {
+  // If not home page → go back
+  if (window.location.hash !== "#/" && canGoBack) {
+    window.history.back();
+  } else {
+    // Prevent app exit on home
+    console.log("Home page reached");
+  }
+});
+
+// =========================
+// 3. RENDER APP
 // =========================
 const root = ReactDOM.createRoot(
   document.getElementById("root")
 );
-CapacitorApp.addListener("backButton", ({ canGoBack }) => {
 
-  if (window.location.hash !== "#/" && canGoBack) {
-
-    window.history.back();
-
-  } else {
-
-    // Prevent app from closing on home page
-    // Remove this line if you WANT exit on home
-    return;
-  }
-});
-  appleIcon.href = logo;
-};
-setupIcons();
-
-const setMetaTag = (property, content, isName = false) => {
-  const selector = isName ? `meta[name='${property}']` : `meta[property='${property}']`;
-  let tag = document.querySelector(selector);
-  if (!tag) {
-    tag = document.createElement("meta");
-    if (isName) tag.setAttribute("name", property);
-    else tag.setAttribute("property", property);
-    document.head.appendChild(tag);
-  }
-  tag.setAttribute("content", content);
-};
-
-setMetaTag("description", "Watch movies on HARI MOVIES", true);
-setMetaTag("og:title", "HARI MOVIES");
-setMetaTag("og:image", logo);
-
-const fontLink = document.createElement("link");
-fontLink.rel = "stylesheet";
-fontLink.href = "https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined";
-document.head.appendChild(fontLink);
-
-// =========================
-// 3. INITIALIZE & RENDER
-// =========================
-const root = ReactDOM.createRoot(document.getElementById("root"));
-
-// Load engine THEN render app
+// Load torrent engine first
 loadTorrentEngine().then(() => {
   root.render(
     <React.StrictMode>
