@@ -4,12 +4,15 @@
   "private": true,
   "homepage": ".",
   "dependencies": {
+<<<<<<< HEAD
     "@capacitor/android": "^8.3.4",
     "@capacitor/app": "^8.1.0",
     "@capacitor/cli": "^8.3.4",
     "@capacitor/core": "^8.3.4",
     "@capacitor/screen-orientation": "^8.0.1",
     "@capacitor/status-bar": "^8.0.2",
+=======
+>>>>>>> e3141d289e8cdc1abfcf40fa600149e90e618c72
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
