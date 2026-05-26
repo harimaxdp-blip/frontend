@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://hm-tau-eight.vercel.app/sitemap.xml
