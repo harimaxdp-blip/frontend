@@ -1787,3 +1787,542 @@ webpack compiled [1m[32msuccessfully[39m[22m
 Compiling...
 Compiled successfully!
 webpack compiled [1m[32msuccessfully[39m[22m
+Compiling...
+Failed to compile.
+
+Module not found: SyntaxError: D:\MOVIE\frontend-main\package.json (directory description file): SyntaxError: D:\MOVIE\frontend-main\package.json (directory description file): SyntaxError: D:\MOVIE\frontend-main\package.json (directory description file): SyntaxError: D:\MOVIE\frontend-main\package.json (directory description file): SyntaxError: D:\MOVIE\frontend-main\package.json (directory description file): SyntaxError: D:\MOVIE\frontend-main\package.json (directory description file): SyntaxError: D:\MOVIE\frontend-main\package.json (directory description file): SyntaxError: D:\MOVIE\frontend-main\package.json (directory description file): SyntaxError: Expected property name or '}' in JSON at position 104 (line 7 column 1)
+[1m[31mERROR[39m[22m in [1mModule [1m[31mnot found[39m[22m[1m: SyntaxError: D:\MOVIE\frontend-main\package.json (directory description file): SyntaxError: D:\MOVIE\frontend-main\package.json (directory description file): SyntaxError: D:\MOVIE\frontend-main\package.json (directory description file): SyntaxError: D:\MOVIE\frontend-main\package.json (directory description file): SyntaxError: D:\MOVIE\frontend-main\package.json (directory description file): SyntaxError: D:\MOVIE\frontend-main\package.json (directory description file): SyntaxError: D:\MOVIE\frontend-main\package.json (directory description file): SyntaxError: D:\MOVIE\frontend-main\package.json (directory description file): SyntaxError: Expected property name or '}' in JSON at position 104 (line 7 column 1)[39m[22m
+
+[1m[31mERROR[39m[22m in [1mModule [1m[31mnot found[39m[22m[1m: SyntaxError: D:\MOVIE\frontend-main\package.json (directory description file): SyntaxError: D:\MOVIE\frontend-main\package.json (directory description file): SyntaxError: D:\MOVIE\frontend-main\package.json (directory description file): SyntaxError: D:\MOVIE\frontend-main\package.json (directory description file): SyntaxError: D:\MOVIE\frontend-main\package.json (directory description file): SyntaxError: D:\MOVIE\frontend-main\package.json (directory description file): SyntaxError: D:\MOVIE\frontend-main\package.json (directory description file): SyntaxError: Expected property name or '}' in JSON at position 104 (line 7 column 1)[39m[22m
+
+[1m[31mERROR[39m[22m in [1m[32mmain[39m[22m
+[1mModule [1m[31mnot found[39m[22m[1m: SyntaxError: D:\MOVIE\frontend-main\package.json (directory description file): SyntaxError: D:\MOVIE\frontend-main\package.json (directory description file): SyntaxError: D:\MOVIE\frontend-main\package.json (directory description file): SyntaxError: D:\MOVIE\frontend-main\package.json (directory description file): SyntaxError: D:\MOVIE\frontend-main\package.json (directory description file): SyntaxError: D:\MOVIE\frontend-main\package.json (directory description file): SyntaxError: Expected property name or '}' in JSON at position 104 (line 7 column 1)[39m[22m
+
+[1m[31mERROR[39m[22m in [1mModule [1m[31mnot found[39m[22m[1m: SyntaxError: D:\MOVIE\frontend-main\package.json (directory description file): SyntaxError: D:\MOVIE\frontend-main\package.json (directory description file): SyntaxError: D:\MOVIE\frontend-main\package.json (directory description file): SyntaxError: D:\MOVIE\frontend-main\package.json (directory description file): SyntaxError: D:\MOVIE\frontend-main\package.json (directory description file): SyntaxError: Expected property name or '}' in JSON at position 104 (line 7 column 1)[39m[22m
+
+[1m[31mERROR[39m[22m in [1m  [1m[31mError[39m[22m[1m: Child compilation [1m[31mfailed[39m[22m[1m:
+  Module [1m[31mnot found[39m[22m[1m: SyntaxError: D:\MOVIE\frontend-main\package.json (directory   description file): SyntaxError: D:\MOVIE\frontend-main\package.json (directory   description file): SyntaxError: D:\MOVIE\frontend-main\package.json (director  y description file): SyntaxError: D:\MOVIE\frontend-main\package.json (directo  ry description file): SyntaxError: D:\MOVIE\frontend-main\package.json (direct  ory description file): SyntaxError: D:\MOVIE\frontend-main\package.json (direc  tory description file): SyntaxError: D:\MOVIE\frontend-main\package.json (dire  ctory description file): SyntaxError: D:\MOVIE\frontend-main\package.json (dir  ectory description file): SyntaxError: D:\MOVIE\frontend-main\package.json (di  rectory description file): SyntaxError: D:\MOVIE\frontend-main\package.json (d  irectory description file): SyntaxError: D:\MOVIE\frontend-main\package.json (  directory description file): SyntaxError: Expected property name or '}' in JSO  N at position 104 (line 7 column 1)
+  ModuleNotFoundError: Module [1m[31mnot found[39m[22m[1m: SyntaxError: D:\MOVIE\frontend-main\pac  kage.json (directory description file): SyntaxError: D:\MOVIE\frontend-main\pa  ckage.json (directory description file): SyntaxError: D:\MOVIE\frontend-main\p  ackage.json (directory description file): SyntaxError: D:\MOVIE\frontend-main\  package.json (directory description file): SyntaxError: D:\MOVIE\frontend-main  \package.json (directory description file): SyntaxError: D:\MOVIE\frontend-mai  n\package.json (directory description file): SyntaxError: D:\MOVIE\frontend-ma  in\package.json (directory description file): SyntaxError: D:\MOVIE\frontend-m  ain\package.json (directory description file): SyntaxError: D:\MOVIE\frontend-  main\package.json (directory description file): SyntaxError: D:\MOVIE\frontend  -main\package.json (directory description file): SyntaxError: D:\MOVIE\fronten  d-main\package.json (directory description file): SyntaxError: Expected proper  ty name or '}' in JSON at position 104 (line 7 column 1)
+      at D:\MOVIE\frontend-main\node_modules\webpack\lib\Compilation.js:2143:28
+      at D:\MOVIE\frontend-main\node_modules\webpack\lib\NormalModuleFactory.js:  1076:13
+      at eval (eval at create (D:\MOVIE\frontend-main\node_modules\tapable\lib\H  ookCodeFactory.js:31:10), <anonymous>:10:1)
+      at D:\MOVIE\frontend-main\node_modules\webpack\lib\NormalModuleFactory.js:  456:22
+      at eval (eval at create (D:\MOVIE\frontend-main\node_modules\tapable\lib\H  ookCodeFactory.js:31:10), <anonymous>:9:1)
+      at D:\MOVIE\frontend-main\node_modules\webpack\lib\NormalModuleFactory.js:  642:22
+      at D:\MOVIE\frontend-main\node_modules\webpack\lib\NormalModuleFactory.js:  197:10
+      at D:\MOVIE\frontend-main\node_modules\webpack\lib\NormalModuleFactory.js:  878:23
+      at D:\MOVIE\frontend-main\node_modules\webpack\lib\NormalModuleFactory.js:  1390:5
+      at D:\MOVIE\frontend-main\node_modules\neo-async\async.js:2830:7
+      at done (D:\MOVIE\frontend-main\node_modules\neo-async\async.js:2925:13)
+      at D:\MOVIE\frontend-main\node_modules\webpack\lib\NormalModuleFactory.js:  1349:10
+      at D:\MOVIE\frontend-main\node_modules\enhanced-resolve\lib\Resolver.js:96  5:21
+      at D:\MOVIE\frontend-main\node_modules\enhanced-resolve\lib\Resolver.js:10  78:21
+      at eval (eval at create (D:\MOVIE\frontend-main\node_modules\tapable\lib\H  ookCodeFactory.js:31:10), <anonymous>:24:1)
+      at done (D:\MOVIE\frontend-main\node_modules\webpack\lib\cache\ResolverCac  hePlugin.js:379:13)
+      at D:\MOVIE\frontend-main\node_modules\webpack\lib\cache\ResolverCachePlug  in.js:206:22
+      at D:\MOVIE\frontend-main\node_modules\enhanced-resolve\lib\Resolver.js:10  78:21
+      at eval (eval at create (D:\MOVIE\frontend-main\node_modules\tapable\lib\H  ookCodeFactory.js:31:10), <anonymous>:10:1)
+      at D:\MOVIE\frontend-main\node_modules\enhanced-resolve\lib\Resolver.js:10  78:21
+      at eval (eval at create (D:\MOVIE\frontend-main\node_modules\tapable\lib\H  ookCodeFactory.js:31:10), <anonymous>:24:1)
+      at D:\MOVIE\frontend-main\node_modules\enhanced-resolve\lib\DescriptionFil  ePlugin.js:60:24
+      at D:\MOVIE\frontend-main\node_modules\enhanced-resolve\lib\DescriptionFil  eUtils.js:181:21
+      at D:\MOVIE\frontend-main\node_modules\enhanced-resolve\lib\forEachBail.js  :39:13
+      at onJson (D:\MOVIE\frontend-main\node_modules\enhanced-resolve\lib\Descri  ptionFileUtils.js:115:14)
+      at D:\MOVIE\frontend-main\node_modules\enhanced-resolve\lib\DescriptionFil  eUtils.js:139:15
+      at process.processTicksAndRejections (node:internal/process/task_queues:89  :21)
+  
+  - Compilation.js:2143 
+    [frontend-main]/[webpack]/lib/Compilation.js:2143:28
+  
+  - NormalModuleFactory.js:1076 
+    [frontend-main]/[webpack]/lib/NormalModuleFactory.js:1076:13
+  
+  
+  - NormalModuleFactory.js:456 
+    [frontend-main]/[webpack]/lib/NormalModuleFactory.js:456:22
+  
+  
+  - NormalModuleFactory.js:642 
+    [frontend-main]/[webpack]/lib/NormalModuleFactory.js:642:22
+  
+  - NormalModuleFactory.js:197 
+    [frontend-main]/[webpack]/lib/NormalModuleFactory.js:197:10
+  
+  - NormalModuleFactory.js:878 
+    [frontend-main]/[webpack]/lib/NormalModuleFactory.js:878:23
+  
+  - NormalModuleFactory.js:1390 
+    [frontend-main]/[webpack]/lib/NormalModuleFactory.js:1390:5
+  
+  - async.js:2830 
+    [frontend-main]/[neo-async]/async.js:2830:7
+  
+  - async.js:2925 done
+    [frontend-main]/[neo-async]/async.js:2925:13
+  
+  - NormalModuleFactory.js:1349 
+    [frontend-main]/[webpack]/lib/NormalModuleFactory.js:1349:10
+  
+  - Resolver.js:965 
+    [frontend-main]/[enhanced-resolve]/lib/Resolver.js:965:21
+  
+  - Resolver.js:1078 
+    [frontend-main]/[enhanced-resolve]/lib/Resolver.js:1078:21
+  
+  
+  - ResolverCachePlugin.js:379 done
+    [frontend-main]/[webpack]/lib/cache/ResolverCachePlugin.js:379:13
+  
+  - ResolverCachePlugin.js:206 
+    [frontend-main]/[webpack]/lib/cache/ResolverCachePlugin.js:206:22
+  
+  - Resolver.js:1078 
+    [frontend-main]/[enhanced-resolve]/lib/Resolver.js:1078:21
+  
+  
+  - Resolver.js:1078 
+    [frontend-main]/[enhanced-resolve]/lib/Resolver.js:1078:21
+  
+  
+  - DescriptionFilePlugin.js:60 
+    [frontend-main]/[enhanced-resolve]/lib/DescriptionFilePlugin.js:60:24
+  
+  - DescriptionFileUtils.js:181 
+    [frontend-main]/[enhanced-resolve]/lib/DescriptionFileUtils.js:181:21
+  
+  - forEachBail.js:39 
+    [frontend-main]/[enhanced-resolve]/lib/forEachBail.js:39:13
+  
+  - DescriptionFileUtils.js:115 onJson
+    [frontend-main]/[enhanced-resolve]/lib/DescriptionFileUtils.js:115:14
+  
+  - DescriptionFileUtils.js:139 
+    [frontend-main]/[enhanced-resolve]/lib/DescriptionFileUtils.js:139:15
+  
+  - task_queues:89 process.processTicksAndRejections
+    node:internal/process/task_queues:89:21
+  
+  - child-compiler.js:211 
+    [frontend-main]/[html-webpack-plugin]/lib/child-compiler.js:211:18
+  
+  - Compiler.js:672 finalCallback
+    [frontend-main]/[webpack]/lib/Compiler.js:672:5
+  
+  - Compiler.js:708 
+    [frontend-main]/[webpack]/lib/Compiler.js:708:11
+  
+  - Compiler.js:1417 
+    [frontend-main]/[webpack]/lib/Compiler.js:1417:17
+  
+  
+  - Hook.js:21 Hook.CALL_ASYNC_DELEGATE [as _callAsync]
+    [frontend-main]/[tapable]/lib/Hook.js:21:14
+  
+  - Compiler.js:1413 
+    [frontend-main]/[webpack]/lib/Compiler.js:1413:33
+  
+  - Compilation.js:3278 finalCallback
+    [frontend-main]/[webpack]/lib/Compilation.js:3278:11
+  
+  - Compilation.js:3617 
+    [frontend-main]/[webpack]/lib/Compilation.js:3617:11
+  
+  
+  - Hook.js:21 Hook.CALL_ASYNC_DELEGATE [as _callAsync]
+    [frontend-main]/[tapable]/lib/Hook.js:21:14
+  
+  - Compilation.js:3610 
+    [frontend-main]/[webpack]/lib/Compilation.js:3610:38
+  
+  
+  - Compilation.js:691 
+    [frontend-main]/[webpack]/lib/Compilation.js:691:11
+  
+  - SourceMapDevToolPlugin.js:639 
+    [frontend-main]/[webpack]/lib/SourceMapDevToolPlugin.js:639:10
+  
+  - async.js:2830 
+    [frontend-main]/[neo-async]/async.js:2830:7
+  
+  - async.js:2857 Object.each
+    [frontend-main]/[neo-async]/async.js:2857:9
+  
+  - SourceMapDevToolPlugin.js:430 
+    [frontend-main]/[webpack]/lib/SourceMapDevToolPlugin.js:430:17
+  
+  - async.js:2830 
+    [frontend-main]/[neo-async]/async.js:2830:7
+  
+  - async.js:2857 Object.each
+    [frontend-main]/[neo-async]/async.js:2857:9
+  
+  - SourceMapDevToolPlugin.js:236 
+    [frontend-main]/[webpack]/lib/SourceMapDevToolPlugin.js:236:15
+  
+  - Compilation.js:671 fn
+    [frontend-main]/[webpack]/lib/Compilation.js:671:9
+  
+  
+  
+[39m[22m
+
+[1m[31m1 ERROR in child compilations (Use 'stats.children: true' resp. '--stats-children' for more details)[39m[22m
+webpack compiled with [1m[31m6 errors[39m[22m
+Failed to compile.
+
+Module not found: Error: Can't resolve 'D:\MOVIE\frontend-main\node_modules\@pmmmwh\react-refresh-webpack-plugin\client\ReactRefreshEntry.js' in 'D:\MOVIE\frontend-main'
+[1m[31mERROR[39m[22m in [1mModule [1m[31mnot found[39m[22m[1m: [1m[31mError[39m[22m[1m: Can't resolve 'D:\MOVIE\frontend-main\node_modules\@pmmmwh\react-refresh-webpack-plugin\client\ReactRefreshEntry.js' in 'D:\MOVIE\frontend-main'[39m[22m
+
+[1m[31mERROR[39m[22m in [1m[32mmain[39m[22m
+[1mModule [1m[31mnot found[39m[22m[1m: [1m[31mError[39m[22m[1m: Can't resolve 'D:\MOVIE\frontend-main\node_modules\babel-loader\lib\index.js' in 'D:\MOVIE\frontend-main'[39m[22m
+
+[1m[31mERROR[39m[22m in [1mModule [1m[31mnot found[39m[22m[1m: [1m[31mError[39m[22m[1m: Can't resolve 'D:\MOVIE\frontend-main\node_modules\webpack-dev-server\client\index.js?protocol=ws%3A&hostname=0.0.0.0&port=3000&pathname=%2Fws&logging=none&overlay=%7B%22errors%22%3Atrue%2C%22warnings%22%3Afalse%7D&reconnect=10&hot=true&live-reload=true' in 'D:\MOVIE\frontend-main'[39m[22m
+
+[1m[31mERROR[39m[22m in [1mModule [1m[31mnot found[39m[22m[1m: [1m[31mError[39m[22m[1m: Can't resolve 'D:\MOVIE\frontend-main\node_modules\webpack\hot\dev-server.js' in 'D:\MOVIE\frontend-main'[39m[22m
+
+[1m[31mERROR[39m[22m in [1m  [1m[31mError[39m[22m[1m: Child compilation [1m[31mfailed[39m[22m[1m:
+  Module [1m[31mnot found[39m[22m[1m: [1m[31mError[39m[22m[1m: Can't resolve 'D:\MOVIE\frontend-main\node_modules\ht  ml-webpack-plugin\lib\loader.js' in 'D:\MOVIE\frontend-main'
+  ModuleNotFoundError: Module [1m[31mnot found[39m[22m[1m: [1m[31mError[39m[22m[1m: Can't resolve 'D:\MOVIE\frontend  -main\node_modules\html-webpack-plugin\lib\loader.js' in 'D:\MOVIE\frontend-ma  in'
+      at D:\MOVIE\frontend-main\node_modules\webpack\lib\Compilation.js:2143:28
+      at D:\MOVIE\frontend-main\node_modules\webpack\lib\NormalModuleFactory.js:  1076:13
+      at eval (eval at create (D:\MOVIE\frontend-main\node_modules\tapable\lib\H  ookCodeFactory.js:31:10), <anonymous>:10:1)
+      at D:\MOVIE\frontend-main\node_modules\webpack\lib\NormalModuleFactory.js:  456:22
+      at eval (eval at create (D:\MOVIE\frontend-main\node_modules\tapable\lib\H  ookCodeFactory.js:31:10), <anonymous>:9:1)
+      at D:\MOVIE\frontend-main\node_modules\webpack\lib\NormalModuleFactory.js:  642:22
+      at D:\MOVIE\frontend-main\node_modules\webpack\lib\NormalModuleFactory.js:  193:10
+      at D:\MOVIE\frontend-main\node_modules\webpack\lib\NormalModuleFactory.js:  878:23
+      at D:\MOVIE\frontend-main\node_modules\webpack\lib\NormalModuleFactory.js:  1390:5
+      at D:\MOVIE\frontend-main\node_modules\neo-async\async.js:2830:7
+      at done (D:\MOVIE\frontend-main\node_modules\neo-async\async.js:2925:13)
+      at D:\MOVIE\frontend-main\node_modules\webpack\lib\NormalModuleFactory.js:  1349:10
+      at finishWithoutResolve (D:\MOVIE\frontend-main\node_modules\enhanced-reso  lve\lib\Resolver.js:912:11)
+      at D:\MOVIE\frontend-main\node_modules\enhanced-resolve\lib\Resolver.js:10  01:14
+      at D:\MOVIE\frontend-main\node_modules\enhanced-resolve\lib\Resolver.js:10  80:5
+      at eval (eval at create (D:\MOVIE\frontend-main\node_modules\tapable\lib\H  ookCodeFactory.js:31:10), <anonymous>:16:1)
+      at D:\MOVIE\frontend-main\node_modules\enhanced-resolve\lib\Resolver.js:10  80:5
+      at eval (eval at create (D:\MOVIE\frontend-main\node_modules\tapable\lib\H  ookCodeFactory.js:31:10), <anonymous>:16:1)
+      at D:\MOVIE\frontend-main\node_modules\enhanced-resolve\lib\Resolver.js:10  80:5
+      at eval (eval at create (D:\MOVIE\frontend-main\node_modules\tapable\lib\H  ookCodeFactory.js:31:10), <anonymous>:15:1)
+      at D:\MOVIE\frontend-main\node_modules\enhanced-resolve\lib\Resolver.js:10  80:5
+      at eval (eval at create (D:\MOVIE\frontend-main\node_modules\tapable\lib\H  ookCodeFactory.js:31:10), <anonymous>:15:1)
+      at D:\MOVIE\frontend-main\node_modules\enhanced-resolve\lib\Resolver.js:10  80:5
+      at eval (eval at create (D:\MOVIE\frontend-main\node_modules\tapable\lib\H  ookCodeFactory.js:31:10), <anonymous>:16:1)
+      at D:\MOVIE\frontend-main\node_modules\enhanced-resolve\lib\Resolver.js:10  80:5
+      at eval (eval at create (D:\MOVIE\frontend-main\node_modules\tapable\lib\H  ookCodeFactory.js:31:10), <anonymous>:16:1)
+      at D:\MOVIE\frontend-main\node_modules\enhanced-resolve\lib\Resolver.js:10  80:5
+      at eval (eval at create (D:\MOVIE\frontend-main\node_modules\tapable\lib\H  ookCodeFactory.js:31:10), <anonymous>:16:1)
+      at D:\MOVIE\frontend-main\node_modules\enhanced-resolve\lib\Resolver.js:10  80:5
+      at eval (eval at create (D:\MOVIE\frontend-main\node_modules\tapable\lib\H  ookCodeFactory.js:31:10), <anonymous>:15:1)
+      at D:\MOVIE\frontend-main\node_modules\enhanced-resolve\lib\DirectoryExist  sPlugin.js:43:15
+      at process.processTicksAndRejections (node:internal/process/task_queues:89  :21)
+  
+  - Compilation.js:2143 
+    [frontend-main]/[webpack]/lib/Compilation.js:2143:28
+  
+  - NormalModuleFactory.js:1076 
+    [frontend-main]/[webpack]/lib/NormalModuleFactory.js:1076:13
+  
+  
+  - NormalModuleFactory.js:456 
+    [frontend-main]/[webpack]/lib/NormalModuleFactory.js:456:22
+  
+  
+  - NormalModuleFactory.js:642 
+    [frontend-main]/[webpack]/lib/NormalModuleFactory.js:642:22
+  
+  - NormalModuleFactory.js:193 
+    [frontend-main]/[webpack]/lib/NormalModuleFactory.js:193:10
+  
+  - NormalModuleFactory.js:878 
+    [frontend-main]/[webpack]/lib/NormalModuleFactory.js:878:23
+  
+  - NormalModuleFactory.js:1390 
+    [frontend-main]/[webpack]/lib/NormalModuleFactory.js:1390:5
+  
+  - async.js:2830 
+    [frontend-main]/[neo-async]/async.js:2830:7
+  
+  - async.js:2925 done
+    [frontend-main]/[neo-async]/async.js:2925:13
+  
+  - NormalModuleFactory.js:1349 
+    [frontend-main]/[webpack]/lib/NormalModuleFactory.js:1349:10
+  
+  - Resolver.js:912 finishWithoutResolve
+    [frontend-main]/[enhanced-resolve]/lib/Resolver.js:912:11
+  
+  - Resolver.js:1001 
+    [frontend-main]/[enhanced-resolve]/lib/Resolver.js:1001:14
+  
+  - Resolver.js:1080 
+    [frontend-main]/[enhanced-resolve]/lib/Resolver.js:1080:5
+  
+  
+  - Resolver.js:1080 
+    [frontend-main]/[enhanced-resolve]/lib/Resolver.js:1080:5
+  
+  
+  - Resolver.js:1080 
+    [frontend-main]/[enhanced-resolve]/lib/Resolver.js:1080:5
+  
+  
+  - Resolver.js:1080 
+    [frontend-main]/[enhanced-resolve]/lib/Resolver.js:1080:5
+  
+  
+  - Resolver.js:1080 
+    [frontend-main]/[enhanced-resolve]/lib/Resolver.js:1080:5
+  
+  
+  - Resolver.js:1080 
+    [frontend-main]/[enhanced-resolve]/lib/Resolver.js:1080:5
+  
+  
+  - Resolver.js:1080 
+    [frontend-main]/[enhanced-resolve]/lib/Resolver.js:1080:5
+  
+  
+  - Resolver.js:1080 
+    [frontend-main]/[enhanced-resolve]/lib/Resolver.js:1080:5
+  
+  
+  - DirectoryExistsPlugin.js:43 
+    [frontend-main]/[enhanced-resolve]/lib/DirectoryExistsPlugin.js:43:15
+  
+  - task_queues:89 process.processTicksAndRejections
+    node:internal/process/task_queues:89:21
+  
+  - child-compiler.js:211 
+    [frontend-main]/[html-webpack-plugin]/lib/child-compiler.js:211:18
+  
+  - Compiler.js:672 finalCallback
+    [frontend-main]/[webpack]/lib/Compiler.js:672:5
+  
+  - Compiler.js:708 
+    [frontend-main]/[webpack]/lib/Compiler.js:708:11
+  
+  - Compiler.js:1417 
+    [frontend-main]/[webpack]/lib/Compiler.js:1417:17
+  
+  
+  - Hook.js:21 Hook.CALL_ASYNC_DELEGATE [as _callAsync]
+    [frontend-main]/[tapable]/lib/Hook.js:21:14
+  
+  - Compiler.js:1413 
+    [frontend-main]/[webpack]/lib/Compiler.js:1413:33
+  
+  - Compilation.js:3278 finalCallback
+    [frontend-main]/[webpack]/lib/Compilation.js:3278:11
+  
+  - Compilation.js:3617 
+    [frontend-main]/[webpack]/lib/Compilation.js:3617:11
+  
+  
+  - Hook.js:21 Hook.CALL_ASYNC_DELEGATE [as _callAsync]
+    [frontend-main]/[tapable]/lib/Hook.js:21:14
+  
+  - Compilation.js:3610 
+    [frontend-main]/[webpack]/lib/Compilation.js:3610:38
+  
+  
+  - Compilation.js:691 
+    [frontend-main]/[webpack]/lib/Compilation.js:691:11
+  
+  - SourceMapDevToolPlugin.js:639 
+    [frontend-main]/[webpack]/lib/SourceMapDevToolPlugin.js:639:10
+  
+  - async.js:2830 
+    [frontend-main]/[neo-async]/async.js:2830:7
+  
+  - async.js:2857 Object.each
+    [frontend-main]/[neo-async]/async.js:2857:9
+  
+  - SourceMapDevToolPlugin.js:430 
+    [frontend-main]/[webpack]/lib/SourceMapDevToolPlugin.js:430:17
+  
+  - async.js:2830 
+    [frontend-main]/[neo-async]/async.js:2830:7
+  
+[39m[22m
+
+[1m[31m1 ERROR in child compilations (Use 'stats.children: true' resp. '--stats-children' for more details)[39m[22m
+webpack compiled with [1m[31m6 errors[39m[22m
+Compiling...
+Failed to compile.
+
+Module not found: Error: Can't resolve 'D:\MOVIE\frontend-main\node_modules\@pmmmwh\react-refresh-webpack-plugin\client\ReactRefreshEntry.js' in 'D:\MOVIE\frontend-main'
+[1m[31mERROR[39m[22m in [1mModule [1m[31mnot found[39m[22m[1m: [1m[31mError[39m[22m[1m: Can't resolve 'D:\MOVIE\frontend-main\node_modules\@pmmmwh\react-refresh-webpack-plugin\client\ReactRefreshEntry.js' in 'D:\MOVIE\frontend-main'[39m[22m
+
+[1m[31mERROR[39m[22m in [1m[32mmain[39m[22m
+[1mModule [1m[31mnot found[39m[22m[1m: [1m[31mError[39m[22m[1m: Can't resolve 'D:\MOVIE\frontend-main\node_modules\babel-loader\lib\index.js' in 'D:\MOVIE\frontend-main'[39m[22m
+
+[1m[31mERROR[39m[22m in [1mModule [1m[31mnot found[39m[22m[1m: [1m[31mError[39m[22m[1m: Can't resolve 'D:\MOVIE\frontend-main\node_modules\webpack-dev-server\client\index.js?protocol=ws%3A&hostname=0.0.0.0&port=3000&pathname=%2Fws&logging=none&overlay=%7B%22errors%22%3Atrue%2C%22warnings%22%3Afalse%7D&reconnect=10&hot=true&live-reload=true' in 'D:\MOVIE\frontend-main'[39m[22m
+
+[1m[31mERROR[39m[22m in [1mModule [1m[31mnot found[39m[22m[1m: [1m[31mError[39m[22m[1m: Can't resolve 'D:\MOVIE\frontend-main\node_modules\webpack\hot\dev-server.js' in 'D:\MOVIE\frontend-main'[39m[22m
+
+[1m[31mERROR[39m[22m in [1m  [1m[31mError[39m[22m[1m: Child compilation [1m[31mfailed[39m[22m[1m:
+  Module [1m[31mnot found[39m[22m[1m: [1m[31mError[39m[22m[1m: Can't resolve 'D:\MOVIE\frontend-main\node_modules\ht  ml-webpack-plugin\lib\loader.js' in 'D:\MOVIE\frontend-main'
+  ModuleNotFoundError: Module [1m[31mnot found[39m[22m[1m: [1m[31mError[39m[22m[1m: Can't resolve 'D:\MOVIE\frontend  -main\node_modules\html-webpack-plugin\lib\loader.js' in 'D:\MOVIE\frontend-ma  in'
+      at D:\MOVIE\frontend-main\node_modules\webpack\lib\Compilation.js:2143:28
+      at D:\MOVIE\frontend-main\node_modules\webpack\lib\NormalModuleFactory.js:  1076:13
+      at eval (eval at create (D:\MOVIE\frontend-main\node_modules\tapable\lib\H  ookCodeFactory.js:31:10), <anonymous>:10:1)
+      at D:\MOVIE\frontend-main\node_modules\webpack\lib\NormalModuleFactory.js:  456:22
+      at eval (eval at create (D:\MOVIE\frontend-main\node_modules\tapable\lib\H  ookCodeFactory.js:31:10), <anonymous>:9:1)
+      at D:\MOVIE\frontend-main\node_modules\webpack\lib\NormalModuleFactory.js:  642:22
+      at D:\MOVIE\frontend-main\node_modules\webpack\lib\NormalModuleFactory.js:  193:10
+      at D:\MOVIE\frontend-main\node_modules\webpack\lib\NormalModuleFactory.js:  878:23
+      at D:\MOVIE\frontend-main\node_modules\webpack\lib\NormalModuleFactory.js:  1390:5
+      at D:\MOVIE\frontend-main\node_modules\neo-async\async.js:2830:7
+      at done (D:\MOVIE\frontend-main\node_modules\neo-async\async.js:2925:13)
+      at D:\MOVIE\frontend-main\node_modules\webpack\lib\NormalModuleFactory.js:  1349:10
+      at finishWithoutResolve (D:\MOVIE\frontend-main\node_modules\enhanced-reso  lve\lib\Resolver.js:912:11)
+      at D:\MOVIE\frontend-main\node_modules\enhanced-resolve\lib\Resolver.js:10  01:14
+      at D:\MOVIE\frontend-main\node_modules\enhanced-resolve\lib\Resolver.js:10  80:5
+      at eval (eval at create (D:\MOVIE\frontend-main\node_modules\tapable\lib\H  ookCodeFactory.js:31:10), <anonymous>:16:1)
+      at D:\MOVIE\frontend-main\node_modules\enhanced-resolve\lib\Resolver.js:10  80:5
+      at eval (eval at create (D:\MOVIE\frontend-main\node_modules\tapable\lib\H  ookCodeFactory.js:31:10), <anonymous>:16:1)
+      at D:\MOVIE\frontend-main\node_modules\enhanced-resolve\lib\Resolver.js:10  80:5
+      at eval (eval at create (D:\MOVIE\frontend-main\node_modules\tapable\lib\H  ookCodeFactory.js:31:10), <anonymous>:15:1)
+      at D:\MOVIE\frontend-main\node_modules\enhanced-resolve\lib\Resolver.js:10  80:5
+      at eval (eval at create (D:\MOVIE\frontend-main\node_modules\tapable\lib\H  ookCodeFactory.js:31:10), <anonymous>:15:1)
+      at D:\MOVIE\frontend-main\node_modules\enhanced-resolve\lib\Resolver.js:10  80:5
+      at eval (eval at create (D:\MOVIE\frontend-main\node_modules\tapable\lib\H  ookCodeFactory.js:31:10), <anonymous>:16:1)
+      at D:\MOVIE\frontend-main\node_modules\enhanced-resolve\lib\Resolver.js:10  80:5
+      at eval (eval at create (D:\MOVIE\frontend-main\node_modules\tapable\lib\H  ookCodeFactory.js:31:10), <anonymous>:16:1)
+      at D:\MOVIE\frontend-main\node_modules\enhanced-resolve\lib\Resolver.js:10  80:5
+      at eval (eval at create (D:\MOVIE\frontend-main\node_modules\tapable\lib\H  ookCodeFactory.js:31:10), <anonymous>:16:1)
+      at D:\MOVIE\frontend-main\node_modules\enhanced-resolve\lib\Resolver.js:10  80:5
+      at eval (eval at create (D:\MOVIE\frontend-main\node_modules\tapable\lib\H  ookCodeFactory.js:31:10), <anonymous>:15:1)
+      at D:\MOVIE\frontend-main\node_modules\enhanced-resolve\lib\DirectoryExist  sPlugin.js:43:15
+      at process.processTicksAndRejections (node:internal/process/task_queues:89  :21)
+  
+  - Compilation.js:2143 
+    [frontend-main]/[webpack]/lib/Compilation.js:2143:28
+  
+  - NormalModuleFactory.js:1076 
+    [frontend-main]/[webpack]/lib/NormalModuleFactory.js:1076:13
+  
+  
+  - NormalModuleFactory.js:456 
+    [frontend-main]/[webpack]/lib/NormalModuleFactory.js:456:22
+  
+  
+  - NormalModuleFactory.js:642 
+    [frontend-main]/[webpack]/lib/NormalModuleFactory.js:642:22
+  
+  - NormalModuleFactory.js:193 
+    [frontend-main]/[webpack]/lib/NormalModuleFactory.js:193:10
+  
+  - NormalModuleFactory.js:878 
+    [frontend-main]/[webpack]/lib/NormalModuleFactory.js:878:23
+  
+  - NormalModuleFactory.js:1390 
+    [frontend-main]/[webpack]/lib/NormalModuleFactory.js:1390:5
+  
+  - async.js:2830 
+    [frontend-main]/[neo-async]/async.js:2830:7
+  
+  - async.js:2925 done
+    [frontend-main]/[neo-async]/async.js:2925:13
+  
+  - NormalModuleFactory.js:1349 
+    [frontend-main]/[webpack]/lib/NormalModuleFactory.js:1349:10
+  
+  - Resolver.js:912 finishWithoutResolve
+    [frontend-main]/[enhanced-resolve]/lib/Resolver.js:912:11
+  
+  - Resolver.js:1001 
+    [frontend-main]/[enhanced-resolve]/lib/Resolver.js:1001:14
+  
+  - Resolver.js:1080 
+    [frontend-main]/[enhanced-resolve]/lib/Resolver.js:1080:5
+  
+  
+  - Resolver.js:1080 
+    [frontend-main]/[enhanced-resolve]/lib/Resolver.js:1080:5
+  
+  
+  - Resolver.js:1080 
+    [frontend-main]/[enhanced-resolve]/lib/Resolver.js:1080:5
+  
+  
+  - Resolver.js:1080 
+    [frontend-main]/[enhanced-resolve]/lib/Resolver.js:1080:5
+  
+  
+  - Resolver.js:1080 
+    [frontend-main]/[enhanced-resolve]/lib/Resolver.js:1080:5
+  
+  
+  - Resolver.js:1080 
+    [frontend-main]/[enhanced-resolve]/lib/Resolver.js:1080:5
+  
+  
+  - Resolver.js:1080 
+    [frontend-main]/[enhanced-resolve]/lib/Resolver.js:1080:5
+  
+  
+  - Resolver.js:1080 
+    [frontend-main]/[enhanced-resolve]/lib/Resolver.js:1080:5
+  
+  
+  - DirectoryExistsPlugin.js:43 
+    [frontend-main]/[enhanced-resolve]/lib/DirectoryExistsPlugin.js:43:15
+  
+  - task_queues:89 process.processTicksAndRejections
+    node:internal/process/task_queues:89:21
+  
+  - child-compiler.js:211 
+    [frontend-main]/[html-webpack-plugin]/lib/child-compiler.js:211:18
+  
+  - Compiler.js:672 finalCallback
+    [frontend-main]/[webpack]/lib/Compiler.js:672:5
+  
+  - Compiler.js:708 
+    [frontend-main]/[webpack]/lib/Compiler.js:708:11
+  
+  - Compiler.js:1417 
+    [frontend-main]/[webpack]/lib/Compiler.js:1417:17
+  
+  
+  - Hook.js:21 Hook.CALL_ASYNC_DELEGATE [as _callAsync]
+    [frontend-main]/[tapable]/lib/Hook.js:21:14
+  
+  - Compiler.js:1413 
+    [frontend-main]/[webpack]/lib/Compiler.js:1413:33
+  
+  - Compilation.js:3278 finalCallback
+    [frontend-main]/[webpack]/lib/Compilation.js:3278:11
+  
+  - Compilation.js:3617 
+    [frontend-main]/[webpack]/lib/Compilation.js:3617:11
+  
+  
+  - Hook.js:21 Hook.CALL_ASYNC_DELEGATE [as _callAsync]
+    [frontend-main]/[tapable]/lib/Hook.js:21:14
+  
+  - Compilation.js:3610 
+    [frontend-main]/[webpack]/lib/Compilation.js:3610:38
+  
+  
+  - Compilation.js:691 
+    [frontend-main]/[webpack]/lib/Compilation.js:691:11
+  
+  - SourceMapDevToolPlugin.js:639 
+    [frontend-main]/[webpack]/lib/SourceMapDevToolPlugin.js:639:10
+  
+  - async.js:2830 
+    [frontend-main]/[neo-async]/async.js:2830:7
+  
+  - async.js:2857 Object.each
+    [frontend-main]/[neo-async]/async.js:2857:9
+  
+  - SourceMapDevToolPlugin.js:430 
+    [frontend-main]/[webpack]/lib/SourceMapDevToolPlugin.js:430:17
+  
+  - async.js:2830 
+    [frontend-main]/[neo-async]/async.js:2830:7
+  
+[39m[22m
+
+webpack compiled with [1m[31m5 errors[39m[22m

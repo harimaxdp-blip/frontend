@@ -9,10 +9,6 @@ import UploadMovie from "./pages/UploadMovie";
 import EditMovies from "./pages/EditMovies";
 import MoviePlayer from "./pages/MoviePlayer"; // NEW PLAYER PAGE
 
-<<<<<<< HEAD
-=======
-import IntroVideo from "./components/IntroVideo";
->>>>>>> e3141d289e8cdc1abfcf40fa600149e90e618c72
 import Loader from "./components/Loader";
 
 import logo from "./assets/logo1.png";
@@ -20,29 +16,11 @@ import "./App.css";
 
 function App() {
   const [open, setOpen] = useState(false);
-<<<<<<< HEAD
-=======
-  const [showIntro, setShowIntro] = useState(false);
->>>>>>> e3141d289e8cdc1abfcf40fa600149e90e618c72
   const [loading, setLoading] = useState(true);
 
   const location = useLocation();
   const navigate = useNavigate();
 
-<<<<<<< HEAD
-=======
-  // =========================
-  // INTRO ONLY ON FIRST LOAD
-  // =========================
-  useEffect(() => {
-    const hasSeenIntro = sessionStorage.getItem("introShown");
-
-    if (!hasSeenIntro) {
-      setShowIntro(true);
-      sessionStorage.setItem("introShown", "true");
-    }
-  }, []);
->>>>>>> e3141d289e8cdc1abfcf40fa600149e90e618c72
 
   // =========================
   // LOADER
@@ -121,16 +99,7 @@ function App() {
     return <Loader />;
   }
 
-<<<<<<< HEAD
   // (Intro video removed)
-=======
-  // =========================
-  // INTRO VIDEO
-  // =========================
-  if (showIntro) {
-    return <IntroVideo onFinish={() => setShowIntro(false)} />;
-  }
->>>>>>> e3141d289e8cdc1abfcf40fa600149e90e618c72
 
   return (
     <div className="app">
