@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import {
-  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   onAuthStateChanged,
 } from "firebase/auth";
 import { auth, provider } from "../firebase";
@@ -9,18 +10,27 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    console.log("🚀 Login Page Loaded");
-
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       console.log("🔥 AUTH STATE:", user);
 
       if (user) {
-        console.log("✅ USER LOGGED IN");
-        console.log("Email:", user.email);
-
-        alert("Login Success: " + user.email);
+        console.log("✅ USER LOGGED IN", user.email);
       }
     });
+
+    const checkRedirect = async () => {
+      try {
+        const result = await getRedirectResult(auth);
+
+        if (result?.user) {
+          console.log("✅ Redirect Success", result.user);
+        }
+      } catch (error) {
+        console.error(error);
+      }
+    };
+
+    checkRedirect();
 
     return () => unsubscribe();
   }, []);
@@ -28,13 +38,9 @@ export default function Login() {
   const handleGoogleLogin = async () => {
     try {
       setLoading(true);
-
-      const result = await signInWithPopup(auth, provider);
-
-      console.log("✅ SUCCESS", result.user);
-      alert("Login Success: " + result.user.email);
+      await signInWithRedirect(auth, provider);
     } catch (error) {
-      console.error("❌ LOGIN ERROR:", error);
+      console.error(error);
 
       alert(
         `Login Error\n\n${error.code}\n\n${error.message}`
@@ -53,7 +59,7 @@ export default function Login() {
           style={styles.logo}
         />
 
-        <h1 style={styles.title}>Welcome to MOV</h1>
+        <h1 style={styles.title}>Welcome to MOVie</h1>
 
         <p style={styles.subtitle}>
           Sign in with Google to continue
@@ -64,9 +70,7 @@ export default function Login() {
           style={styles.googleBtn}
           disabled={loading}
         >
-          {loading
-            ? "Loading..."
-            : "Continue with Google"}
+          {loading ? "Redirecting..." : "Continue with Google"}
         </button>
       </div>
     </div>
