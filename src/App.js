@@ -3,6 +3,8 @@ import { Routes, Route, useLocation, useNavigate } from "react-router-dom";
 import BannerManager from "./components/Bannermanager";
 import Sidebar from "./components/Sidebar";
 import { FaBars, FaSearch } from "react-icons/fa";
+
+import { App as CapacitorApp } from "@capacitor/app";
 import Banner from "./pages/Banner";
 import Home from "./pages/Home";
 import UploadMovie from "./pages/UploadMovie";
@@ -46,7 +48,23 @@ useEffect(() => {
 
   return () => unsubscribe();
 }, []);
-  
+  useEffect(() => {
+  const setupDeepLink = async () => {
+    await CapacitorApp.addListener("appUrlOpen", (event) => {
+      console.log("🔥 Deep Link Opened:", event.url);
+
+      if (event.url) {
+        navigate("/");
+      }
+    });
+  };
+
+  setupDeepLink();
+
+  return () => {
+    CapacitorApp.removeAllListeners();
+  };
+}, [navigate]);
   // =========================
   // ACTIVE PAGE DETECTION
   // =========================

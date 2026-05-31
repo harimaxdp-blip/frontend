@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "195315033727",
+    "project_id": "movi-f72fb",
+    "storage_bucket": "movi-f72fb.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:195315033727:android:78988a277af1b87896814a",
+        "android_client_info": {
+          "package_name": "com.harimovies.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "195315033727-6f28jclcc6vrfhi78gm0hg9r4u2mmcv9.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAQwGUv3JX8C4Cmr_0qDhNn8UAfo_q054U"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "195315033727-6f28jclcc6vrfhi78gm0hg9r4u2mmcv9.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
