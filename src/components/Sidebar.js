@@ -5,6 +5,11 @@ import "./Sidebar.css";
 export default function Sidebar({ active, close }) {
 
   const navigate = useNavigate();
+  const resetContentScroll = () => {
+    const content = document.querySelector(".content");
+    if (content) content.scrollTop = 0;
+    window.scrollTo(0, 0);
+  };
 
   const menu = [
     { name: "ALL", icon: <FaHome />, path: "/" },
@@ -20,8 +25,9 @@ export default function Sidebar({ active, close }) {
           key={item.name}
           className={`item ${active === item.name ? "active" : ""}`}
           onClick={() => {
-            window.scrollTo({ top: 0, behavior: "smooth" });
+            resetContentScroll();
             navigate(item.path);
+            requestAnimationFrame(resetContentScroll);
             close();
           }}
         >

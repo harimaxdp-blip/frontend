@@ -1,23 +1,28 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useLayoutEffect, useRef } from "react";
 import { Routes, Route, useLocation, useNavigate } from "react-router-dom";
-
+import BannerManager from "./components/Bannermanager";
 import Sidebar from "./components/Sidebar";
-import { FaBars } from "react-icons/fa";
-
+import { FaBars, FaSearch } from "react-icons/fa";
+import Banner from "./pages/Banner";
 import Home from "./pages/Home";
 import UploadMovie from "./pages/UploadMovie";
 import EditMovies from "./pages/EditMovies";
 import MoviePlayer from "./pages/MoviePlayer"; // NEW PLAYER PAGE
-
+import BottomNav from "./components/BottomNav";
 import Loader from "./components/Loader";
-
+import Login from "./pages/Login";
 import logo from "./assets/logo1.png";
 import "./App.css";
+import { auth } from "./firebase";
+import { onAuthStateChanged } from "firebase/auth";
+const CATEGORY_PATHS = new Set(["/", "/movies", "/series", "/anime"]);
 
 function App() {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(true);
-
+  const contentRef = useRef(null);
+  const previousPathRef = useRef(null);
+const [user, setUser] = useState(undefined);
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -33,6 +38,15 @@ function App() {
     return () => clearTimeout(timer);
   }, []);
 
+useEffect(() => {
+  const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+    setUser(currentUser);
+  });
+
+  return () => unsubscribe();
+}, []);
+
+  
   // =========================
   // ACTIVE PAGE DETECTION
   // =========================
@@ -50,6 +64,22 @@ function App() {
   };
 
   const active = getActive();
+
+  useLayoutEffect(() => {
+    const previousPath = previousPathRef.current;
+    const currentPath = location.pathname;
+    const isCategorySwitch =
+      CATEGORY_PATHS.has(currentPath) &&
+      CATEGORY_PATHS.has(previousPath) &&
+      previousPath !== currentPath;
+    const isInitialCategoryLoad = previousPath === null && CATEGORY_PATHS.has(currentPath);
+
+    if ((isInitialCategoryLoad || isCategorySwitch) && contentRef.current) {
+      contentRef.current.scrollTo({ top: 0, left: 0, behavior: "auto" });
+      window.scrollTo(0, 0);
+    }
+    previousPathRef.current = currentPath;
+  }, [location.pathname]);
 
   // =========================
   // NAVIGATION
@@ -98,7 +128,13 @@ function App() {
   if (loading) {
     return <Loader />;
   }
+if (user === undefined) {
+  return <Loader />;
+}
 
+if (!user) {
+  return <Login />;
+}
   // (Intro video removed)
 
   return (
@@ -107,22 +143,40 @@ function App() {
           TOPBAR (HIDDEN ON PLAYER)
       ========================= */}
       {!isPlayerPage && (
-        <div className="topbar">
-          <button
-            className="menu-btn"
-            onClick={() => setOpen(!open)}
-          >
-            <FaBars />
-          </button>
+<div className="topbar">
+  <button
+    className="menu-btn"
+    onClick={() => setOpen(!open)}
+  >
+    <FaBars />
+  </button>
 
-          <div className="logo-area">
-            <img
-              src={logo}
-              className="logo-img"
-              alt="logo"
-            />
-          </div>
-        </div>
+  <div className="logo-area">
+    <img
+      src={logo}
+      className="logo-img"
+      alt="logo"
+    />
+  </div>
+
+<button
+  className="search-btn"
+  onClick={() => {
+    navigate("/");
+
+    setTimeout(() => {
+      document.getElementById("search-input")?.focus();
+
+      document.getElementById("search-section")?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    }, 300);
+  }}
+>
+  <FaSearch />
+</button>
+</div>
       )}
 
       {/* =========================
@@ -152,6 +206,7 @@ function App() {
           PAGE CONTENT
       ========================= */}
       <div
+        ref={contentRef}
         className={`content ${
           open && !isPlayerPage ? "shift" : ""
         } ${isPlayerPage ? "player-mode" : ""}`}
@@ -162,13 +217,13 @@ function App() {
             path="/"
             element={<Home type="all" />}
           />
-
+<Route path="/banners" element={<BannerManager />} />
           {/* CATEGORY PAGES */}
           <Route
             path="/movies"
             element={<Home type="movie" />}
           />
-
+<Route path="/banner" element={<Banner />} />
           <Route
             path="/series"
             element={<Home type="series" />}
@@ -203,6 +258,7 @@ function App() {
           />
         </Routes>
       </div>
+      {!isPlayerPage && <BottomNav />}
     </div>
   );
 }

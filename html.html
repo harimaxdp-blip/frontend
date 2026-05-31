@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+
+<link rel="stylesheet"
+href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+<style>
+
+*{
+margin:0;
+padding:0;
+box-sizing:border-box;
+font-family:sans-serif;
+}
+
+body{
+background:#000;
+height:100vh;
+overflow:hidden;
+}
+
+/* NAVBAR */
+
+.bottom-nav{
+position:fixed;
+bottom:0;
+left:0;
+width:100%;
+height:85px;
+background:#242424;
+
+display:flex;
+justify-content:space-around;
+align-items:center;
+
+overflow:visible;
+z-index:100;
+}
+
+/* CENTER CUT */
+
+.bottom-nav::before{
+content:"";
+position:absolute;
+top:-35px;
+left:50%;
+transform:translateX(-50%);
+
+width:150px;
+height:70px;
+
+background:#000;
+border-radius:0 0 80px 80px;
+}
+
+/* FLOAT BUTTON */
+
+.fab{
+position:absolute;
+left:50%;
+top:-50px;
+transform:translateX(-50%);
+
+width:90px;
+height:90px;
+
+border-radius:50%;
+
+background:#ff156f;
+color:#000;
+
+display:flex;
+justify-content:center;
+align-items:center;
+
+font-size:50px;
+font-weight:bold;
+
+cursor:pointer;
+
+box-shadow:
+0 10px 30px rgba(255,21,111,.5);
+
+transition:.4s;
+animation:float 2s infinite ease-in-out;
+}
+
+.fab:hover{
+transform:translateX(-50%) scale(1.1) rotate(90deg);
+}
+
+@keyframes float{
+0%,100%{
+transform:translateX(-50%) translateY(0);
+}
+50%{
+transform:translateX(-50%) translateY(-8px);
+}
+}
+
+/* ITEMS */
+
+.nav-item{
+display:flex;
+flex-direction:column;
+align-items:center;
+justify-content:center;
+
+width:60px;
+
+cursor:pointer;
+
+color:#bdbdbd;
+
+transition:.35s;
+}
+
+.nav-item i{
+font-size:28px;
+transition:.35s;
+}
+
+.nav-item span{
+font-size:14px;
+margin-top:5px;
+opacity:0;
+transform:translateY(10px);
+transition:.35s;
+}
+
+/* ACTIVE */
+
+.nav-item.active{
+color:#00d26a;
+}
+
+.nav-item.active i{
+transform:scale(1.25);
+}
+
+.nav-item.active span{
+opacity:1;
+transform:translateY(0);
+}
+
+/* HOVER */
+
+.nav-item:hover{
+transform:translateY(-6px);
+color:#fff;
+}
+
+/* INDICATOR */
+
+.indicator{
+position:absolute;
+bottom:0;
+
+left:30px;
+
+width:60px;
+height:4px;
+
+background:#00d26a;
+border-radius:50px;
+
+transition:.4s;
+}
+
+</style>
+</head>
+
+<body>
+
+<div class="bottom-nav">
+
+<div class="indicator"></div>
+
+<div class="nav-item active">
+<i class="fa-solid fa-house"></i>
+<span>Home</span>
+</div>
+
+<div class="nav-item">
+<i class="fa-solid fa-magnifying-glass"></i>
+<span>Search</span>
+</div>
+
+<div class="fab">+</div>
+
+<div class="nav-item">
+<i class="fa-solid fa-user"></i>
+<span>Profile</span>
+</div>
+
+<div class="nav-item">
+<i class="fa-solid fa-gear"></i>
+<span>Settings</span>
+</div>
+
+</div>
+
+<script>
+
+const items=document.querySelectorAll('.nav-item');
+const indicator=document.querySelector('.indicator');
+
+items.forEach(item=>{
+
+item.addEventListener('click',()=>{
+
+document.querySelector('.active')
+.classList.remove('active');
+
+item.classList.add('active');
+
+indicator.style.left=
+(item.offsetLeft)+'px';
+
+});
+
+});
+
+</script>
+
+</body>
+</html>

@@ -12,18 +12,13 @@ import { App as CapacitorApp } from "@capacitor/app";
 // =========================
 const loadTorrentEngine = () => {
   return new Promise((resolve) => {
-    // Already loaded
-    if (window.WebTorrent) return resolve();
+    if (window.WebTorrent) {
+      resolve();
+      return;
+    }
 
-    // CSP
-    const meta = document.createElement("meta");
-    meta.httpEquiv = "Content-Security-Policy";
-    meta.content =
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net;";
-    document.head.appendChild(meta);
-
-    // Load WebTorrent
     const script = document.createElement("script");
+
     script.src =
       "https://cdn.jsdelivr.net/npm/webtorrent@latest/webtorrent.min.js";
 
@@ -44,7 +39,7 @@ const loadTorrentEngine = () => {
 };
 
 // =========================
-// 2. SEO & UI SETUP
+// SEO
 // =========================
 document.title = "HARI MOVIES";
 
@@ -52,7 +47,6 @@ document.title = "HARI MOVIES";
 // ICONS
 // =========================
 const setupIcons = () => {
-  // Favicon
   let favicon = document.querySelector("link[rel='icon']");
 
   if (!favicon) {
@@ -63,7 +57,6 @@ const setupIcons = () => {
 
   favicon.href = logo;
 
-  // Apple Icon
   let appleIcon = document.querySelector(
     "link[rel='apple-touch-icon']"
   );
@@ -84,8 +77,8 @@ setupIcons();
 // =========================
 const setMetaTag = (property, content, isName = false) => {
   const selector = isName
-    ? `meta[name='${property}']`
-    : `meta[property='${property}']`;
+    ? `meta[name="${property}"]`
+    : `meta[property="${property}"]`;
 
   let tag = document.querySelector(selector);
 
@@ -119,7 +112,6 @@ setMetaTag("og:image", logo);
 const fontLink = document.createElement("link");
 
 fontLink.rel = "stylesheet";
-
 fontLink.href =
   "https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined";
 
@@ -129,23 +121,20 @@ document.head.appendChild(fontLink);
 // ANDROID BACK BUTTON
 // =========================
 CapacitorApp.addListener("backButton", ({ canGoBack }) => {
-  // If not home page → go back
   if (window.location.hash !== "#/" && canGoBack) {
     window.history.back();
   } else {
-    // Prevent app exit on home
     console.log("Home page reached");
   }
 });
 
 // =========================
-// 3. RENDER APP
+// RENDER APP
 // =========================
 const root = ReactDOM.createRoot(
   document.getElementById("root")
 );
 
-// Load torrent engine first
 loadTorrentEngine().then(() => {
   root.render(
     <React.StrictMode>

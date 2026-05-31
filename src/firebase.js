@@ -1,12 +1,13 @@
 import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
+import { getAuth, GoogleAuthProvider } from "firebase/auth";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCt1MzAlWIUiO1_AudLepVSMikEWH255NY",
   authDomain: "movi-f72fb.firebaseapp.com",
   projectId: "movi-f72fb",
-  storageBucket: "movi-f72fb.appspot.com", // IMPORTANT FIX
+  storageBucket: "movi-f72fb.appspot.com",
   messagingSenderId: "195315033727",
   appId: "1:195315033727:web:20c4525c332f114496814a"
 };
@@ -15,3 +16,6 @@ const app = initializeApp(firebaseConfig);
 
 export const db = getFirestore(app);
 export const storage = getStorage(app);
+
+export const auth = getAuth(app);
+export const provider = new GoogleAuthProvider();

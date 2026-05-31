@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import Hls from "hls.js";
+import DeviceControl from "../plugins/deviceControl";
+
 import "./Movies2.css";
 import { ScreenOrientation } from "@capacitor/screen-orientation";
 import {
@@ -8,8 +10,8 @@ import {
   FaVolumeMute, FaVolumeUp, FaVolumeDown,
   FaStepForward, FaStepBackward,
   FaChevronLeft, FaRedo, FaUndo,
-  FaExclamationTriangle,
-  FaDownload,
+  FaExclamationTriangle, FaDownload,
+  FaLock, FaUnlock, FaSun, FaArrowsAlt,
 } from "react-icons/fa";
 
 // ─── Format helpers ───────────────────────────────────────────────────────────
@@ -27,39 +29,6 @@ function isCrossOrigin(url) {
   try { return new URL(url).origin !== window.location.origin; }
   catch { return false; }
 }
-
-// ─── Ad-block ────────────────────────────────────────────────────────────────
-const AD_DOMAINS = [
-  "doubleclick.net","googlesyndication.com","googletagmanager.com",
-  "googletagservices.com","adservice.google.com","adnxs.com",
-  "advertising.com","amazon-adsystem.com","moatads.com","scorecardresearch.com",
-  "quantserve.com","outbrain.com","taboola.com","popads.net","popcash.net",
-  "trafficjunky.net","exoclick.com","juicyads.com","hilltopads.net",
-  "propellerads.com","adsterra.com","clickadu.com","adcash.com",
-  "media.net","bidvertiser.com","revcontent.com","mgid.com","content.ad",
-];
-function isAdUrl(url) {
-  try {
-    const h = new URL(url).hostname;
-    return AD_DOMAINS.some(d => h === d || h.endsWith("." + d));
-  } catch { return false; }
-}
-const _origFetch = window.fetch;
-window.fetch = function(input, init) {
-  const url = typeof input === "string" ? input : (input?.url ?? "");
-  if (isAdUrl(url)) return Promise.resolve(new Response("", { status: 204 }));
-  return _origFetch.call(this, input, init);
-};
-const _origXHROpen = XMLHttpRequest.prototype.open;
-XMLHttpRequest.prototype.open = function(method, url, ...rest) {
-  if (isAdUrl(url)) { this._blocked = true; return; }
-  return _origXHROpen.call(this, method, url, ...rest);
-};
-const _origXHRSend = XMLHttpRequest.prototype.send;
-XMLHttpRequest.prototype.send = function(...args) {
-  if (this._blocked) return;
-  return _origXHRSend.apply(this, args);
-};
 
 // ─── Service Worker ───────────────────────────────────────────────────────────
 let swRegistered = false;
@@ -107,22 +76,6 @@ async function unlockOrientation() {
   try { await ScreenOrientation.unlock(); } catch {}
 }
 
-// ─── Ad overlay removal ───────────────────────────────────────────────────────
-function removeAdOverlays() {
-  const sels = [
-    '[class*="ad-"]','[class*="-ad"]','[id*="ad-"]','[id*="-ad"]',
-    '[class*="banner"]','[class*="popup"]',
-    'ins.adsbygoogle','iframe[src*="doubleclick"]','iframe[src*="googlesyndication"]',
-    'iframe[src*="adnxs"]','iframe[src*="exoclick"]','div[data-ad]',
-    '[class*="sponsor"]','[class*="promo"]',
-  ];
-  sels.forEach(sel =>
-    document.querySelectorAll(sel).forEach(el => {
-      if (!el.closest(".mp-card") && !el.closest("video")) el.remove();
-    })
-  );
-}
-
 // ─── Watch position storage ───────────────────────────────────────────────────
 function watchKey(title) {
   return `hm-pos-${(title || "unknown").replace(/\s+/g,"_").toLowerCase()}`;
@@ -154,8 +107,25 @@ function VolumeIcon({ muted, volume, size = 16 }) {
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const TOTAL_SECS = 5;
-const SAVE_EVERY = 5;
+const TOTAL_SECS         = 5;
+const SAVE_EVERY         = 5;
+const DESKTOP_HIDE_DELAY = 2500;
+const MOBILE_HIDE_DELAY  = 3500;
+const LOCK_BTN_SHOW_MS   = 2800;
+const GESTURE_THRESHOLD  = 12;
+const GESTURE_SENSITIVITY = 100 / 220;
+
+function detectMobile() {
+  return (
+    /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+    window.matchMedia("(pointer: coarse)").matches
+  );
+}
+
+function detectAndroidTV() {
+  const ua = navigator.userAgent || navigator.vendor || "";
+  return /Android.*TV|GoogleTV|AFT|SHIELD|BRAVIA|SmartTV|Android TV|NetCast|Tizen/i.test(ua);
+}
 
 // ══════════════════════════════════════════════════════════════════════════════
 //  MAIN COMPONENT
@@ -179,20 +149,35 @@ export default function MoviePlayer() {
   const hasNext        = isSeries && currentIndex < playlist.length - 1;
   const hasPrev        = isSeries && currentIndex > 0;
 
-  // ─── Refs ─────────────────────────────────────────────────────────────────
+  // ─── Core Refs ────────────────────────────────────────────────────────────
   const videoRef         = useRef(null);
   const containerRef     = useRef(null);
+  const viewportRef      = useRef(null);
   const hlsRef           = useRef(null);
   const mpegtsRef        = useRef(null);
   const countdownRef     = useRef(null);
   const endTriggeredRef  = useRef(false);
   const swReadyRef       = useRef(false);
   const controlsTimerRef = useRef(null);
-  const adObserverRef    = useRef(null);
+  const lockBtnTimerRef  = useRef(null);
   const progressTrackRef = useRef(null);
   const lastSaveRef      = useRef(0);
+  const focusRefs        = useRef({});
 
-  // ─── State ────────────────────────────────────────────────────────────────
+  // ─── Mobile / Gesture Refs ───────────────────────────────────────────────
+  const isMobileRef            = useRef(false);
+  const showControlsRef        = useRef(true);
+  const controlsBeforeTouchRef = useRef(true);
+  const isScrubbingRef         = useRef(false);
+  const lastTouchEndRef        = useRef(0);
+  const gestureRef             = useRef({
+    active: false, moved: false, type: null,
+    startX: 0, startY: 0, startValue: 0,
+  });
+  const gestureTimerRef = useRef(null);
+  const flashTimerRef   = useRef(null);
+
+  // ─── State ───────────────────────────────────────────────────────────────
   const [mode, setMode]                         = useState("loading");
   const [directUrl, setDirectUrl]               = useState("");
   const [iframeUrl, setIframeUrl]               = useState("");
@@ -204,14 +189,13 @@ export default function MoviePlayer() {
   const [isPlaying, setIsPlaying]               = useState(false);
   const [currentTime, setCurrentTime]           = useState(0);
   const [duration, setDuration]                 = useState(0);
-  const [volume, setVolume]                     = useState(1);
+  const [volume, setVolume]                     = useState(1.0);
   const [isMuted, setIsMuted]                   = useState(false);
   const [isBuffering, setIsBuffering]           = useState(false);
   const [isFullscreen, setIsFullscreen]         = useState(false);
 
   const [showControls, setShowControls]         = useState(true);
   const [showVolumeBar, setShowVolumeBar]       = useState(false);
-  const [focusedControl, setFocusedControl]     = useState("play");
   const [countdown, setCountdown]               = useState(null);
   const [seekPreview, setSeekPreview]           = useState(null);
   const [scrubPercent, setScrubPercent]         = useState(null);
@@ -219,23 +203,80 @@ export default function MoviePlayer() {
 
   const [resumeTime, setResumeTime]             = useState(0);
   const [showResumePrompt, setShowResumePrompt] = useState(false);
+  const [resumeActionLoading, setResumeActionLoading] = useState(null);
+
+  const [isMobile, setIsMobile]                 = useState(false);
+  const [isAndroidTV, setIsAndroidTV]           = useState(false);
+  const [tvCursorX, setTvCursorX]               = useState(50);
+  const [tvCursorY, setTvCursorY]               = useState(50);
+  const [brightness, setBrightness]             = useState(100);
+  const [isLocked, setIsLocked]                 = useState(false);
+  const [isStretched, setIsStretched]           = useState(false);
+  const [gestureOverlay, setGestureOverlay]     = useState(null);
+  const [playFlash, setPlayFlash]               = useState(null);
+  const [flashKey, setFlashKey]                 = useState(0);
+  const [showLockPeek, setShowLockPeek]         = useState(false);
+
+  // ─── TV focus state ───────────────────────────────────────────────────────
+  const [tvFocus, setTvFocus]     = useState("play");
+  const [epFocus, setEpFocus]     = useState(currentIndex);
+  const [epBarFocused, setEpBarFocused] = useState(false);
+
+  // ─── Register focus ref helper ────────────────────────────────────────────
+  const setFocusRef = useCallback((id) => (el) => {
+    if (el) focusRefs.current[id] = el;
+    else delete focusRefs.current[id];
+  }, []);
+  const focusId = useCallback((id) => {
+    setTvFocus(id);
+    const el = focusRefs.current[id];
+    if (el) el.focus({ preventScroll: false });
+  }, []);
+
+  useEffect(() => { showControlsRef.current = showControls; }, [showControls]);
+
+  // ─── isMobile detection ───────────────────────────────────────────────────
+  useEffect(() => {
+    const check = () => {
+      const m = detectMobile();
+      setIsMobile(m);
+      isMobileRef.current = m;
+    };
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+
+  useEffect(() => {
+    setIsAndroidTV(detectAndroidTV());
+  }, []);
+
+  useEffect(() => {
+    if (isAndroidTV && mode === "iframe") {
+      setTvCursorX(50);
+      setTvCursorY(50);
+    }
+  }, [isAndroidTV, mode]);
 
   // ─── Controls hide timer ──────────────────────────────────────────────────
   const resetControlsTimer = useCallback(() => {
     setShowControls(true);
     clearTimeout(controlsTimerRef.current);
-    controlsTimerRef.current = setTimeout(() => setShowControls(false), 3500);
+    if (isScrubbingRef.current) return;
+    const delay = isMobileRef.current ? MOBILE_HIDE_DELAY : DESKTOP_HIDE_DELAY;
+    controlsTimerRef.current = setTimeout(() => setShowControls(false), delay);
   }, []);
 
-  useEffect(() => { resetControlsTimer(); }, [isPlaying]); // eslint-disable-line
-
-  // ─── Ad observer ─────────────────────────────────────────────────────────
-  useEffect(() => {
-    removeAdOverlays();
-    adObserverRef.current = new MutationObserver(removeAdOverlays);
-    adObserverRef.current.observe(document.body, { childList: true, subtree: true });
-    return () => adObserverRef.current?.disconnect();
+  const handleRootTouchStart = useCallback(() => {
+    controlsBeforeTouchRef.current = showControlsRef.current;
+    if (!isMobileRef.current) {
+      setShowControls(true);
+      clearTimeout(controlsTimerRef.current);
+      controlsTimerRef.current = setTimeout(() => setShowControls(false), DESKTOP_HIDE_DELAY);
+    }
   }, []);
+
+  useEffect(() => { if (isPlaying && !isMobileRef.current) resetControlsTimer(); }, [isPlaying]); // eslint-disable-line
 
   // ─── Service Worker ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -249,20 +290,19 @@ export default function MoviePlayer() {
   useEffect(() => {
     const onFS = () => {
       const fs = !!(
-        document.fullscreenElement ||
-        document.webkitFullscreenElement ||
-        document.mozFullScreenElement ||
-        document.msFullscreenElement
+        document.fullscreenElement || document.webkitFullscreenElement ||
+        document.mozFullScreenElement || document.msFullscreenElement
       );
       setIsFullscreen(fs);
-      if (fs) lockLandscape(); else unlockOrientation();
+      if (fs) lockLandscape();
+      else { unlockOrientation(); setIsLocked(false); setShowLockPeek(false); }
     };
     const evts = ["fullscreenchange","webkitfullscreenchange","mozfullscreenchange","MSFullscreenChange"];
     evts.forEach(e => document.addEventListener(e, onFS));
     return () => evts.forEach(e => document.removeEventListener(e, onFS));
   }, []);
 
-  // ─── Destroy players ─────────────────────────────────────────────────────
+  // ─── Destroy players ──────────────────────────────────────────────────────
   const destroyPlayers = useCallback(() => {
     try { hlsRef.current?.destroy(); }    catch {} hlsRef.current    = null;
     try { mpegtsRef.current?.destroy(); } catch {} mpegtsRef.current = null;
@@ -279,6 +319,7 @@ export default function MoviePlayer() {
     setError(""); setDirectUrl(""); setIframeUrl(""); setPlayerEngine("");
     setCurrentTime(0); setDuration(0); setIsBuffering(false);
     setShowResumePrompt(false); setResumeTime(0);
+    setEpBarFocused(false); setTvFocus("play");
   }, [isSeries, playlist, destroyPlayers]);
 
   // ─── Auto-play countdown ──────────────────────────────────────────────────
@@ -286,48 +327,66 @@ export default function MoviePlayer() {
     if (!hasNext || countdownRef.current || endTriggeredRef.current) return;
     endTriggeredRef.current = true;
     setCountdown(TOTAL_SECS);
+    setTimeout(() => focusId("autoplay-now"), 80);
     countdownRef.current = setInterval(() => {
       setCountdown(prev => {
         if (prev <= 1) { clearInterval(countdownRef.current); countdownRef.current = null; return 0; }
         return prev - 1;
       });
     }, 1000);
-  }, [hasNext]);
+  }, [hasNext, focusId]);
 
   useEffect(() => { if (countdown === 0) goToEpisode(currentIndex + 1); }, [countdown]); // eslint-disable-line
 
   const cancelAutoPlay = useCallback(() => {
     clearInterval(countdownRef.current); countdownRef.current = null;
     setCountdown(null); endTriggeredRef.current = false;
-  }, []);
+    setTimeout(() => focusId("play"), 50);
+  }, [focusId]);
 
   // ─── Playback controls ────────────────────────────────────────────────────
-  function togglePlay() {
+  const showPlayFlash = useCallback((type) => {
+    clearTimeout(flashTimerRef.current);
+    setPlayFlash(type);
+    setFlashKey(k => k + 1);
+    flashTimerRef.current = setTimeout(() => setPlayFlash(null), 850);
+  }, []);
+
+  const togglePlay = useCallback(() => {
     const v = videoRef.current; if (!v) return;
-    if (v.paused) v.play().catch(() => {}); else v.pause();
-  }
-  function toggleMute() {
+    if (v.paused) { v.play().catch(() => {}); showPlayFlash("play"); }
+    else          { v.pause();               showPlayFlash("pause"); }
+    resetControlsTimer();
+  }, [showPlayFlash, resetControlsTimer]);
+
+  const toggleMute = useCallback(() => {
     const v = videoRef.current; if (!v) return;
     v.muted = !v.muted; setIsMuted(v.muted);
-  }
+  }, []);
   function setVolumeLevel(val) {
     const v = videoRef.current; if (!v) return;
     const vol = clamp(val); v.volume = vol; setVolume(vol);
-    if (vol === 0) v.muted = true; else if (v.muted) { v.muted = false; setIsMuted(false); }
-    setShowVolumeBar(true); clearTimeout(controlsTimerRef._volTimer);
+    if (vol === 0) v.muted = true;
+    else if (v.muted) { v.muted = false; setIsMuted(false); }
+    setShowVolumeBar(true);
+    clearTimeout(controlsTimerRef._volTimer);
     controlsTimerRef._volTimer = setTimeout(() => setShowVolumeBar(false), 2000);
+    DeviceControl.setVolume?.({ volume: vol }).catch(() => {});
   }
-  function seekBy(delta) {
+  const showSeekFn = useCallback((t) => {
+    setSeekPreview(t);
+    clearTimeout(controlsTimerRef._seekTimer);
+  }, []);
+
+  const seekBy = useCallback((delta) => {
     const v = videoRef.current; if (!v) return;
     v.currentTime = clamp(v.currentTime + delta, 0, v.duration || 0);
     showSeekFn(v.currentTime);
-  }
-  function showSeekFn(t) {
-    setSeekPreview(t); clearTimeout(controlsTimerRef._seekTimer);
-    controlsTimerRef._seekTimer = setTimeout(() => setSeekPreview(null), 1200);
-  }
+    setShowControls(true);
+    resetControlsTimer();
+  }, [showSeekFn, resetControlsTimer]);
 
-  async function toggleFullscreen() {
+  const toggleFullscreen = useCallback(async () => {
     const el = containerRef.current || document.documentElement;
     try {
       const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement ||
@@ -346,80 +405,365 @@ export default function MoviePlayer() {
         await unlockOrientation();
       }
     } catch (e) { console.warn("[FS]", e); }
-  }
+  }, []);
 
-  // ─── TV Remote / Keyboard ─────────────────────────────────────────────────
+  // ─── Resume handlers ──────────────────────────────────────────────────────
+  const handleResume = useCallback(() => {
+    const v = videoRef.current; if (!v || resumeActionLoading) return;
+    setResumeActionLoading("resume");
+    const seek = () => {
+      v.currentTime = resumeTime;
+      const finish = () => {
+        setShowResumePrompt(false);
+        setTvFocus("play");
+        setResumeActionLoading(null);
+      };
+      const onReady = () => finish();
+      v.addEventListener("playing", onReady, { once: true });
+      v.play().then(() => {
+        if (v.readyState >= 3) finish();
+      }).catch(() => {
+        v.removeEventListener("playing", onReady);
+        setResumeActionLoading(null);
+      });
+    };
+    if (v.readyState >= 1) seek();
+    else v.addEventListener("loadedmetadata", seek, { once: true });
+  }, [resumeTime, resumeActionLoading]);
+
+  const handleStartOver = useCallback(() => {
+    const v = videoRef.current; if (!v || resumeActionLoading) return;
+    setResumeActionLoading("startover");
+    clearPos(currentEpisode?.title);
+    v.currentTime = 0;
+    const finish = () => {
+      setShowResumePrompt(false);
+      setTvFocus("play");
+      setResumeActionLoading(null);
+    };
+    const onReady = () => finish();
+    v.addEventListener("playing", onReady, { once: true });
+    v.play().then(() => {
+      if (v.readyState >= 3) finish();
+    }).catch(() => {
+      v.removeEventListener("playing", onReady);
+      setResumeActionLoading(null);
+    });
+  }, [currentEpisode, resumeActionLoading]);
+
   useEffect(() => {
-    const CTRL_ORDER = ["prev", "rewind", "play", "forward", "next", "fullscreen"];
-    const onKey = (e) => {
-      if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
-      resetControlsTimer();
+    if (showResumePrompt) setTimeout(() => focusId("resume-btn"), 80);
+  }, [showResumePrompt, focusId]);
+
+  // ─── Lock peek ────────────────────────────────────────────────────────────
+  const triggerLockPeek = useCallback(() => {
+    setShowLockPeek(true);
+    clearTimeout(lockBtnTimerRef.current);
+    lockBtnTimerRef.current = setTimeout(() => setShowLockPeek(false), LOCK_BTN_SHOW_MS);
+  }, []);
+
+  useEffect(() => () => clearTimeout(lockBtnTimerRef.current), []);
+
+  // ══════════════════════════════════════════════════════════════════════════
+  //  GESTURE TOUCH HANDLERS
+  // ══════════════════════════════════════════════════════════════════════════
+
+  const handleGestureTouchStart = useCallback((e) => {
+    if (isLocked) { triggerLockPeek(); return; }
+    if (!isMobileRef.current) return;
+    const t = e.target;
+    if (
+      t.closest("button") || t.closest(".mp-track") ||
+      t.closest(".mp-ctrl-bar") || t.closest(".mp-ep-bar") ||
+      t.closest(".mp-header") || t.closest(".mp-top-right") ||
+      t.closest(".mp-resume-overlay") || t.closest(".mp-autoplay-bg")
+    ) return;
+    const touch = e.touches[0];
+    const isLeft = touch.clientX < window.innerWidth / 2;
+    const vidVol = videoRef.current
+      ? (videoRef.current.muted ? 0 : videoRef.current.volume * 100)
+      : volume * 100;
+    gestureRef.current = {
+      active: true, moved: false,
+      startX: touch.clientX, startY: touch.clientY,
+      side: isLeft ? "left" : "right",
+      type: isLeft ? "brightness" : "volume",
+      startValue: isLeft ? brightness : vidVol,
+    };
+  }, [isLocked, brightness, volume, triggerLockPeek]);
+
+  const handleGestureTouchMove = useCallback((e) => {
+    const g = gestureRef.current;
+    if (!g.active || isLocked || !isMobileRef.current) return;
+    const touch = e.touches[0];
+    const absDeltaX = Math.abs(touch.clientX - g.startX);
+    const deltaY    = g.startY - touch.clientY;
+    if (!g.moved) {
+      const absDeltaY = Math.abs(deltaY);
+      if (absDeltaY >= GESTURE_THRESHOLD && absDeltaY > absDeltaX * 1.5) g.moved = true;
+      else if (absDeltaX > 18) { g.active = false; return; }
+      else return;
+    }
+    if (isFullscreen) e.preventDefault();
+    const change = deltaY * GESTURE_SENSITIVITY;
+    if (g.type === "volume") {
+      const newPct = Math.max(0, Math.min(100, g.startValue + change));
+      const newVol = newPct / 100;
       const v = videoRef.current;
 
-      switch (e.key) {
-        case "ArrowLeft":
-          e.preventDefault();
-          if (mode === "direct" && v) seekBy(-10);
-          setFocusedControl(prev => CTRL_ORDER[Math.max(0, CTRL_ORDER.indexOf(prev) - 1)]);
-          break;
-        case "ArrowRight":
-          e.preventDefault();
-          if (mode === "direct" && v) seekBy(10);
-          setFocusedControl(prev => CTRL_ORDER[Math.min(CTRL_ORDER.length - 1, CTRL_ORDER.indexOf(prev) + 1)]);
-          break;
-        case "ArrowUp":
-          e.preventDefault();
-          if (v) setVolumeLevel(v.volume + 0.1);
-          break;
-        case "ArrowDown":
-          e.preventDefault();
-          if (v) setVolumeLevel(v.volume - 0.1);
-          break;
-        case "Enter":
-        case " ":
-          e.preventDefault();
-          activateFocused();
-          break;
-        case "MediaPlayPause":
-          e.preventDefault(); togglePlay(); break;
-        case "MediaRewind":
-          e.preventDefault(); if (v) seekBy(-10); break;
-        case "MediaFastForward":
-          e.preventDefault(); if (v) seekBy(30); break;
-        case "MediaStop":
-          e.preventDefault(); if (v) { v.pause(); v.currentTime = 0; } break;
-        case "MediaTrackNext":
-          e.preventDefault(); if (hasNext) goToEpisode(currentIndex + 1); break;
-        case "MediaTrackPrevious":
-          e.preventDefault(); if (hasPrev) goToEpisode(currentIndex - 1); break;
-        case "k": case "K": togglePlay(); break;
-        case "f": case "F": toggleFullscreen(); break;
-        case "m": case "M": toggleMute(); break;
-        case "Escape":
-        case "GoBack":
-        case "XF86Back":
-          e.preventDefault();
-          if (isFullscreen) toggleFullscreen(); else handleGoBack();
-          break;
-        default: break;
+      if (v) {
+        v.volume = newVol;
+        v.muted = newVol === 0;
+        setIsMuted(v.muted);
       }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [mode, isFullscreen, hasNext, hasPrev, currentIndex, focusedControl]); // eslint-disable-line
 
-  function activateFocused() {
-    const v = videoRef.current;
-    switch (focusedControl) {
+      setVolume(newVol);
+      DeviceControl.setVolume?.({ volume: newVol }).catch(() => {});
+      setGestureOverlay({ type: "volume", value: Math.round(newPct) });
+    } else {
+    const newBrightness = Math.max(10, Math.min(100, g.startValue + (change * 1.5)));
+      const nativeBrightness = newBrightness / 100;
+
+      setBrightness(newBrightness);
+      DeviceControl.setBrightness?.({ brightness: nativeBrightness }).catch(() => {});
+      setGestureOverlay({ type: "brightness", value: Math.round(newBrightness) });
+    }
+    clearTimeout(gestureTimerRef.current);
+  }, [isLocked, isFullscreen]);
+
+  const handleGestureTouchEnd = useCallback(() => {
+    const g = gestureRef.current;
+    lastTouchEndRef.current = Date.now();
+    if (isLocked) {
+      gestureRef.current = { ...gestureRef.current, active: false, moved: false };
+      return;
+    }
+    if (g.active && !g.moved && isMobileRef.current) {
+      if (controlsBeforeTouchRef.current) {
+        setShowControls(false);
+        clearTimeout(controlsTimerRef.current);
+      } else {
+        resetControlsTimer();
+      }
+    }
+    if (g.moved) {
+      gestureTimerRef.current = setTimeout(() => setGestureOverlay(null), 1600);
+    }
+    gestureRef.current = { ...gestureRef.current, active: false, moved: false };
+  }, [isLocked, resetControlsTimer]);
+
+  // Attach gesture listeners
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    viewport.addEventListener("touchstart", handleGestureTouchStart, { passive: true });
+    viewport.addEventListener("touchmove",  handleGestureTouchMove,  { passive: false });
+    viewport.addEventListener("touchend",   handleGestureTouchEnd,   { passive: true });
+    return () => {
+      viewport.removeEventListener("touchstart", handleGestureTouchStart);
+      viewport.removeEventListener("touchmove",  handleGestureTouchMove);
+      viewport.removeEventListener("touchend",   handleGestureTouchEnd);
+    };
+  }, [handleGestureTouchStart, handleGestureTouchMove, handleGestureTouchEnd]);
+
+  useEffect(() => () => clearTimeout(gestureTimerRef.current), []);
+  useEffect(() => () => clearTimeout(flashTimerRef.current), []);
+
+  useEffect(() => {
+    let cancelled = false;
+    DeviceControl.getStatus?.()
+      .then((status) => {
+        if (cancelled || !status) return;
+        if (typeof status.brightness === "number") {
+          setBrightness(Math.round(clamp(status.brightness) * 100));
+        }
+        if (typeof status.volume === "number") {
+          const nativeVolume = clamp(status.volume);
+          const v = videoRef.current;
+          if (v) {
+            v.volume = nativeVolume;
+            v.muted = nativeVolume === 0;
+          }
+          setVolume(nativeVolume);
+          setIsMuted(nativeVolume === 0);
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  const moveTvCursor = useCallback((dx, dy) => {
+    setTvCursorX((prev) => clamp(prev + dx, 3, 97));
+    setTvCursorY((prev) => clamp(prev + dy, 3, 97));
+  }, []);
+
+  const clickElementAtCursor = useCallback(() => {
+    if (!containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const x = rect.left + (tvCursorX / 100) * rect.width;
+    const y = rect.top + (tvCursorY / 100) * rect.height;
+    const target = document.elementFromPoint(x, y);
+    if (target && target !== containerRef.current) {
+      target.click?.();
+      target.focus?.();
+    }
+  }, [tvCursorX, tvCursorY]);
+
+  const activateMainControl = useCallback((id) => {
+    switch (id) {
+      case "back":       handleGoBack(); break;
       case "prev":       if (hasPrev) goToEpisode(currentIndex - 1); break;
-      case "rewind":     if (v) seekBy(-10); break;
+      case "rewind":     seekBy(-10); break;
       case "play":       togglePlay(); break;
-      case "forward":    if (v) seekBy(30); break;
+      case "forward":    seekBy(30); break;
       case "next":       if (hasNext) goToEpisode(currentIndex + 1); break;
+      case "mute":       toggleMute(); break;
       case "fullscreen": toggleFullscreen(); break;
       default: break;
     }
-  }
+  }, [handleGoBack, hasPrev, goToEpisode, currentIndex, seekBy, togglePlay, hasNext, toggleMute, toggleFullscreen]);
+
+  // ─── TV D-pad keyboard handler ────────────────────────────────────────────
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+      const key = e.key;
+
+      if (key === "Escape" || key === "GoBack" || key === "XF86Back") {
+        e.preventDefault();
+        if (epBarFocused) { setEpBarFocused(false); focusId("play"); return; }
+        if (countdown !== null) { cancelAutoPlay(); return; }
+        if (showResumePrompt) { handleStartOver(); return; }
+        if (isLocked) { setIsLocked(false); setShowLockPeek(false); setShowControls(true); return; }
+        if (isFullscreen) { toggleFullscreen(); return; }
+        handleGoBack(); return;
+      }
+
+      const isTvCursorMode = isAndroidTV && mode === "iframe" && countdown === null && !showResumePrompt;
+      if (isTvCursorMode) {
+        if (key === "ArrowLeft")  { e.preventDefault(); moveTvCursor(-8, 0); return; }
+        if (key === "ArrowRight") { e.preventDefault(); moveTvCursor(8, 0); return; }
+        if (key === "ArrowUp")    { e.preventDefault(); moveTvCursor(0, -8); return; }
+        if (key === "ArrowDown")  { e.preventDefault(); moveTvCursor(0, 8); return; }
+        if (key === "Enter" || key === " ") { e.preventDefault(); clickElementAtCursor(); return; }
+      }
+
+      if (isLocked) return;
+
+      if (key === "MediaPlayPause")     { e.preventDefault(); togglePlay(); return; }
+      if (key === "MediaRewind")        { e.preventDefault(); seekBy(-10); return; }
+      if (key === "MediaFastForward")   { e.preventDefault(); seekBy(30); return; }
+      if (key === "MediaStop")          { e.preventDefault(); const v=videoRef.current; if(v){v.pause();v.currentTime=0;} return; }
+      if (key === "MediaTrackNext")     { e.preventDefault(); if(hasNext) goToEpisode(currentIndex+1); return; }
+      if (key === "MediaTrackPrevious") { e.preventDefault(); if(hasPrev) goToEpisode(currentIndex-1); return; }
+
+      if (key === "ArrowUp" && !epBarFocused) {
+        e.preventDefault(); setVolumeLevel((videoRef.current?.volume ?? 1) + 0.1); resetControlsTimer(); return;
+      }
+      if (key === "ArrowDown" && !epBarFocused) {
+        e.preventDefault(); setVolumeLevel((videoRef.current?.volume ?? 1) - 0.1); resetControlsTimer(); return;
+      }
+
+      if (showResumePrompt) {
+        if (key === "ArrowLeft" || key === "ArrowRight") { e.preventDefault(); focusId(tvFocus === "resume-btn" ? "startover-btn" : "resume-btn"); }
+        if (key === "Enter" || key === " ") { e.preventDefault(); if (tvFocus === "resume-btn") handleResume(); else if (tvFocus === "startover-btn") handleStartOver(); }
+        return;
+      }
+
+      if (countdown !== null) {
+        if (key === "ArrowLeft" || key === "ArrowRight") { e.preventDefault(); focusId(tvFocus === "autoplay-now" ? "autoplay-cancel" : "autoplay-now"); }
+        if (key === "Enter" || key === " ") { e.preventDefault(); if (tvFocus === "autoplay-now") { cancelAutoPlay(); goToEpisode(currentIndex + 1); } else if (tvFocus === "autoplay-cancel") cancelAutoPlay(); }
+        return;
+      }
+
+      if (epBarFocused && isSeries) {
+        if (key === "ArrowLeft") {
+          e.preventDefault();
+          const next = Math.max(0, epFocus - 1); setEpFocus(next);
+          const el = focusRefs.current[`ep-${next}`];
+          if (el) { el.focus(); el.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" }); }
+          return;
+        }
+        if (key === "ArrowRight") {
+          e.preventDefault();
+          const next = Math.min(playlist.length - 1, epFocus + 1); setEpFocus(next);
+          const el = focusRefs.current[`ep-${next}`];
+          if (el) { el.focus(); el.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" }); }
+          return;
+        }
+        if (key === "ArrowUp") { e.preventDefault(); setEpBarFocused(false); focusId("play"); return; }
+        if (key === "Enter" || key === " ") { e.preventDefault(); goToEpisode(epFocus); return; }
+        return;
+      }
+
+      if (key === "ArrowDown" && isSeries) {
+        e.preventDefault();
+        setEpBarFocused(true); setEpFocus(currentIndex);
+        const el = focusRefs.current[`ep-${currentIndex}`];
+        if (el) { el.focus(); el.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" }); }
+        return;
+      }
+
+      const mainOrder = [
+        "back",
+        ...(hasPrev ? ["prev"] : []),
+        "rewind", "play", "forward",
+        ...(hasNext ? ["next"] : []),
+        "mute", "fullscreen",
+      ];
+
+      if (key === "ArrowLeft") {
+        e.preventDefault(); resetControlsTimer();
+        const idx = mainOrder.indexOf(tvFocus);
+        if (idx > 0) focusId(mainOrder[idx - 1]); else seekBy(-10);
+        return;
+      }
+      if (key === "ArrowRight") {
+        e.preventDefault(); resetControlsTimer();
+        const idx = mainOrder.indexOf(tvFocus);
+        if (idx < mainOrder.length - 1) focusId(mainOrder[idx + 1]); else seekBy(30);
+        return;
+      }
+
+      if (key === "Enter" || key === " ") { e.preventDefault(); activateMainControl(tvFocus); resetControlsTimer(); return; }
+      if (key === "k" || key === "K") togglePlay();
+      if (key === "f" || key === "F") toggleFullscreen();
+      if (key === "m" || key === "M") toggleMute();
+    };
+
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [
+    activateMainControl,
+    cancelAutoPlay,
+    clickElementAtCursor,
+    currentIndex,
+    countdown,
+    epBarFocused,
+    epFocus,
+      toggleMute,
+    focusId,
+    goToEpisode,
+    handleGoBack,
+    handleStartOver,
+    handleResume,
+    isAndroidTV,
+    isFullscreen,
+    isLocked,
+    isSeries,
+    hasNext,
+    hasPrev,
+    mode,
+    moveTvCursor,
+    resetControlsTimer,
+    seekBy,
+    showResumePrompt,
+    toggleFullscreen,
+    togglePlay,
+    tvFocus,
+    playlist?.length,
+  ]);
+  
 
   // ─── Scrub bar ────────────────────────────────────────────────────────────
   const getPct = useCallback((e) => {
@@ -433,14 +777,21 @@ export default function MoviePlayer() {
     const v = videoRef.current; if (!v || !isFinite(v.duration)) return;
     const t = pct * v.duration;
     try { v.currentTime = t; } catch {}
-    setScrubPercent(pct * 100); setSeekPreview(t);
+    setScrubPercent(pct * 100);
+    setCurrentTime(t);
+    setSeekPreview(t);
   }, []);
 
   const onScrubStart = useCallback((e) => {
-    e.preventDefault(); resetControlsTimer(); setIsScrubbing(true);
+    e.preventDefault();
+    isScrubbingRef.current = true;
+    clearTimeout(controlsTimerRef.current);
+    clearTimeout(controlsTimerRef._seekTimer);
+    setShowControls(true);
+    setIsScrubbing(true);
     const pct = getPct(e); if (pct !== null) applySeek(pct);
     try { progressTrackRef.current?.setPointerCapture(e.pointerId); } catch {}
-  }, [resetControlsTimer, getPct, applySeek]);
+  }, [getPct, applySeek]);
 
   const onScrubMove = useCallback((e) => {
     if (!isScrubbing) return;
@@ -449,32 +800,61 @@ export default function MoviePlayer() {
 
   const onScrubEnd = useCallback((e) => {
     if (!isScrubbing) return;
+    isScrubbingRef.current = false;
     setIsScrubbing(false); setScrubPercent(null);
-    setTimeout(() => setSeekPreview(null), 800);
+    setShowControls(true);
+    resetControlsTimer();
     try { progressTrackRef.current?.releasePointerCapture(e.pointerId); } catch {}
-  }, [isScrubbing]);
+  }, [isScrubbing, resetControlsTimer]);
 
   const onTouchScrubStart = useCallback((e) => {
-    e.preventDefault(); resetControlsTimer(); setIsScrubbing(true);
+    e.preventDefault();
+    isScrubbingRef.current = true;
+    clearTimeout(controlsTimerRef.current);
+    clearTimeout(controlsTimerRef._seekTimer);
+    setShowControls(true);
+    setIsScrubbing(true);
     const pct = getPct(e.touches[0]); if (pct !== null) applySeek(pct);
-  }, [resetControlsTimer, getPct, applySeek]);
+  }, [getPct, applySeek]);
   const onTouchScrubMove = useCallback((e) => {
     e.preventDefault(); if (!isScrubbing) return;
     const pct = getPct(e.touches[0]); if (pct !== null) applySeek(pct);
   }, [isScrubbing, getPct, applySeek]);
   const onTouchScrubEnd = useCallback(() => {
+    isScrubbingRef.current = false;
     setIsScrubbing(false); setScrubPercent(null);
-    setTimeout(() => setSeekPreview(null), 800);
-  }, []);
+    setShowControls(true);
+    resetControlsTimer();
+  }, [resetControlsTimer]);
 
-  const onProgressKey = useCallback((e) => {
-    const v = videoRef.current; if (!v) return;
-    const dur = v.duration || 0;
-    if (e.key === "ArrowLeft")  { e.preventDefault(); v.currentTime = Math.max(0, v.currentTime - 5); showSeekFn(v.currentTime); }
-    if (e.key === "ArrowRight") { e.preventDefault(); v.currentTime = Math.min(dur, v.currentTime + 5); showSeekFn(v.currentTime); }
-    if (e.key === "Home")       { e.preventDefault(); v.currentTime = 0; }
-    if (e.key === "End")        { e.preventDefault(); v.currentTime = dur; }
-  }, []);
+const onProgressKey = useCallback((e) => {
+  const v = videoRef.current;
+  if (!v) return;
+
+  const dur = v.duration || 0;
+
+  if (e.key === "ArrowLeft") {
+    e.preventDefault();
+    v.currentTime = Math.max(0, v.currentTime - 5);
+    showSeekFn(v.currentTime);
+  }
+
+  if (e.key === "ArrowRight") {
+    e.preventDefault();
+    v.currentTime = Math.min(dur, v.currentTime + 5);
+    showSeekFn(v.currentTime);
+  }
+
+  if (e.key === "Home") {
+    e.preventDefault();
+    v.currentTime = 0;
+  }
+
+  if (e.key === "End") {
+    e.preventDefault();
+    v.currentTime = dur;
+  }
+}, [showSeekFn]);
 
   // ─── Source discovery ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -492,7 +872,14 @@ export default function MoviePlayer() {
           setIframeUrl(`https://www.youtube-nocookie.com/embed/${yt[1]}?autoplay=1&modestbranding=1&rel=0&enablejsapi=1`);
           setMode("iframe"); setPlayerEngine("iframe"); setLoading(false); return;
         }
-        if (FORMAT_DIRECT_RE.test(url) || FORMAT_DASH_RE.test(url)) {
+        function isStreamUrl(url) {
+  return /download\.php.*stream=1/i.test(url);
+}
+        if (
+  FORMAT_DIRECT_RE.test(url) ||
+  FORMAT_DASH_RE.test(url) ||
+  isStreamUrl(url)
+) {
           if (cancelled) return;
           setDirectUrl(url); setMode("direct"); return;
         }
@@ -534,26 +921,17 @@ export default function MoviePlayer() {
     const saved = loadPos(currentEpisode?.title);
     if (saved > 10) { setResumeTime(saved); setShowResumePrompt(true); }
 
-    // ── HLS ──
     if (FORMAT_HLS_RE.test(directUrl)) {
       if (Hls.isSupported()) {
         const hls = new Hls({
-          enableWorker: true,
-          lowLatencyMode: false,
-          maxBufferLength: 60,
-          maxMaxBufferLength: 120,
-          maxBufferSize: 60 * 1000 * 1000,
-          maxBufferHole: 0.5,
-          highBufferWatchdogPeriod: 2,
-          nudgeOffset: 0.2,
-          nudgeMaxRetry: 5,
-          startFragPrefetch: true,
-          fragLoadingTimeOut: 20000,
-          manifestLoadingTimeOut: 15000,
+          enableWorker: true, lowLatencyMode: false,
+          maxBufferLength: 60, maxMaxBufferLength: 120,
+          maxBufferSize: 60 * 1000 * 1000, maxBufferHole: 0.5,
+          highBufferWatchdogPeriod: 2, nudgeOffset: 0.2, nudgeMaxRetry: 5,
+          startFragPrefetch: true, fragLoadingTimeOut: 20000, manifestLoadingTimeOut: 15000,
         });
         hlsRef.current = hls;
-        hls.loadSource(directUrl);
-        hls.attachMedia(video);
+        hls.loadSource(directUrl); hls.attachMedia(video);
         hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}));
         hls.on(Hls.Events.ERROR, (_, d) => {
           if (d.fatal) {
@@ -569,7 +947,6 @@ export default function MoviePlayer() {
       return;
     }
 
-    // ── FLV / MPEG-TS ──
     if ((FORMAT_FLV_RE.test(directUrl) || FORMAT_TS_RE.test(directUrl)) && !isCrossOrigin(directUrl)) {
       loadMpegts().then(mpegts => {
         if (!mpegts.isSupported()) throw new Error("MSE unsupported");
@@ -583,14 +960,13 @@ export default function MoviePlayer() {
       return;
     }
 
-    // ── Native ──
     if (swReadyRef.current && isCrossOrigin(directUrl)) video.crossOrigin = "anonymous";
     else video.removeAttribute("crossOrigin");
     video.src = directUrl; video.load(); video.play().catch(() => {});
     setPlayerEngine(FORMAT_MKV_RE.test(directUrl) ? "MKV" : (getExtension(directUrl).toUpperCase() || "Native"));
   }, [mode, directUrl, swStatus]); // eslint-disable-line
 
-  // ─── iframe postMessage for auto-play next episode ────────────────────────
+  // ─── iframe postMessage ───────────────────────────────────────────────────
   useEffect(() => {
     if (mode !== "iframe" || !hasNext) return;
     const onMsg = (e) => {
@@ -605,11 +981,12 @@ export default function MoviePlayer() {
     return () => window.removeEventListener("message", onMsg);
   }, [mode, hasNext, startAutoPlayCountdown]);
 
-  // ─── Cleanup on unmount ───────────────────────────────────────────────────
+  // ─── Cleanup ──────────────────────────────────────────────────────────────
   useEffect(() => () => {
     destroyPlayers();
     clearInterval(countdownRef.current);
     clearTimeout(controlsTimerRef.current);
+    clearTimeout(lockBtnTimerRef.current);
     unlockOrientation();
   }, []); // eslint-disable-line
 
@@ -654,29 +1031,26 @@ export default function MoviePlayer() {
     };
   }, [mode, currentEpisode]); // eslint-disable-line
 
-  // ─── Resume handlers ──────────────────────────────────────────────────────
-  const handleResume = useCallback(() => {
-    const v = videoRef.current; if (!v) return;
-    const seek = () => { v.currentTime = resumeTime; v.play().catch(() => {}); setShowResumePrompt(false); };
-    if (v.readyState >= 1) seek();
-    else v.addEventListener("loadedmetadata", seek, { once: true });
-  }, [resumeTime]);
-
-  const handleStartOver = useCallback(() => {
-    const v = videoRef.current; if (!v) return;
-    clearPos(currentEpisode?.title);
-    v.currentTime = 0; v.play().catch(() => {}); setShowResumePrompt(false);
-  }, [currentEpisode]);
-
   // ─── Derived values ───────────────────────────────────────────────────────
   const episodeLabel = isSeries
     ? currentEpisode?.episode
       ? `S${currentEpisode.season ?? 1} · E${currentEpisode.episode}`
       : `Episode ${currentIndex + 1} of ${playlist.length}`
     : null;
-  const progress   = duration > 0 ? (currentTime / duration) * 100 : 0;
-  const displayPct = scrubPercent !== null ? scrubPercent : progress;
-  const ringOffset = countdown !== null ? ((TOTAL_SECS - countdown) / TOTAL_SECS) * 125.7 : 0;
+  const showTvCursor = isAndroidTV && mode === "iframe";
+  const progress    = duration > 0 ? (currentTime / duration) * 100 : 0;
+  const displayPct  = scrubPercent !== null ? scrubPercent : progress;
+  const ringOffset  = countdown !== null ? ((TOTAL_SECS - countdown) / TOTAL_SECS) * 125.7 : 0;
+  const isFocused   = (id) => tvFocus === id;
+
+  const gestureBarHeight = gestureOverlay
+    ? gestureOverlay.type === "brightness"
+      ? Math.min(100, Math.max(0, gestureOverlay.value))
+      : Math.min(100, Math.max(0, gestureOverlay.value))
+    : 0;
+
+  const lockAvailable = isFullscreen && isMobile && mode === "direct" &&
+    !showResumePrompt && countdown === null;
 
   // ══════════════════════════════════════════════════════════════════════════
   //  RENDER
@@ -685,20 +1059,22 @@ export default function MoviePlayer() {
     <div
       ref={containerRef}
       className="mp-root"
-      onMouseMove={resetControlsTimer}
-      onTouchStart={resetControlsTimer}
-      onClick={resetControlsTimer}
+      onMouseMove={() => { if (!isMobileRef.current) resetControlsTimer(); }}
+      onTouchStart={handleRootTouchStart} 
+      onClick={() => { if (!isMobileRef.current && !isLocked) resetControlsTimer(); }}
     >
-      <div className="mp-card">
+      <div className={`mp-card${isLocked ? " mp-locked" : ""}`}>
 
         {/* ══ HEADER ══ */}
-        <div className={`mp-header ${showControls ? "ctrl-show" : "ctrl-hide"}`}>
+        <div className={`mp-header ${showControls && !isLocked ? "ctrl-show" : "ctrl-hide"}`}>
           <button
-            className="mp-back-btn"
+            ref={setFocusRef("back")}
+            className={`mp-back-btn${isFocused("back") && !showResumePrompt && countdown === null ? " tv-focus" : ""}`}
             onClick={e => { e.stopPropagation(); handleGoBack(); }}
+            onFocus={() => { setTvFocus("back"); resetControlsTimer(); }}
             type="button"
           >
-            <FaChevronLeft size={13} />
+            <FaChevronLeft size={12} />
             <span>Back</span>
           </button>
 
@@ -714,14 +1090,21 @@ export default function MoviePlayer() {
         {/* ══ VIEWPORT ══ */}
         <div
           className="mp-viewport"
-          onClick={() => { if (mode === "direct") { togglePlay(); resetControlsTimer(); } }}
+          ref={viewportRef}
+          onClick={(e) => {
+            if (isLocked) return;
+            if (Date.now() - lastTouchEndRef.current < 400) return;
+            if (mode === "direct") { togglePlay(); resetControlsTimer(); }
+          }}
         >
 
           {/* Initial loader */}
           {loading && (
             <div className="mp-loader">
               <div className="mp-spinner"><div/><div/><div/><div/></div>
-              <p className="mp-loader-text">{playerEngine ? `Loading · ${playerEngine}` : "Loading…"}</p>
+              <p className="mp-loader-text">
+                {playerEngine ? `${playerEngine} · Loading` : "Loading"}
+              </p>
             </div>
           )}
 
@@ -742,67 +1125,168 @@ export default function MoviePlayer() {
               x5-playsinline="true"
               x5-video-player-type="h5"
               x5-video-orientation="landscape"
+              style={{ objectFit: isStretched ? "cover" : "contain" }}
               onCanPlay={() => { setLoading(false); setError(""); setIsBuffering(false); }}
-              onError={e => {
-                const code = e.target?.error?.code;
-                const msg = {
-                  1: "Playback aborted.",
-                  2: "Network error — check connection.",
-                  3: "Decoding failed — unsupported codec.",
-                  4: FORMAT_MKV_RE.test(directUrl)
-                    ? swReadyRef.current ? "MKV unsupported codec (HEVC/H.265)." : "MKV blocked by CORS."
-                    : "Format not supported.",
-                }[code] ?? "Playback error.";
-                setError(msg); setLoading(false);
-              }}
+              onError={async e => {
+  const code = e.target?.error?.code;
+
+  if (code === 4 && directUrl) {
+    try {
+      await DeviceControl.openExoPlayer({
+        url: directUrl
+      });
+      return;
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  const msg = {
+    1: "Playback aborted.",
+    2: "Network error.",
+    3: "Decoding failed.",
+    4: "Format not supported."
+  }[code] ?? "Playback error.";
+
+  setError(msg);
+  setLoading(false);
+}}
             />
           )}
 
-          {/* ── Center controls overlay ── */}
-          {mode === "direct" && showControls && !showResumePrompt && (
-            <div className="mp-center-controls" onClick={e => e.stopPropagation()}>
+          {/* ── Center play/pause flash ── */}
+          {playFlash && !isLocked && (
+            <div className="mp-play-flash" key={flashKey}>
+              <div className="mp-play-flash-ring" />
+              <div className="mp-play-flash-icon">
+                {playFlash === "play" ? <FaPlay size={28} /> : <FaPause size={28} />}
+              </div>
+            </div>
+          )}
 
+          {/* ── Center controls overlay ── */}
+          {mode === "direct" && (showControls || isScrubbing) && !isLocked && !showResumePrompt && countdown === null && (
+            <div className="mp-center-controls" onClick={e => e.stopPropagation()}>
+              {hasPrev && (
+                <button
+                  ref={setFocusRef("prev")}
+                  className={`mp-ovr-btn mp-ovr-side${isFocused("prev") ? " tv-focus" : ""}`}
+                  onClick={() => goToEpisode(currentIndex - 1)}
+                  onFocus={() => { setTvFocus("prev"); resetControlsTimer(); }}
+                  title="Previous Episode"
+                >
+                  <FaStepBackward size={16} />
+                  <span className="mp-ovr-label">Prev</span>
+                </button>
+              )}
               <button
-                className={`mp-ovr-btn mp-ovr-side${focusedControl === "rewind" ? " tv-focus" : ""}`}
-                onClick={() => hasPrev ? goToEpisode(currentIndex - 1) : seekBy(-10)}
-                onFocus={() => setFocusedControl("rewind")}
+                ref={setFocusRef("rewind")}
+                className={`mp-ovr-btn mp-ovr-side${isFocused("rewind") ? " tv-focus" : ""}`}
+                onClick={() => { seekBy(-10); resetControlsTimer(); }}
+                onFocus={() => { setTvFocus("rewind"); resetControlsTimer(); }}
                 title="Rewind 10s"
               >
-                <FaUndo size={18} />
+                <FaUndo size={17} />
                 <span className="mp-ovr-label">10s</span>
               </button>
-
               <button
-                className={`mp-ovr-btn mp-ovr-play${focusedControl === "play" ? " tv-focus" : ""}`}
-                onClick={() => { togglePlay(); resetControlsTimer(); }}
-                onFocus={() => setFocusedControl("play")}
+                ref={setFocusRef("play")}
+                className={`mp-ovr-btn mp-ovr-play${isFocused("play") ? " tv-focus" : ""}`}
+                onClick={e => { e.stopPropagation(); togglePlay(); }}
+                onFocus={() => { setTvFocus("play"); resetControlsTimer(); }}
                 title={isPlaying ? "Pause" : "Play"}
               >
                 {isPlaying ? <FaPause size={26} /> : <FaPlay size={26} />}
               </button>
-
               <button
-                className={`mp-ovr-btn mp-ovr-side${focusedControl === "forward" ? " tv-focus" : ""}`}
-                onClick={() => hasNext ? goToEpisode(currentIndex + 1) : seekBy(30)}
-                onFocus={() => setFocusedControl("forward")}
+                ref={setFocusRef("forward")}
+                className={`mp-ovr-btn mp-ovr-side${isFocused("forward") ? " tv-focus" : ""}`}
+                onClick={() => { seekBy(30); resetControlsTimer(); }}
+                onFocus={() => { setTvFocus("forward"); resetControlsTimer(); }}
                 title="Forward 30s"
               >
-                <FaRedo size={18} />
+                <FaRedo size={17} />
                 <span className="mp-ovr-label">30s</span>
               </button>
+              {hasNext && (
+                <button
+                  ref={setFocusRef("next")}
+                  className={`mp-ovr-btn mp-ovr-side${isFocused("next") ? " tv-focus" : ""}`}
+                  onClick={() => goToEpisode(currentIndex + 1)}
+                  onFocus={() => { setTvFocus("next"); resetControlsTimer(); }}
+                  title="Next Episode"
+                >
+                  <FaStepForward size={16} />
+                  <span className="mp-ovr-label">Next</span>
+                </button>
+              )}
             </div>
           )}
 
-          {/* ── Top-right buttons ── */}
+          {/* ══ TOP-RIGHT: Lock · Mute · Fullscreen ══ */}
           {mode === "direct" && (
-            <div className={`mp-top-right ${showControls ? "ctrl-show" : "ctrl-hide"}`} onClick={e => e.stopPropagation()}>
-              <button className="mp-corner-btn" onClick={toggleMute} title={isMuted ? "Unmute" : "Mute"}>
-                <VolumeIcon muted={isMuted} volume={volume} size={14} />
-              </button>
+            <div
+              className={`mp-top-right ${(showControls || isScrubbing) && !isLocked ? "ctrl-show" : "ctrl-hide"}`}
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Lock button — mobile fullscreen only */}
+              {lockAvailable && (
+                <button
+                  className={[
+                    "mp-corner-btn",
+                    "mp-corner-btn--lock",
+                    isLocked    ? "mp-corner-btn--lock-active" : "",
+                    showLockPeek && isLocked ? "mp-corner-btn--lock-peek" : "",
+                  ].filter(Boolean).join(" ")}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (isLocked) {
+                      setIsLocked(false);
+                      setShowLockPeek(false);
+                      clearTimeout(lockBtnTimerRef.current);
+                      resetControlsTimer();
+                    } else {
+                      setIsLocked(true);
+                      setShowControls(false);
+                      clearTimeout(controlsTimerRef.current);
+                    }
+                  }}
+                  title={isLocked ? "Unlock controls" : "Lock controls"}
+                >
+                  {isLocked ? <FaUnlock size={14} /> : <FaLock size={13} />}
+                </button>
+              )}
+
+              {/* Stretch/Zoom */}
+              {mode === "direct" && (
+                <button
+                  ref={setFocusRef("stretch")}
+                  className={`mp-corner-btn${isStretched ? " mp-corner-btn--active" : ""}${isFocused("stretch") && !showResumePrompt && countdown === null ? " tv-focus" : ""}`}
+                  onClick={() => { setIsStretched(!isStretched); resetControlsTimer(); }}
+                  onFocus={() => { setTvFocus("stretch"); resetControlsTimer(); }}
+                  title={isStretched ? "Fit to screen" : "Stretch to fill"}
+                >
+                  <FaArrowsAlt size={14} />
+                </button>
+              )}
+
+              {/* Mute */}
               <button
-                className={`mp-corner-btn${focusedControl === "fullscreen" ? " tv-focus" : ""}`}
+                ref={setFocusRef("mute")}
+                className={`mp-corner-btn${isFocused("mute") && !showResumePrompt && countdown === null ? " tv-focus" : ""}`}
+                onClick={toggleMute}
+                onFocus={() => { setTvFocus("mute"); resetControlsTimer(); }}
+                title={isMuted ? "Unmute" : "Mute"}
+              >
+                <VolumeIcon muted={isMuted} volume={volume} size={15} />
+              </button>
+
+              {/* Fullscreen */}
+              <button
+                ref={setFocusRef("fullscreen")}
+                className={`mp-corner-btn${isFocused("fullscreen") && !showResumePrompt && countdown === null ? " tv-focus" : ""}`}
                 onClick={() => { toggleFullscreen(); resetControlsTimer(); }}
-                onFocus={() => setFocusedControl("fullscreen")}
+                onFocus={() => { setTvFocus("fullscreen"); resetControlsTimer(); }}
                 title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
               >
                 {isFullscreen ? <FaCompress size={14} /> : <FaExpand size={14} />}
@@ -810,7 +1294,33 @@ export default function MoviePlayer() {
             </div>
           )}
 
+          {/* ══ LOCKED PEEK: isolated lock button ══ */}
+          {isLocked && showLockPeek && mode === "direct" && (
+            <div className="mp-top-right-peek" onClick={e => e.stopPropagation()}>
+              <button
+                className="mp-corner-btn mp-corner-btn--lock mp-corner-btn--lock-active mp-corner-btn--lock-peek"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsLocked(false);
+                  setShowLockPeek(false);
+                  clearTimeout(lockBtnTimerRef.current);
+                  resetControlsTimer();
+                }}
+                title="Unlock controls"
+              >
+                <FaUnlock size={14} />
+              </button>
+            </div>
+          )}
+
           {/* ── iframe ── */}
+          {showTvCursor && (
+            <div
+              className="tv-cursor"
+              style={{ left: `${tvCursorX}%`, top: `${tvCursorY}%` }}
+            />
+          )}
+
           {mode === "iframe" && (
             <div className="mp-iframe-wrap">
               <div className="mp-ad-shield mp-ad-top" />
@@ -828,14 +1338,33 @@ export default function MoviePlayer() {
           )}
 
           {/* ── Seek bubble ── */}
-          {seekPreview !== null && (
+          {mode === "direct" && isScrubbing && seekPreview !== null && !isLocked && (
             <div className="mp-seek-bubble">
-              {seekPreview < currentTime ? <FaStepBackward size={15} /> : <FaStepForward size={15} />}
+              {seekPreview < currentTime
+                ? <FaStepBackward size={14} style={{ opacity: 0.55 }} />
+                : <FaStepForward  size={14} style={{ opacity: 0.55 }} />
+              }
               <span className="mp-seek-time">{fmt(seekPreview)}</span>
             </div>
           )}
 
-          {/* ── Resume prompt ── */}
+          {/* ── Gesture Overlays ── */}
+          {gestureOverlay && !isLocked && (
+            <div className={`mp-gesture-side mp-gesture-side--${gestureOverlay.type === "brightness" ? "left" : "right"}`}>
+              <span className="mp-gesture-icon">
+                {gestureOverlay.type === "brightness"
+                  ? <FaSun size={15} />
+                  : <VolumeIcon muted={gestureOverlay.value === 0} volume={gestureOverlay.value / 100} size={15} />
+                }
+              </span>
+              <div className="mp-gesture-track">
+                <div className="mp-gesture-fill" style={{ height: `${gestureBarHeight}%` }} />
+              </div>
+              <span className="mp-gesture-value">{gestureOverlay.value}%</span>
+            </div>
+          )}
+
+          {/* ── Resume Prompt ── */}
           {showResumePrompt && mode === "direct" && (
             <div className="mp-resume-overlay" onClick={e => e.stopPropagation()}>
               <div className="mp-resume-card">
@@ -843,25 +1372,51 @@ export default function MoviePlayer() {
                 <h3 className="mp-resume-title">Continue Watching?</h3>
                 <p className="mp-resume-sub">Paused at {fmt(resumeTime)}</p>
                 <div className="mp-resume-bar">
-                  <div className="mp-resume-bar-fill" style={{ width: duration > 0 ? `${(resumeTime / duration) * 100}%` : "30%" }} />
+                  <div
+                    className="mp-resume-bar-fill"
+                    style={{ width: duration > 0 ? `${(resumeTime / duration) * 100}%` : "30%" }}
+                  />
                 </div>
+                <p className="mp-tv-hint">← → navigate · Enter select</p>
                 <div className="mp-resume-actions">
-                  <button className="mp-resume-btn mp-resume-primary" onClick={handleResume}>
-                    <FaPlay size={10} /> Resume
+                  <button
+                    ref={setFocusRef("resume-btn")}
+                    className={`mp-resume-btn mp-resume-primary${isFocused("resume-btn") ? " tv-focus" : ""}`}
+                    onClick={handleResume}
+                    onFocus={() => setTvFocus("resume-btn")}
+                    disabled={resumeActionLoading !== null}
+                    aria-busy={resumeActionLoading === "resume"}
+                  >
+                    {resumeActionLoading === "resume" ? (
+                      <><span className="mp-btn-spinner" aria-hidden="true" /> Loading...</>
+                    ) : (
+                      <><FaPlay size={10} /> Resume</>
+                    )}
                   </button>
-                  <button className="mp-resume-btn mp-resume-secondary" onClick={handleStartOver}>
-                    Start Over
+                  <button
+                    ref={setFocusRef("startover-btn")}
+                    className={`mp-resume-btn mp-resume-secondary${isFocused("startover-btn") ? " tv-focus" : ""}`}
+                    onClick={handleStartOver}
+                    onFocus={() => setTvFocus("startover-btn")}
+                    disabled={resumeActionLoading !== null}
+                    aria-busy={resumeActionLoading === "startover"}
+                  >
+                    {resumeActionLoading === "startover" ? (
+                      <><span className="mp-btn-spinner" aria-hidden="true" /> Loading...</>
+                    ) : (
+                      "Start Over"
+                    )}
                   </button>
                 </div>
               </div>
             </div>
           )}
 
-          {/* ── Autoplay overlay ── */}
+          {/* ── Autoplay Overlay ── */}
           {countdown !== null && hasNext && (
             <div className="mp-autoplay-bg">
               <div className="mp-autoplay-card">
-                <p className="mp-ap-label">UP NEXT</p>
+                <p className="mp-ap-label">Up Next</p>
                 <p className="mp-ap-title">{playlist[currentIndex + 1]?.title || `Episode ${currentIndex + 2}`}</p>
                 <div className="mp-ap-ring">
                   <svg viewBox="0 0 48 48">
@@ -871,20 +1426,33 @@ export default function MoviePlayer() {
                   <span className="ap-ring-num">{countdown}</span>
                 </div>
                 <p className="mp-ap-hint">Auto-playing in {countdown}s</p>
+                <p className="mp-tv-hint">← → navigate · Enter select</p>
                 <div className="mp-ap-actions">
-                  <button className="mp-ap-now" onClick={() => { cancelAutoPlay(); goToEpisode(currentIndex + 1); }}>
+                  <button
+                    ref={setFocusRef("autoplay-now")}
+                    className={`mp-ap-now${isFocused("autoplay-now") ? " tv-focus" : ""}`}
+                    onClick={() => { cancelAutoPlay(); goToEpisode(currentIndex + 1); }}
+                    onFocus={() => setTvFocus("autoplay-now")}
+                  >
                     <FaPlay size={10} /> Play Now
                   </button>
-                  <button className="mp-ap-cancel" onClick={cancelAutoPlay}>Cancel</button>
+                  <button
+                    ref={setFocusRef("autoplay-cancel")}
+                    className={`mp-ap-cancel${isFocused("autoplay-cancel") ? " tv-focus" : ""}`}
+                    onClick={cancelAutoPlay}
+                    onFocus={() => setTvFocus("autoplay-cancel")}
+                  >
+                    Cancel
+                  </button>
                 </div>
               </div>
             </div>
           )}
-        </div>
+        </div>{/* end viewport */}
 
-        {/* ══ BOTTOM CONTROLS BAR ══ */}
+        {/* ══ CONTROLS BAR ══ */}
         {mode === "direct" && (
-          <div className={`mp-ctrl-bar ${showControls ? "ctrl-show" : "ctrl-hide"}`}>
+          <div className={`mp-ctrl-bar ${(showControls || isScrubbing) && !isLocked ? "ctrl-show" : "ctrl-hide"}`}>
             <div className="mp-progress-row">
               <span className="mp-time">{fmt(currentTime)}</span>
               <div
@@ -892,7 +1460,8 @@ export default function MoviePlayer() {
                 ref={progressTrackRef}
                 tabIndex={0}
                 role="slider"
-                aria-valuemin={0} aria-valuemax={100}
+                aria-valuemin={0}
+                aria-valuemax={100}
                 aria-valuenow={Math.round(displayPct)}
                 aria-label="Seek"
                 onPointerDown={onScrubStart}
@@ -914,10 +1483,10 @@ export default function MoviePlayer() {
           </div>
         )}
 
-        {/* ══ VOLUME OVERLAY (TV remote) ══ */}
-        {showVolumeBar && (
+        {/* ══ VOLUME OVERLAY ══ */}
+        {showVolumeBar && !gestureOverlay && !isLocked && (
           <div className="mp-vol-overlay">
-            <VolumeIcon muted={isMuted} volume={volume} size={16} />
+            <VolumeIcon muted={isMuted} volume={volume} size={15} />
             <div className="mp-vol-track">
               <div className="mp-vol-fill" style={{ height: `${isMuted ? 0 : volume * 100}%` }} />
             </div>
@@ -927,7 +1496,7 @@ export default function MoviePlayer() {
 
         {/* ══ EPISODE NAV BAR ══ */}
         {isSeries && (
-          <div className={`mp-ep-bar ${showControls ? "ctrl-show" : "ctrl-hide"}`}>
+          <div className={`mp-ep-bar ${(showControls || isScrubbing) && !isLocked ? "ctrl-show" : "ctrl-hide"}`}>
             <button
               className={`mp-ep-nav${hasPrev ? "" : " mp-ep-nav--off"}`}
               onClick={() => hasPrev && goToEpisode(currentIndex - 1)}
@@ -940,8 +1509,10 @@ export default function MoviePlayer() {
               {playlist.map((ep, idx) => (
                 <button
                   key={ep.id || idx}
-                  className={`mp-ep-dot${idx === currentIndex ? " active" : ""}`}
+                  ref={setFocusRef(`ep-${idx}`)}
+                  className={`mp-ep-dot${idx === currentIndex ? " active" : ""}${epBarFocused && epFocus === idx ? " tv-focus" : ""}`}
                   onClick={() => goToEpisode(idx)}
+                  onFocus={() => setEpFocus(idx)}
                   title={ep.title || `Episode ${idx + 1}`}
                 >
                   {ep.episode || idx + 1}

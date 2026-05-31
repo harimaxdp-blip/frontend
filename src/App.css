@@ -5,6 +5,13 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+.app {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+  min-width: 0;
+}
+
 /* =========================
    TOP BAR (FIXED)
 ========================= */
@@ -31,7 +38,30 @@ body {
   color: white;
   cursor: pointer;
 }
+.search-btn {
+  background: none;
+  border: none;
+  color: #fff;
+  cursor: pointer;
 
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  width: 42px;
+  height: 42px;
+
+  font-size: 22px;
+}
+
+.search-btn svg {
+  width: 22px;
+  height: 22px;
+}
+
+.search-btn:hover {
+  color: red;
+}
 /* logo wrapper */
 .logo-area {
   display: flex;
@@ -75,6 +105,10 @@ body {
   margin-top: 60px;
   padding: 20px;
   transition: 0.35s ease;
+  overflow-y: auto;
+  height: calc(100vh - 60px);
+  scroll-behavior: auto;
+  overflow-anchor: none;
 }
 
 .content.shift {
@@ -104,5 +138,18 @@ body {
 
   .sidebar {
     width: 220px;
+  }
+}
+@media (max-width: 768px) {
+  .menu-btn {
+    display: none !important;
+  }
+
+  .sidebar {
+    display: none !important;
+  }
+
+  .content {
+    padding-bottom: 90px;
   }
 }
