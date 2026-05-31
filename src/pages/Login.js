@@ -53,7 +53,7 @@ export default function Login() {
           style={styles.logo}
         />
 
-        <h1 style={styles.title}>Welcome to MOVI</h1>
+        <h1 style={styles.title}>Welcome to MOV</h1>
 
         <p style={styles.subtitle}>
           Sign in with Google to continue
