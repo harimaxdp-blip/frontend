@@ -12,6 +12,7 @@ import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.view.WindowManager;
 
+import androidx.core.splashscreen.SplashScreen;
 import androidx.core.view.WindowCompat;
 
 import com.getcapacitor.BridgeActivity;
@@ -30,16 +31,17 @@ public class MainActivity extends BridgeActivity {
     private void requestBrightnessPermission() {
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-
             if (!Settings.System.canWrite(this)) {
-
-                Intent intent = new Intent(
-                        Settings.ACTION_MANAGE_WRITE_SETTINGS,
-                        Uri.parse("package:" + getPackageName())
-                );
-
-                startActivity(intent);
-               }
+                try {
+                    Intent intent = new Intent(
+                            Settings.ACTION_MANAGE_WRITE_SETTINGS,
+                            Uri.parse("package:" + getPackageName())
+                    );
+                    startActivity(intent);
+                } catch (android.content.ActivityNotFoundException e) {
+                    Log.e("DeviceControl", "Setting MANAGE_WRITE_SETTINGS not found", e);
+                }
+            }
         }
     }
 
@@ -208,6 +210,8 @@ public class MainActivity extends BridgeActivity {
     // ─────────────────────────────────────────────
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+
+        SplashScreen.installSplashScreen(this);
 
         registerPlugin(DeviceControlPlugin.class);
 
