@@ -1,120 +1,271 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
+import emailjs from "@emailjs/browser";
+
 import {
-  signInWithRedirect,
-  getRedirectResult,
-  onAuthStateChanged,
-} from "firebase/auth";
-import { auth, provider } from "../firebase";
+  collection,
+  addDoc,
+  getDocs,
+  query,
+  where,
+} from "firebase/firestore";
+
+import { db } from "../firebase";
 
 export default function Login() {
-  const [loading, setLoading] = useState(false);
+  const [isSignup, setIsSignup] = useState(false);
+  const [showOtp, setShowOtp] = useState(false);
 
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      console.log("🔥 AUTH STATE:", user);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
 
-      if (user) {
-        console.log("✅ USER LOGGED IN", user.email);
-      }
-    });
+  const [otpInput, setOtpInput] = useState("");
+  const [generatedOtp, setGeneratedOtp] = useState("");
 
-    const checkRedirect = async () => {
-      try {
-        const result = await getRedirectResult(auth);
+  const sendOTP = async (email) => {
+    const otp = Math.floor(
+      100000 + Math.random() * 900000
+    ).toString();
 
-        if (result?.user) {
-          console.log("✅ Redirect Success", result.user);
-        }
-      } catch (error) {
-        console.error(error);
-      }
-    };
+    setGeneratedOtp(otp);
 
-    checkRedirect();
+    await emailjs.send(
+      "service_7bcnbg5",
+      "template_tlsvnx8",
+      {
+        to_email: email,
+        otp: otp,
+      },
+      "GN3853npRdZpRfzfz"
+    );
 
-    return () => unsubscribe();
-  }, []);
+    return otp;
+  };
 
-  const handleGoogleLogin = async () => {
+  const signup = async () => {
     try {
-      setLoading(true);
-      await signInWithRedirect(auth, provider);
-    } catch (error) {
-      console.error(error);
+      if (!email || !password) {
+        alert("Fill all fields");
+        return;
+      }
 
-      alert(
-        `Login Error\n\n${error.code}\n\n${error.message}`
+      const existing = await getDocs(
+        query(
+          collection(db, "users"),
+          where("email", "==", email)
+        )
       );
 
-      setLoading(false);
+      if (!existing.empty) {
+        alert("Email already exists");
+        return;
+      }
+
+      await sendOTP(email);
+
+      setShowOtp(true);
+
+      alert("OTP Sent To Email");
+    } catch (err) {
+      console.log(err);
+      alert("Failed To Send OTP");
+    }
+  };
+
+  const verifyOtp = async () => {
+    try {
+      if (otpInput !== generatedOtp) {
+        alert("Invalid OTP");
+        return;
+      }
+
+      await addDoc(collection(db, "users"), {
+        email,
+        password,
+        verified: true,
+        createdAt: Date.now(),
+      });
+
+      localStorage.setItem(
+        "user",
+        JSON.stringify({
+          email,
+        })
+      );
+
+      alert("Account Created");
+
+      window.location.reload();
+    } catch (err) {
+      console.log(err);
+      alert("Verification Failed");
+    }
+  };
+
+  const login = async () => {
+    try {
+      const snap = await getDocs(
+        query(
+          collection(db, "users"),
+          where("email", "==", email),
+          where("password", "==", password),
+          where("verified", "==", true)
+        )
+      );
+
+      if (snap.empty) {
+        alert("Invalid Login");
+        return;
+      }
+
+      localStorage.setItem(
+        "user",
+        JSON.stringify({
+          email,
+        })
+      );
+
+      alert("Login Success");
+
+      window.location.reload();
+    } catch (err) {
+      console.log(err);
+      alert("Login Failed");
     }
   };
 
   return (
-    <div style={styles.container}>
-      <div style={styles.card}>
-        <img
-          src="/logo192.png"
-          alt="Logo"
-          style={styles.logo}
-        />
-
-        <h1 style={styles.title}>Welcome to MOVie</h1>
-
-        <p style={styles.subtitle}>
-          Sign in with Google to continue
-        </p>
-
-        <button
-          onClick={handleGoogleLogin}
-          style={styles.googleBtn}
-          disabled={loading}
+    <div
+      style={{
+        minHeight: "100vh",
+        background: "#000",
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+        padding: "20px",
+      }}
+    >
+      <div
+        style={{
+          width: "350px",
+          background: "#111",
+          padding: "25px",
+          borderRadius: "12px",
+        }}
+      >
+        <h2
+          style={{
+            color: "#fff",
+            textAlign: "center",
+            marginBottom: "20px",
+          }}
         >
-          {loading ? "Redirecting..." : "Continue with Google"}
-        </button>
+          {showOtp
+            ? "Verify OTP"
+            : isSignup
+            ? "Create Account"
+            : "Login"}
+        </h2>
+
+        {!showOtp && (
+          <>
+            <input
+              type="email"
+              placeholder="Email"
+              value={email}
+              onChange={(e) =>
+                setEmail(e.target.value)
+              }
+              style={{
+                width: "100%",
+                padding: "12px",
+                marginBottom: "10px",
+              }}
+            />
+
+            <input
+              type="password"
+              placeholder="Password"
+              value={password}
+              onChange={(e) =>
+                setPassword(e.target.value)
+              }
+              style={{
+                width: "100%",
+                padding: "12px",
+                marginBottom: "15px",
+              }}
+            />
+
+            <button
+              onClick={
+                isSignup ? signup : login
+              }
+              style={{
+                width: "100%",
+                padding: "12px",
+                background: "#e50914",
+                color: "#fff",
+                border: "none",
+                cursor: "pointer",
+                borderRadius: "6px",
+              }}
+            >
+              {isSignup
+                ? "Send OTP"
+                : "Login"}
+            </button>
+
+            <p
+              onClick={() =>
+                setIsSignup(!isSignup)
+              }
+              style={{
+                color: "#fff",
+                textAlign: "center",
+                marginTop: "15px",
+                cursor: "pointer",
+              }}
+            >
+              {isSignup
+                ? "Already have an account?"
+                : "Create Account"}
+            </p>
+          </>
+        )}
+
+        {showOtp && (
+          <>
+            <input
+              type="text"
+              placeholder="Enter OTP"
+              value={otpInput}
+              onChange={(e) =>
+                setOtpInput(e.target.value)
+              }
+              style={{
+                width: "100%",
+                padding: "12px",
+                marginBottom: "15px",
+              }}
+            />
+
+            <button
+              onClick={verifyOtp}
+              style={{
+                width: "100%",
+                padding: "12px",
+                background: "#e50914",
+                color: "#fff",
+                border: "none",
+                cursor: "pointer",
+                borderRadius: "6px",
+              }}
+            >
+              Verify OTP
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
 }
-
-const styles = {
-  container: {
-    width: "100%",
-    height: "100vh",
-    background: "#000",
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: "20px",
-  },
-  card: {
-    width: "100%",
-    maxWidth: "420px",
-    background: "#111",
-    borderRadius: "24px",
-    padding: "40px 30px",
-    textAlign: "center",
-  },
-  logo: {
-    width: "90px",
-    marginBottom: "20px",
-  },
-  title: {
-    color: "#fff",
-    marginBottom: "10px",
-  },
-  subtitle: {
-    color: "#999",
-    marginBottom: "30px",
-  },
-  googleBtn: {
-    width: "100%",
-    height: "56px",
-    border: "none",
-    borderRadius: "14px",
-    background: "#fff",
-    cursor: "pointer",
-    fontSize: "16px",
-    fontWeight: "600",
-  },
-};

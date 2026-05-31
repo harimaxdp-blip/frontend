@@ -15,8 +15,6 @@ import Loader from "./components/Loader";
 import Login from "./pages/Login";
 import logo from "./assets/logo1.png";
 import "./App.css";
-import { auth } from "./firebase";
-import { onAuthStateChanged } from "firebase/auth";
 const CATEGORY_PATHS = new Set(["/", "/movies", "/series", "/anime"]);
 
 function App() {
@@ -24,7 +22,7 @@ function App() {
   const [loading, setLoading] = useState(true);
   const contentRef = useRef(null);
   const previousPathRef = useRef(null);
-const [user, setUser] = useState(undefined);
+const [user, setUser] = useState(null);
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -41,12 +39,13 @@ const [user, setUser] = useState(undefined);
   }, []);
 
 useEffect(() => {
-  const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-    console.log("🔥 APP USER:", currentUser);
-    setUser(currentUser);
-  });
+  const savedUser = localStorage.getItem("user");
 
-  return () => unsubscribe();
+  if (savedUser) {
+    setUser(JSON.parse(savedUser));
+  } else {
+    setUser(false);
+  }
 }, []);
   useEffect(() => {
   const setupDeepLink = async () => {
