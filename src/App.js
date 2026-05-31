@@ -40,12 +40,12 @@ const [user, setUser] = useState(undefined);
 
 useEffect(() => {
   const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+    console.log("🔥 APP USER:", currentUser);
     setUser(currentUser);
   });
 
   return () => unsubscribe();
 }, []);
-
   
   // =========================
   // ACTIVE PAGE DETECTION

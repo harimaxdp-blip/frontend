@@ -24,6 +24,16 @@ export const storage = getStorage(app);
 
 export const auth = getAuth(app);
 
-setPersistence(auth, browserLocalPersistence);
+setPersistence(auth, browserLocalPersistence)
+  .then(() => {
+    console.log("✅ Firebase persistence enabled");
+  })
+  .catch((error) => {
+    console.error("❌ Persistence Error:", error);
+  });
 
-export const provider = new GoogleAuthProvider(); 
+export const provider = new GoogleAuthProvider();
+
+provider.setCustomParameters({
+  prompt: "select_account"
+});
