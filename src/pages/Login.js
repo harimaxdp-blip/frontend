@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
 import {
-  signInWithRedirect,
-  getRedirectResult,
+  signInWithPopup,
   onAuthStateChanged,
 } from "firebase/auth";
 import { auth, provider } from "../firebase";
@@ -17,58 +16,25 @@ export default function Login() {
 
       if (user) {
         console.log("✅ USER LOGGED IN");
-        console.log("UID:", user.uid);
-        console.log("Name:", user.displayName);
         console.log("Email:", user.email);
 
         alert("Login Success: " + user.email);
       }
     });
 
-    const checkRedirect = async () => {
-      try {
-        console.log("🔍 Checking Redirect Result...");
-
-        const result = await getRedirectResult(auth);
-
-        console.log("📦 Redirect Result:", result);
-
-if (result?.user) {
-  console.log("✅ Redirect Success", result.user);
-
-  alert("Login Success: " + result.user.email);
-
-  setLoading(false);
-}else {
-          console.log("⚠️ No Redirect Result Found");
-        }
-      } catch (error) {
-        console.error("❌ REDIRECT ERROR:", error);
-        console.error("CODE:", error.code);
-        console.error("MESSAGE:", error.message);
-
-        alert(
-          `Firebase Error\n\n${error.code}\n\n${error.message}`
-        );
-      }
-    };
-
-    checkRedirect();
-
     return () => unsubscribe();
   }, []);
 
   const handleGoogleLogin = async () => {
     try {
-      console.log("🚀 Starting Google Login");
-
       setLoading(true);
 
-await signInWithRedirect(auth, provider);
+      const result = await signInWithPopup(auth, provider);
+
+      console.log("✅ SUCCESS", result.user);
+      alert("Login Success: " + result.user.email);
     } catch (error) {
       console.error("❌ LOGIN ERROR:", error);
-      console.error("CODE:", error.code);
-      console.error("MESSAGE:", error.message);
 
       alert(
         `Login Error\n\n${error.code}\n\n${error.message}`
@@ -99,7 +65,7 @@ await signInWithRedirect(auth, provider);
           disabled={loading}
         >
           {loading
-            ? "Redirecting..."
+            ? "Loading..."
             : "Continue with Google"}
         </button>
       </div>
