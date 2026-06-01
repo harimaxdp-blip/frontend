@@ -6,6 +6,7 @@ import { db } from "../firebase";
 import "./Login.css";
 import logi from "../assets/logi.png";
 
+
 // ═══════════════════════════════════════════════════════════════════
 // SVG ICONS (zero emojis)
 // ═══════════════════════════════════════════════════════════════════
@@ -616,7 +617,13 @@ function LoginScreen({ onSwitch, onForgot }) {
         await errorDialog("Incorrect Password", "The password you entered is wrong. Please try again or use 'Forgot Password' to reset it.");
         return;
       }
-      localStorage.setItem("user", JSON.stringify({ email: clean }));
+     localStorage.setItem(
+  "user",
+  JSON.stringify({
+    email: clean,
+    displayName: clean.split("@")[0]
+  })
+);
       await successDialog("Welcome Back!", `You have successfully logged in as ${clean}.`);
       window.location.reload();
     } catch {
@@ -725,7 +732,13 @@ function SignupScreen({ onSwitch }) {
       const clean  = sanitizeEmail(email);
       const hashed = await bcrypt.hash(password, 10);
       await addDoc(collection(db, "users"), { email: clean, password: hashed, verified: true, createdAt: Date.now() });
-      localStorage.setItem("user", JSON.stringify({ email: clean }));
+      localStorage.setItem(
+  "user",
+  JSON.stringify({
+    email: clean,
+    displayName: clean.split("@")[0]
+  })
+);
       await successDialog("Account Created!", `Welcome! Your account for ${clean} has been successfully created.`);
       window.location.reload();
     } catch {

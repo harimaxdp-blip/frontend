@@ -2,7 +2,7 @@ import { useState, useEffect, useLayoutEffect, useRef } from "react";
 import { Routes, Route, useLocation, useNavigate } from "react-router-dom";
 import BannerManager from "./components/Bannermanager";
 import Sidebar from "./components/Sidebar";
-import { FaBars, FaSearch } from "react-icons/fa";
+import { FaBars, FaSearch, FaUserCircle } from "react-icons/fa";
 
 import { App as CapacitorApp } from "@capacitor/app";
 import Banner from "./pages/Banner";
@@ -23,6 +23,7 @@ function App() {
   const contentRef = useRef(null);
   const previousPathRef = useRef(null);
 const [user, setUser] = useState(null);
+const [showProfile, setShowProfile] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -153,7 +154,10 @@ if (!user) {
   return <Login />;
 }
   // (Intro video removed)
-
+const handleLogout = () => {
+  localStorage.removeItem("user");
+  window.location.reload();
+};
   return (
     <div className="app">
       {/* =========================
@@ -193,6 +197,48 @@ if (!user) {
 >
   <FaSearch />
 </button>
+<div className="profile-wrapper">
+  <button
+    className="profile-btn"
+    onClick={() => setShowProfile(!showProfile)}
+  >
+    {user?.photoURL ? (
+      <img
+        src={user.photoURL}
+        alt="profile"
+        className="profile-avatar"
+      />
+    ) : (
+      <FaUserCircle />
+    )}
+  </button>
+
+  {showProfile && (
+    <div className="profile-popup">
+      <div className="profile-header">
+        <img
+          src={
+            user?.photoURL ||
+            "https://cdn-icons-png.flaticon.com/512/149/149071.png"
+          }
+          alt="profile"
+          className="profile-popup-avatar"
+        />
+
+        <div className="profile-email">
+          {user?.email}
+        </div>
+      </div>
+
+      <button
+        className="logout-btn"
+        onClick={handleLogout}
+      >
+        Logout
+      </button>
+    </div>
+  )}
+</div>
 </div>
       )}
 

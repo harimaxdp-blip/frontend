@@ -326,7 +326,7 @@ body::before {
   box-shadow: 0 0 0 3px var(--primary-low);
 }
 
-.search-input {
+.search-bar .search-input {
   flex: 1;
   background: transparent;
   border: none;
