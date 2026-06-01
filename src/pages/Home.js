@@ -12,7 +12,7 @@ import { collection, onSnapshot } from "firebase/firestore";
 import DeviceControl from "../plugins/deviceControl";
 import "./Movies.css";
 import banner1 from "../assets/banner1.jpeg";
-import banner2 from "../assets/banner2.png";
+import banner2 from "../assets/banner2.jpeg";
 import banner3 from "../assets/banner3.png";
 import noResultsAll    from "../assets/no-results-all.png";
 import noResultsMovie  from "../assets/no-results-movie.png";
@@ -333,17 +333,17 @@ const customSlides = [
   {
     image: banner1,
     title: "",
-    description: ""
+    description: "For Adevertiment Call"
   },
   {
     image: banner2,
-    title: "Latest Releases",
-    description: "New Movies Added Daily"
+    title: "",
+    description: "For Adevertiment Call"
   },
   {
     image: banner3,
-    title: "Trending Collection",
-    description: "Top Rated Movies"
+    title: "",
+    description: "For Adevertiment Call"
   }
 ];const mixedBanners = [
   customSlides[0],
