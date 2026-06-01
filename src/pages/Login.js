@@ -655,7 +655,7 @@ const handleGoogleLogin = async () => {
   return (
     <div className="form-section">
       <h2 className="form-title">Welcome Back</h2>
-      <p className="form-subtitle">Sig in to continue</p>
+      <p className="form-subtitle">Sign in to continue</p>
 
       <EmailInput value={email} onChange={setEmail} error={!!emailErr} disabled={loading} onEnter={handleLogin} />
       {emailErr && <p className="field-error">{emailErr}</p>}
