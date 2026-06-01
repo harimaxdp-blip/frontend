@@ -5,6 +5,8 @@ import { collection, addDoc, getDocs, query, where, updateDoc, doc } from "fireb
 import { db } from "../firebase";
 import "./Login.css";
 import logi from "../assets/logi.png";
+import { signInWithPopup } from "firebase/auth";
+import { auth, provider } from "../firebase";
 
 // ═══════════════════════════════════════════════════════════════════
 // SVG ICONS (zero emojis)
@@ -590,7 +592,25 @@ function LoginScreen({ onSwitch, onForgot }) {
   const [passErr,  setPassErr]  = useState("");
   const [showPass, setShowPass] = useState(false);
   const [loading,  setLoading]  = useState(false);
+const handleGoogleLogin = async () => {
+  try {
+    const result = await signInWithPopup(auth, provider);
 
+    localStorage.setItem(
+      "user",
+      JSON.stringify({
+        email: result.user.email,
+        displayName: result.user.displayName,
+        photoURL: result.user.photoURL
+      })
+    );
+
+    window.location.reload();
+  } catch (err) {
+    console.error(err);
+    alert("Google Login Failed");
+  }
+};
   const validate = () => {
     let ok = true;
     if (!validateEmail(sanitizeEmail(email))) { setEmailErr("Enter a valid email"); ok = false; } else setEmailErr("");
@@ -616,7 +636,13 @@ function LoginScreen({ onSwitch, onForgot }) {
         await errorDialog("Incorrect Password", "The password you entered is wrong. Please try again or use 'Forgot Password' to reset it.");
         return;
       }
-      localStorage.setItem("user", JSON.stringify({ email: clean }));
+     localStorage.setItem(
+  "user",
+  JSON.stringify({
+    email: clean,
+    displayName: clean.split("@")[0]
+  })
+);
       await successDialog("Welcome Back!", `You have successfully logged in as ${clean}.`);
       window.location.reload();
     } catch {
@@ -658,7 +684,12 @@ function LoginScreen({ onSwitch, onForgot }) {
       <button className="btn-primary" onClick={handleLogin} disabled={loading}>
         {loading ? <span className="spinner" /> : "Login"}
       </button>
-
+<button
+  className="btn-google"
+  onClick={handleGoogleLogin}
+>
+  Continue with Google
+</button>
       <p className="switch-text">
         Don't have an account?{" "}
         <button className="link-btn highlight" onClick={onSwitch}>Create Account</button>
@@ -725,7 +756,13 @@ function SignupScreen({ onSwitch }) {
       const clean  = sanitizeEmail(email);
       const hashed = await bcrypt.hash(password, 10);
       await addDoc(collection(db, "users"), { email: clean, password: hashed, verified: true, createdAt: Date.now() });
-      localStorage.setItem("user", JSON.stringify({ email: clean }));
+      localStorage.setItem(
+  "user",
+  JSON.stringify({
+    email: clean,
+    displayName: clean.split("@")[0]
+  })
+);
       await successDialog("Account Created!", `Welcome! Your account for ${clean} has been successfully created.`);
       window.location.reload();
     } catch {
