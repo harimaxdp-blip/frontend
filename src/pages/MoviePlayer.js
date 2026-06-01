@@ -114,6 +114,9 @@ const MOBILE_HIDE_DELAY  = 3500;
 const LOCK_BTN_SHOW_MS   = 2800;
 const GESTURE_THRESHOLD  = 12;
 const GESTURE_SENSITIVITY = 100 / 220;
+const DOUBLE_TAP_MS      = 300;
+const HOLD_SEEK_DELAY    = 480;
+const HOLD_SEEK_INTERVAL = 420;
 
 function detectMobile() {
   return (
@@ -170,6 +173,10 @@ export default function MoviePlayer() {
   const controlsBeforeTouchRef = useRef(true);
   const isScrubbingRef         = useRef(false);
   const lastTouchEndRef        = useRef(0);
+  const lastTapRef             = useRef({ time: 0, side: null });
+  const tapTimerRef            = useRef(null);
+  const holdSeekTimerRef       = useRef(null);
+  const holdSeekIntervalRef    = useRef(null);
   const gestureRef             = useRef({
     active: false, moved: false, type: null,
     startX: 0, startY: 0, startValue: 0,
@@ -213,6 +220,7 @@ export default function MoviePlayer() {
   const [isLocked, setIsLocked]                 = useState(false);
   const [isStretched, setIsStretched]           = useState(false);
   const [gestureOverlay, setGestureOverlay]     = useState(null);
+  const [seekGesture, setSeekGesture]           = useState(null);
   const [playFlash, setPlayFlash]               = useState(null);
   const [flashKey, setFlashKey]                 = useState(0);
   const [showLockPeek, setShowLockPeek]         = useState(false);
@@ -386,6 +394,31 @@ export default function MoviePlayer() {
     resetControlsTimer();
   }, [showSeekFn, resetControlsTimer]);
 
+  const clearHoldSeek = useCallback(() => {
+    clearTimeout(holdSeekTimerRef.current);
+    clearInterval(holdSeekIntervalRef.current);
+    holdSeekTimerRef.current = null;
+    holdSeekIntervalRef.current = null;
+  }, []);
+
+  const clearTapTimer = useCallback(() => {
+    clearTimeout(tapTimerRef.current);
+    tapTimerRef.current = null;
+  }, []);
+
+  const showSeekGesture = useCallback((side, amount, mode = "tap") => {
+    clearTimeout(gestureTimerRef.current);
+    setSeekGesture({ side, amount: Math.abs(amount), mode, key: Date.now() });
+    gestureTimerRef.current = setTimeout(() => setSeekGesture(null), mode === "hold" ? 700 : 950);
+  }, []);
+
+  const seekByGesture = useCallback((side, mode = "tap") => {
+    const amount = side === "left" ? -10 : 30;
+    seekBy(amount);
+    showSeekGesture(side, amount, mode);
+    setShowControls(true);
+  }, [seekBy, showSeekGesture]);
+
   const toggleFullscreen = useCallback(async () => {
     const el = containerRef.current || document.documentElement;
     try {
@@ -470,7 +503,7 @@ export default function MoviePlayer() {
 
   const handleGestureTouchStart = useCallback((e) => {
     if (isLocked) { triggerLockPeek(); return; }
-    if (!isMobileRef.current) return;
+    if (!isMobileRef.current || mode !== "direct" || showResumePrompt || countdown !== null) return;
     const t = e.target;
     if (
       t.closest("button") || t.closest(".mp-track") ||
@@ -480,28 +513,60 @@ export default function MoviePlayer() {
     ) return;
     const touch = e.touches[0];
     const isLeft = touch.clientX < window.innerWidth / 2;
+    const side = isLeft ? "left" : "right";
     const vidVol = videoRef.current
       ? (videoRef.current.muted ? 0 : videoRef.current.volume * 100)
       : volume * 100;
+    clearHoldSeek();
     gestureRef.current = {
-      active: true, moved: false,
+      active: true, moved: false, holdSeeking: false,
       startX: touch.clientX, startY: touch.clientY,
-      side: isLeft ? "left" : "right",
+      side,
       type: isLeft ? "brightness" : "volume",
       startValue: isLeft ? brightness : vidVol,
     };
-  }, [isLocked, brightness, volume, triggerLockPeek]);
+    holdSeekTimerRef.current = setTimeout(() => {
+      const g = gestureRef.current;
+      if (!g.active || g.moved || isLocked || !isMobileRef.current) return;
+      g.moved = true;
+      g.holdSeeking = true;
+      g.type = "seek";
+      clearTapTimer();
+      clearTimeout(controlsTimerRef.current);
+      setShowControls(true);
+      seekByGesture(side, "hold");
+      holdSeekIntervalRef.current = setInterval(() => seekByGesture(side, "hold"), HOLD_SEEK_INTERVAL);
+    }, HOLD_SEEK_DELAY);
+  }, [
+    isLocked,
+    mode,
+    showResumePrompt,
+    countdown,
+    brightness,
+    volume,
+    triggerLockPeek,
+    clearHoldSeek,
+    clearTapTimer,
+    seekByGesture,
+  ]);
 
   const handleGestureTouchMove = useCallback((e) => {
     const g = gestureRef.current;
     if (!g.active || isLocked || !isMobileRef.current) return;
+    if (g.holdSeeking) {
+      if (isFullscreen) e.preventDefault();
+      return;
+    }
     const touch = e.touches[0];
     const absDeltaX = Math.abs(touch.clientX - g.startX);
     const deltaY    = g.startY - touch.clientY;
     if (!g.moved) {
       const absDeltaY = Math.abs(deltaY);
-      if (absDeltaY >= GESTURE_THRESHOLD && absDeltaY > absDeltaX * 1.5) g.moved = true;
-      else if (absDeltaX > 18) { g.active = false; return; }
+      if (absDeltaY >= GESTURE_THRESHOLD && absDeltaY > absDeltaX * 1.5) {
+        clearHoldSeek();
+        g.moved = true;
+      }
+      else if (absDeltaX > 18) { clearHoldSeek(); g.active = false; return; }
       else return;
     }
     if (isFullscreen) e.preventDefault();
@@ -529,28 +594,45 @@ export default function MoviePlayer() {
       setGestureOverlay({ type: "brightness", value: Math.round(newBrightness) });
     }
     clearTimeout(gestureTimerRef.current);
-  }, [isLocked, isFullscreen]);
+  }, [isLocked, isFullscreen, clearHoldSeek]);
 
   const handleGestureTouchEnd = useCallback(() => {
     const g = gestureRef.current;
+    const now = Date.now();
     lastTouchEndRef.current = Date.now();
+    clearHoldSeek();
     if (isLocked) {
       gestureRef.current = { ...gestureRef.current, active: false, moved: false };
       return;
     }
-    if (g.active && !g.moved && isMobileRef.current) {
-      if (controlsBeforeTouchRef.current) {
-        setShowControls(false);
-        clearTimeout(controlsTimerRef.current);
+    if (g.active && !g.moved && isMobileRef.current && mode === "direct") {
+      const isDoubleTap = lastTapRef.current.side === g.side && now - lastTapRef.current.time <= DOUBLE_TAP_MS;
+      if (isDoubleTap) {
+        clearTapTimer();
+        lastTapRef.current = { time: 0, side: null };
+        seekByGesture(g.side, "tap");
       } else {
-        resetControlsTimer();
+        lastTapRef.current = { time: now, side: g.side };
+        clearTapTimer();
+        tapTimerRef.current = setTimeout(() => {
+          if (controlsBeforeTouchRef.current) {
+            setShowControls(false);
+            clearTimeout(controlsTimerRef.current);
+          } else {
+            resetControlsTimer();
+          }
+          tapTimerRef.current = null;
+        }, DOUBLE_TAP_MS);
       }
     }
-    if (g.moved) {
+    if (g.moved && !g.holdSeeking) {
       gestureTimerRef.current = setTimeout(() => setGestureOverlay(null), 1600);
     }
-    gestureRef.current = { ...gestureRef.current, active: false, moved: false };
-  }, [isLocked, resetControlsTimer]);
+    if (g.holdSeeking) {
+      gestureTimerRef.current = setTimeout(() => setSeekGesture(null), 700);
+    }
+    gestureRef.current = { ...gestureRef.current, active: false, moved: false, holdSeeking: false };
+  }, [isLocked, mode, resetControlsTimer, clearHoldSeek, clearTapTimer, seekByGesture]);
 
   // Attach gesture listeners
   useEffect(() => {
@@ -566,7 +648,11 @@ export default function MoviePlayer() {
     };
   }, [handleGestureTouchStart, handleGestureTouchMove, handleGestureTouchEnd]);
 
-  useEffect(() => () => clearTimeout(gestureTimerRef.current), []);
+  useEffect(() => () => {
+    clearTimeout(gestureTimerRef.current);
+    clearTapTimer();
+    clearHoldSeek();
+  }, [clearTapTimer, clearHoldSeek]);
   useEffect(() => () => clearTimeout(flashTimerRef.current), []);
 
   useEffect(() => {
@@ -1345,6 +1431,23 @@ const onProgressKey = useCallback((e) => {
                 : <FaStepForward  size={14} style={{ opacity: 0.55 }} />
               }
               <span className="mp-seek-time">{fmt(seekPreview)}</span>
+            </div>
+          )}
+
+          {/* ── Double-tap / hold seek overlay ── */}
+          {seekGesture && !isLocked && mode === "direct" && (
+            <div
+              key={seekGesture.key}
+              className={`mp-tap-seek mp-tap-seek--${seekGesture.side} mp-tap-seek--${seekGesture.mode}`}
+            >
+              <div className="mp-tap-seek-ripple" />
+              <div className="mp-tap-seek-chip">
+                {seekGesture.side === "left"
+                  ? <FaUndo size={18} />
+                  : <FaRedo size={18} />
+                }
+                <span>{seekGesture.amount}s</span>
+              </div>
             </div>
           )}
 

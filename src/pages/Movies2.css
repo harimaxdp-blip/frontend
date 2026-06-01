@@ -970,6 +970,76 @@ button {
   font-family: var(--font-mono);
   letter-spacing: -0.2px;
 }
+
+/* Tap and hold seek feedback */
+.mp-tap-seek {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 44%;
+  z-index: 390;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.mp-tap-seek--left {
+  left: 0;
+}
+.mp-tap-seek--right {
+  right: 0;
+}
+.mp-tap-seek-ripple {
+  position: absolute;
+  width: min(62vw, 420px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, rgba(255,255,255,0.18) 0%, rgba(229,9,20,0.16) 32%, transparent 68%);
+  border: 1px solid rgba(255,255,255,0.18);
+  animation: hm-tap-seek-ripple 0.72s var(--ease-out) both;
+}
+.mp-tap-seek-chip {
+  position: relative;
+  min-width: 74px;
+  height: 54px;
+  border-radius: var(--r-full);
+  padding: 0 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  color: #fff;
+  background: rgba(12,12,14,0.78);
+  border: 1px solid rgba(255,255,255,0.18);
+  box-shadow: 0 18px 54px rgba(0,0,0,0.68), inset 0 1px 0 rgba(255,255,255,0.12);
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  animation: hm-tap-seek-chip 0.72s var(--ease-spring) both;
+}
+.mp-tap-seek--hold .mp-tap-seek-chip {
+  background: rgba(229,9,20,0.88);
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.12), 0 18px 58px rgba(229,9,20,0.30);
+  animation: hm-tap-seek-hold 0.72s ease-in-out both;
+}
+@keyframes hm-tap-seek-ripple {
+  0%   { opacity: 0; transform: scale(0.36); }
+  18%  { opacity: 1; }
+  100% { opacity: 0; transform: scale(1.28); }
+}
+@keyframes hm-tap-seek-chip {
+  0%   { opacity: 0; transform: scale(0.70); }
+  35%  { opacity: 1; transform: scale(1.08); }
+  100% { opacity: 0; transform: scale(0.94); }
+}
+@keyframes hm-tap-seek-hold {
+  0%   { opacity: 0; transform: scale(0.86); }
+  22%  { opacity: 1; transform: scale(1.06); }
+  100% { opacity: 0.88; transform: scale(1); }
+}
 @keyframes hm-bubble-in {
   0%   { opacity: 0; transform: translate(-50%,-50%) scale(0.75); }
   10%  { opacity: 1; transform: translate(-50%,-50%) scale(1.04); }
@@ -1831,3 +1901,197 @@ button {
 
 
 
+/* ═══════════════════════════════════════════════════════════════════
+   AD OVERLAY  (add these to Movies2.css)
+═══════════════════════════════════════════════════════════════════ */
+
+/* Full-screen overlay that sits above everything */
+.ad-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 9999;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: all;  /* block ALL touches/clicks */
+}
+
+/* Ad video fills the overlay */
+.ad-video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+/* UI layer on top of ad video */
+.ad-ui {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+/* Top bar */
+.ad-badge {
+  pointer-events: none;
+  position: absolute;
+  top: 12px;
+  left: 14px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #ffe082;
+  letter-spacing: 0.04em;
+  backdrop-filter: blur(6px);
+}
+
+/* Skip / must-watch area */
+.ad-skip-area {
+  pointer-events: all;
+  position: absolute;
+  top: 10px;
+  right: 14px;
+}
+
+.ad-skip-btn {
+  background: rgba(255, 255, 255, 0.92);
+  color: #111;
+  border: none;
+  border-radius: 4px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.ad-skip-btn:hover { background: #fff; }
+
+.ad-skip-countdown {
+  background: rgba(0,0,0,0.55);
+  color: rgba(255,255,255,0.75);
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 4px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  backdrop-filter: blur(6px);
+}
+
+.ad-mustwatch {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(0,0,0,0.55);
+  color: rgba(255,255,255,0.65);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 4px;
+  padding: 5px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  backdrop-filter: blur(6px);
+}
+
+/* Bottom progress bar */
+.ad-progress-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: rgba(255,255,255,0.18);
+}
+.ad-progress-fill {
+  height: 100%;
+  background: #ffe082;
+  transition: width 0.25s linear;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   AD MANAGER TAB  (add these to Movies.css)
+═══════════════════════════════════════════════════════════════════ */
+
+.ad-manager .banner-subtitle { margin-bottom: 18px; }
+
+.ad-slots { gap: 20px; }
+
+.ad-slot {
+  border-left: 3px solid #ffe082 !important;
+}
+
+.ad-slot-num {
+  background: #ffe082 !important;
+  color: #111 !important;
+  font-size: 10px !important;
+  letter-spacing: 0.08em;
+}
+
+.ad-preview {
+  background: #111;
+  border-radius: 8px;
+  min-height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ad-preview-url {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px;
+  text-align: center;
+}
+
+.ad-url-icon { font-size: 20px; }
+
+.ad-url-text {
+  font-size: 10px;
+  color: rgba(255,255,255,0.5);
+  word-break: break-all;
+}
+
+.ad-skip-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ad-skip-label {
+  font-size: 12px;
+  color: rgba(255,255,255,0.55);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.ad-skip-select {
+  flex: 1;
+}
+
+.ad-info-badge {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 2px;
+}
+
+.ad-disabled-notice {
+  text-align: center;
+  padding: 28px 20px;
+  font-size: 14px;
+  color: rgba(255,255,255,0.45);
+  border: 1px dashed rgba(255,255,255,0.12);
+  border-radius: 12px;
+  margin: 16px 0;
+}

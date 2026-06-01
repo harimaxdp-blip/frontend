@@ -1,3 +1,6 @@
+/* ============================================
+   BASE
+============================================ */
 body {
   margin: 0;
   background: #000;
@@ -12,9 +15,12 @@ body {
   min-width: 0;
 }
 
-/* =========================
-   TOP BAR (FIXED)
-========================= */
+/* ============================================
+   TOPBAR — true 3-column layout
+   Left & Right are equal fixed widths so
+   the center logo stays perfectly centered
+   on ALL screen sizes including mobile
+============================================ */
 .topbar {
   position: fixed;
   top: 0;
@@ -24,63 +30,109 @@ body {
   background: #0a0a0a;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 0 15px;
+  padding: 0 10px;
   z-index: 3000;
-  border-bottom: 1px solid #222;
+  border-bottom: 1px solid #1c1c1c;
+  box-sizing: border-box;
 }
 
-/* hamburger */
-.menu-btn {
-  font-size: 22px;
-  background: none;
-  border: none;
-  color: white;
-  cursor: pointer;
+/* LEFT column — fixed width, hamburger lives here */
+.topbar-left {
+  width: 80px;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
 }
-.search-btn {
-  background: none;
-  border: none;
-  color: #fff;
-  cursor: pointer;
 
+/* CENTER column — takes remaining space, centers content */
+.topbar-center {
+  flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
+}
 
-  width: 42px;
+/* RIGHT column — same fixed width as left so center stays centered */
+.topbar-right {
+  width: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+/* ============================================
+   LOGO
+============================================ */
+.logo-img {
   height: 42px;
+  width: auto;
+  object-fit: contain;
+  filter: contrast(1.08) brightness(1.05);
+  transition: filter 0.2s ease, transform 0.2s ease;
+  display: block;
+}
 
-  font-size: 22px;
+.logo-img:hover {
+  filter: contrast(1.15) brightness(1.1);
+  transform: scale(1.03);
+}
+
+/* ============================================
+   HAMBURGER
+============================================ */
+.menu-btn {
+  font-size: 21px;
+  background: none;
+  border: none;
+  color: #ccc;
+  cursor: pointer;
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  transition: color 0.2s, background 0.2s;
+}
+
+.menu-btn:hover {
+  color: #fff;
+  background: #1e1e1e;
+}
+
+/* ============================================
+   SEARCH BUTTON
+============================================ */
+.search-btn {
+  background: none;
+  border: none;
+  color: #ccc;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  font-size: 18px;
+  border-radius: 8px;
+  transition: color 0.2s, background 0.2s;
 }
 
 .search-btn svg {
-  width: 22px;
-  height: 22px;
+  width: 18px;
+  height: 18px;
 }
 
 .search-btn:hover {
-  color: red;
-}
-/* logo wrapper */
-.logo-area {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-left: auto;
-  margin-right: auto;
+  color: #e50914;
+  background: #1e1e1e;
 }
 
-/* logo image */
-.logo-img {
-  height: 45px;
-  width: auto;
-  object-fit: contain;
-}
-
-/* =========================
+/* ============================================
    SIDEBAR
-========================= */
+============================================ */
 .sidebar {
   position: fixed;
   top: 60px;
@@ -98,9 +150,9 @@ body {
   transform: translateX(0);
 }
 
-/* =========================
+/* ============================================
    CONTENT AREA
-========================= */
+============================================ */
 .content {
   margin-top: 60px;
   padding: 20px;
@@ -115,9 +167,9 @@ body {
   transform: translateX(260px);
 }
 
-/* =========================
+/* ============================================
    BACKDROP
-========================= */
+============================================ */
 .backdrop {
   position: fixed;
   top: 60px;
@@ -128,19 +180,184 @@ body {
   z-index: 1500;
 }
 
-/* =========================
-   MOBILE FIX
-========================= */
-@media (max-width: 768px) {
-  .content.shift {
-    transform: none;
-  }
-
-  .sidebar {
-    width: 220px;
-  }
+/* ============================================
+   PROFILE BUTTON
+============================================ */
+.profile-wrapper {
+  position: relative;
 }
+
+.profile-btn {
+  width: 38px;
+  height: 38px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: #ccc;
+  font-size: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: background 0.2s;
+}
+
+.profile-btn:hover {
+  background: #1e1e1e;
+}
+
+.profile-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid #333;
+  transition: border-color 0.2s;
+}
+
+.profile-btn:hover .profile-avatar {
+  border-color: #e50914;
+}
+
+/* ============================================
+   PROFILE POPUP
+   — gap from bottom nav: margin-bottom on
+     popup keeps it from touching the nav bar
+============================================ */
+.profile-popup {
+  position: absolute;
+  top: 48px;
+  right: 0;
+  width: 260px;
+  background: #111;
+  border: 1px solid #2a2a2a;
+  border-radius: 14px;
+  padding: 18px 16px 16px;
+  z-index: 9999;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.75);
+  /* Ensure popup doesn't bleed into the bottom nav */
+  max-height: calc(100vh - 130px);
+  overflow-y: auto;
+}
+
+.profile-header {
+  text-align: center;
+  /* Gap between profile header and anything below */
+  margin-bottom: 4px;
+}
+
+/* Clickable avatar wrap with edit hint */
+.profile-avatar-wrap {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: pointer;
+  margin-bottom: 8px;
+}
+
+.profile-popup-avatar {
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid #2a2a2a;
+  transition: border-color 0.2s, transform 0.2s;
+}
+
+.profile-avatar-wrap:hover .profile-popup-avatar {
+  border-color: #e50914;
+  transform: scale(1.05);
+}
+
+/* Small hint below avatar */
+.avatar-edit-hint {
+  display: block;
+  margin-top: 5px;
+  font-size: 11px;
+  color: #777;
+  letter-spacing: 0.03em;
+  transition: color 0.2s;
+}
+
+.profile-avatar-wrap:hover .avatar-edit-hint {
+  color: #e50914;
+}
+
+.profile-email {
+  font-size: 13px;
+  word-break: break-word;
+  color: #aaa;
+  margin-top: 2px;
+}
+
+/* ============================================
+   AVATAR GRID
+============================================ */
+.avatar-list {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin: 12px 0;
+  padding: 10px;
+  background: #0d0d0d;
+  border-radius: 10px;
+  border: 1px solid #222;
+}
+
+.avatar-option {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  object-fit: cover;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: border-color 0.2s, transform 0.18s;
+}
+
+.avatar-option:hover {
+  border-color: #e50914;
+  transform: scale(1.1);
+}
+
+/* Selected avatar — solid ring, no glow */
+.avatar-selected {
+  border-color: #e50914;
+  outline: 2px solid #7a0000;
+  outline-offset: 1px;
+}
+
+/* ============================================
+   LOGOUT BUTTON
+============================================ */
+.logout-btn {
+  margin-top: 8px;
+  width: 100%;
+  padding: 10px;
+  border: none;
+  background: #e50914;
+  color: white;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: 0.04em;
+  transition: background 0.2s, transform 0.15s;
+}
+
+.logout-btn:hover {
+  background: #c40812;
+  transform: translateY(-1px);
+}
+
+.logout-btn:active {
+  transform: translateY(0);
+}
+
+/* ============================================
+   MOBILE (≤ 768px)
+============================================ */
 @media (max-width: 768px) {
+  /* Hide hamburger and sidebar on mobile */
   .menu-btn {
     display: none !important;
   }
@@ -149,83 +366,48 @@ body {
     display: none !important;
   }
 
+  /* On mobile: left column is hidden — but to keep logo centered
+     we keep the left column as a zero-width invisible spacer.
+     The right column stays at 80px, so we set left to 80px too
+     via an invisible placeholder so centering stays true. */
+  .topbar-left {
+    visibility: hidden;  /* keeps width, invisible */
+  }
+
   .content {
-    padding-bottom: 90px;
+    padding: 16px;
+    /* Space above bottom nav: nav is ~60px, add 14px breathing room */
+    padding-bottom: 74px;
+  }
+
+  .content.shift {
+    transform: none;
+  }
+
+  /* Profile popup on mobile — prevent overflow off screen */
+  .profile-popup {
+    right: 0;
+    width: 240px;
+    /* Extra bottom margin so popup doesn't touch the bottom nav */
+    margin-bottom: 14px;
+    max-height: calc(100vh - 145px);
   }
 }
 
+/* ============================================
+   DESKTOP / TV (≥ 1200px)
+============================================ */
+@media (min-width: 1200px) {
+  .topbar {
+    padding: 0 20px;
+  }
 
-/* PROFILE */
+  .topbar-left,
+  .topbar-right {
+    width: 100px;
+  }
 
-.profile-wrapper {
-  position: relative;
-  margin-left: 10px;
-}
-
-.profile-btn {
-  width: 42px;
-  height: 42px;
-  border: none;
-  background: none;
-  cursor: pointer;
-  color: white;
-  font-size: 26px;
-
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.profile-avatar {
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  object-fit: cover;
-}
-
-.profile-popup {
-  position: absolute;
-  top: 55px;
-  right: 0;
-  width: 260px;
-  background: #111;
-  border: 1px solid #333;
-  border-radius: 12px;
-  padding: 15px;
-  z-index: 9999;
-  box-shadow: 0 0 20px rgba(0,0,0,0.5);
-}
-
-.profile-header {
-  text-align: center;
-}
-
-.profile-popup-avatar {
-  width: 70px;
-  height: 70px;
-  border-radius: 50%;
-  object-fit: cover;
-  margin-bottom: 10px;
-}
-
-.profile-email {
-  font-size: 14px;
-  word-break: break-word;
-  color: #ddd;
-}
-
-.logout-btn {
-  margin-top: 15px;
-  width: 100%;
-  padding: 10px;
-  border: none;
-  background: red;
-  color: white;
-  border-radius: 8px;
-  cursor: pointer;
-  font-weight: bold;
-}
-
-.logout-btn:hover {
-  opacity: 0.9;
+  .logo-img {
+    height: 46px;
+  }
 }
