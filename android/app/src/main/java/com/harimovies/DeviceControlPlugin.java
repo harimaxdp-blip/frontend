@@ -1,5 +1,6 @@
 package com.harimovies;
 
+import android.Manifest;
 import android.content.Intent;
 import android.net.Uri;
 import android.util.Log;
@@ -11,11 +12,15 @@ import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
+import com.getcapacitor.annotation.Permission;
+import com.getcapacitor.annotation.PermissionCallback;
 
 import com.harimovies.app.MainActivity;
 import com.harimovies.app.PlayerActivity;
 
-@CapacitorPlugin(name = "DeviceControl")
+@CapacitorPlugin(name = "DeviceControl", permissions = {
+    @Permission(strings = {Manifest.permission.RECORD_AUDIO}, alias = "microphone")
+})
 public class DeviceControlPlugin extends Plugin {
 
     @PluginMethod
@@ -67,6 +72,22 @@ public class DeviceControlPlugin extends Plugin {
 
         } else {
             call.reject("Activity is null");
+        }
+    }
+
+    @PluginMethod
+    public void requestMicrophonePermission(PluginCall call) {
+        Log.d("DeviceControl", "requestMicrophonePermission called");
+        requestPermissionForAlias("microphone", call, "handleMicrophonePermissionResult");
+    }
+
+    @PermissionCallback
+    private void handleMicrophonePermissionResult(PluginCall call) {
+        Log.d("DeviceControl", "handleMicrophonePermissionResult called");
+        if (getPermissionState("microphone").toString().equals("granted")) {
+            call.resolve();
+        } else {
+            call.reject("Microphone permission denied");
         }
     }
 

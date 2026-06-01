@@ -9,6 +9,7 @@ import React, {
 import { useNavigate } from "react-router-dom";
 import { db } from "../firebase";
 import { collection, onSnapshot } from "firebase/firestore";
+import DeviceControl from "../plugins/deviceControl";
 import "./Movies.css";
 import banner1 from "../assets/banner1.png";
 import banner2 from "../assets/banner2.png";
@@ -709,30 +710,75 @@ const searchScore = useCallback((title, query) => {
   }, [navigate, currentView, languageFilter, genreFilter, yearFilter, search]);
 
   const requestMicrophonePermission = useCallback(async () => {
-    if (navigator.mediaDevices?.getUserMedia) {
+    // First, try native Capacitor permission if available (Android inside WebView)
+    if (typeof DeviceControl?.requestMicrophonePermissionNative === 'function') {
       try {
-        await navigator.mediaDevices.getUserMedia({ audio: true });
-        return true;
-      } catch (err) {
-        console.warn("MediaDevices mic permission denied", err);
-        return false;
+        const nativeGranted = await DeviceControl.requestMicrophonePermissionNative();
+        if (nativeGranted) return true;
+      } catch (nativeErr) {
+        console.warn("Native microphone permission request failed", nativeErr);
       }
     }
-    return true;
+
+    // Fallback to browser-based permission request
+    if (!navigator.mediaDevices?.getUserMedia) {
+      return true;
+    }
+
+    const queryPermission = async () => {
+      try {
+        const status = await navigator.permissions.query({ name: "microphone" });
+        return status.state;
+      } catch (err) {
+        return null;
+      }
+    };
+
+    const currentState = await queryPermission();
+    if (currentState === "granted") {
+      return true;
+    }
+    if (currentState === "denied") {
+      return false;
+    }
+
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      return true;
+    } catch (err) {
+      console.warn("MediaDevices mic permission denied", err);
+      return false;
+    } finally {
+      if (stream) {
+        stream.getTracks().forEach((track) => track.stop());
+      }
+    }
   }, []);
 
   const startVoiceSearch = async () => {
     const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRec) return alert("Voice search not supported on this device");
+    if (!SpeechRec) {
+      return alert("Voice search not supported on this device");
+    }
+
     const granted = await requestMicrophonePermission();
     if (!granted) {
-      return alert("Microphone permission denied. Please enable the mic in app settings.");
+      return alert(
+        "Microphone permission denied. Please allow the microphone permission in the app or system settings and try again."
+      );
     }
-    const rec   = new SpeechRec();
-    rec.onstart  = () => setIsListening(true);
-    rec.onend    = () => setIsListening(false);
-    rec.onresult = (e) => { setSearch(e.results[0][0].transcript); setIsListening(false); };
-    rec.onerror  = () => setIsListening(false);
+
+    const rec = new SpeechRec();
+    rec.continuous = false;
+    rec.interimResults = false;
+    rec.onstart = () => setIsListening(true);
+    rec.onend = () => setIsListening(false);
+    rec.onresult = (e) => {
+      setSearch(e.results[0][0].transcript);
+      setIsListening(false);
+    };
+    rec.onerror = () => setIsListening(false);
     rec.start();
   };
 
