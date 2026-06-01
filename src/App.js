@@ -202,39 +202,29 @@ const handleLogout = () => {
     className="profile-btn"
     onClick={() => setShowProfile(!showProfile)}
   >
-<img
-  src={
-    user?.photoURL &&
-    user.photoURL.startsWith("http")
-      ? user.photoURL
-      : "https://cdn-icons-png.flaticon.com/512/149/149071.png"
-  }
-  alt="profile"
-  className="profile-avatar"
-  onError={(e) => {
-    e.target.src =
-      "https://cdn-icons-png.flaticon.com/512/149/149071.png";
-  }}
-/>
+    {user?.photoURL ? (
+      <img
+        src={user.photoURL}
+        alt="profile"
+        className="profile-avatar"
+      />
+    ) : (
+      <FaUserCircle />
+    )}
   </button>
 
   {showProfile && (
     <div className="profile-popup">
       <div className="profile-header">
-<img
-  src={
-    user?.photoURL &&
-    user.photoURL.startsWith("http")
-      ? user.photoURL
-      : "https://cdn-icons-png.flaticon.com/512/149/149071.png"
-  }
-  alt="profile"
-  className="profile-popup-avatar"
-  onError={(e) => {
-    e.target.src =
-      "https://cdn-icons-png.flaticon.com/512/149/149071.png";
-  }}
-/>
+        <img
+          src={
+            user?.photoURL ||
+            "https://cdn-icons-png.flaticon.com/512/149/149071.png"
+          }
+          alt="profile"
+          className="profile-popup-avatar"
+        />
+
         <div className="profile-email">
           {user?.email}
         </div>
