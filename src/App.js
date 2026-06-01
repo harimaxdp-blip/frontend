@@ -202,29 +202,21 @@ const handleLogout = () => {
     className="profile-btn"
     onClick={() => setShowProfile(!showProfile)}
   >
-    {user?.photoURL ? (
-      <img
-        src={user.photoURL}
-        alt="profile"
-        className="profile-avatar"
-      />
-    ) : (
-      <FaUserCircle />
-    )}
+<img
+  src="https://avatars.githubusercontent.com/u/583231?v=4"
+  alt="profile"
+  className="profile-avatar"
+/>
   </button>
 
   {showProfile && (
     <div className="profile-popup">
       <div className="profile-header">
-        <img
-          src={
-            user?.photoURL ||
-            "https://cdn-icons-png.flaticon.com/512/149/149071.png"
-          }
-          alt="profile"
-          className="profile-popup-avatar"
-        />
-
+<img
+  src="https://avatars.githubusercontent.com/u/583231?v=4"
+  alt="profile"
+  className="profile-popup-avatar"
+/>
         <div className="profile-email">
           {user?.email}
         </div>

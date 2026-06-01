@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "195315033727-2bu1k0h3uphs87hu33j3mkq71qh4v2v5.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.harimovies.app",
+            "certificate_hash": "278a5a96b66369863ad81a1bafb8e7ffa6afcf90"
+          }
+        },
+        {
           "client_id": "195315033727-6f28jclcc6vrfhi78gm0hg9r4u2mmcv9.apps.googleusercontent.com",
           "client_type": 3
         }

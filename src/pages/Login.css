@@ -4,7 +4,17 @@
    Fonts: Bebas Neue (display) · Rajdhani (body)
    Palette: #E8000D / #000 / #fff
 ═══════════════════════════════════════════════════════════════════ */
-
+.btn-google {
+  width: 100%;
+  padding: 12px;
+  margin-top: 10px;
+  border: none;
+  border-radius: 8px;
+  background: white;
+  color: black;
+  font-weight: 600;
+  cursor: pointer;
+}
 @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Rajdhani:wght@400;500;600;700&display=swap');
 
 /* ── Design Tokens ───────────────────────────────────────────────── */
