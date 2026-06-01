@@ -13,7 +13,7 @@ import DeviceControl from "../plugins/deviceControl";
 import "./Movies.css";
 import banner1 from "../assets/banner1.jpeg";
 import banner2 from "../assets/banner2.jpeg";
-import banner3 from "../assets/banner3.png";
+import banner3 from "../assets/banner3.jpeg";
 import noResultsAll    from "../assets/no-results-all.png";
 import noResultsMovie  from "../assets/no-results-movie.png";
 import noResultsSeries from "../assets/no-results-series.png";
