@@ -251,7 +251,9 @@ const HeroBanner = React.memo(function HeroBanner({ banners, onPlay }) {
         className={`hero-bg ${isTransitioning ? "hero-bg--out" : "hero-bg--in"}`}
         style={{ backgroundImage: `url(${banner.image || banner.imageUrl})` }}
       />
-      <div className="hero-overlay" />
+     {banner.description !== "For Adevertiment Call" && (
+  <div className="hero-overlay" />
+)}
       <div className={`hero-content ${isTransitioning ? "hero-content--out" : "hero-content--in"}`}>
         {banner.logo
           ? <img src={banner.logo} alt={banner.title} className="hero-logo" />
