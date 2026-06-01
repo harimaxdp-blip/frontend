@@ -15,11 +15,13 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 import com.getcapacitor.annotation.Permission;
 import com.getcapacitor.annotation.PermissionCallback;
 
+import com.getcapacitor.PermissionState;
 import com.harimovies.app.MainActivity;
 import com.harimovies.app.PlayerActivity;
 
 @CapacitorPlugin(name = "DeviceControl", permissions = {
-    @Permission(strings = {Manifest.permission.RECORD_AUDIO}, alias = "microphone")
+    @Permission(strings = {Manifest.permission.RECORD_AUDIO}, alias = "microphone"),
+    @Permission(strings = {Manifest.permission.MODIFY_AUDIO_SETTINGS}, alias = "audio")
 })
 public class DeviceControlPlugin extends Plugin {
 
@@ -84,7 +86,7 @@ public class DeviceControlPlugin extends Plugin {
     @PermissionCallback
     private void handleMicrophonePermissionResult(PluginCall call) {
         Log.d("DeviceControl", "handleMicrophonePermissionResult called");
-        if (getPermissionState("microphone").toString().equals("granted")) {
+        if (getPermissionState("microphone") == PermissionState.GRANTED) {
             call.resolve();
         } else {
             call.reject("Microphone permission denied");

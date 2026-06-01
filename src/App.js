@@ -40,6 +40,7 @@ function App() {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const contentRef = useRef(null);
+  const profileRef = useRef(null);
   const previousPathRef = useRef(null);
   const [user, setUser] = useState(null);
   const [showProfile, setShowProfile] = useState(false);
@@ -48,20 +49,23 @@ function App() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Close profile popup when clicking anywhere outside
+  // Close profile popup when clicking / touching anywhere outside
   useEffect(() => {
     if (!showProfile) return;
-    const handleOutsideClick = () => {
-      setShowProfile(false);
-      setShowAvatarPicker(false);
+
+    const handleOutsideClick = (e) => {
+      if (profileRef.current && !profileRef.current.contains(e.target)) {
+        setShowProfile(false);
+        setShowAvatarPicker(false);
+      }
     };
-    // Small delay so the button's own click doesn't immediately close it
-    const timer = setTimeout(() => {
-      document.addEventListener("click", handleOutsideClick);
-    }, 10);
+
+    document.addEventListener("touchstart", handleOutsideClick);
+    document.addEventListener("mousedown", handleOutsideClick);
+
     return () => {
-      clearTimeout(timer);
-      document.removeEventListener("click", handleOutsideClick);
+      document.removeEventListener("touchstart", handleOutsideClick);
+      document.removeEventListener("mousedown", handleOutsideClick);
     };
   }, [showProfile]);
 
@@ -190,6 +194,7 @@ function App() {
             {/* Profile — stopPropagation so outside-click handler doesn't fire on the button itself */}
             <div
               className="profile-wrapper"
+              ref={profileRef}
               onClick={(e) => e.stopPropagation()}
             >
               <button
