@@ -11,7 +11,7 @@ import { db } from "../firebase";
 import { collection, onSnapshot } from "firebase/firestore";
 import DeviceControl from "../plugins/deviceControl";
 import "./Movies.css";
-import banner1 from "../assets/banner1.png";
+import banner1 from "../assets/banner1.jpeg";
 import banner2 from "../assets/banner2.png";
 import banner3 from "../assets/banner3.png";
 import noResultsAll    from "../assets/no-results-all.png";
@@ -322,6 +322,9 @@ export default function Home({ type = "all" }) {
   const [yearFilter, setYearFilter]         = useState("all");
   const [search, setSearch]                 = useState("");
   const [isListening, setIsListening]       = useState(false);
+  const [isProcessing, setIsProcessing]     = useState(false);
+  const [voiceHint, setVoiceHint]           = useState("");
+  const [voiceError, setVoiceError]         = useState("");
 
   const [showUpBtn, setShowUpBtn]   = useState(false);
   const [viewStack, setViewStack]   = useState([{ kind: "home" }]);
@@ -329,8 +332,8 @@ export default function Home({ type = "all" }) {
 const customSlides = [
   {
     image: banner1,
-    title: "Welcome to Hari Movies",
-    description: "Watch Unlimited Movies"
+    title: "",
+    description: ""
   },
   {
     image: banner2,
@@ -356,6 +359,8 @@ const customSlides = [
   const savedScrollMap   = useRef({});
   const isNavigatingBack = useRef(false);
   const navIdRef         = useRef(0);
+  const recognitionRef   = useRef(null);
+  const silenceTimerRef  = useRef(null);
 
   const currentView        = viewStack[viewStack.length - 1];
   const selectedCollection = currentView.kind === "collection" ? currentView.data : null;
@@ -710,6 +715,8 @@ const searchScore = useCallback((title, query) => {
   }, [navigate, currentView, languageFilter, genreFilter, yearFilter, search]);
 
   const requestMicrophonePermission = useCallback(async () => {
+    setVoiceError("");
+
     // First, try native Capacitor permission if available (Android inside WebView)
     if (typeof DeviceControl?.requestMicrophonePermissionNative === 'function') {
       try {
@@ -756,31 +763,127 @@ const searchScore = useCallback((title, query) => {
     }
   }, []);
 
-  const startVoiceSearch = async () => {
+  const stopVoiceRecognition = useCallback(() => {
+    const rec = recognitionRef.current;
+    if (rec) {
+      try {
+        rec.onresult = null;
+        rec.onend = null;
+        rec.onerror = null;
+        rec.stop();
+      } catch (err) {
+        console.warn("Error stopping recognition", err);
+      }
+      recognitionRef.current = null;
+    }
+
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+
+    setIsListening(false);
+    setIsProcessing(false);
+    setVoiceHint("");
+  }, []);
+
+  const scheduleSilenceStop = useCallback(() => {
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+    }
+    silenceTimerRef.current = window.setTimeout(() => {
+      stopVoiceRecognition();
+    }, 1600);
+  }, [stopVoiceRecognition]);
+
+  const startVoiceSearch = useCallback(async () => {
     const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRec) {
-      return alert("Voice search not supported on this device");
+      setVoiceError("Voice search isn't supported in this browser.");
+      return;
+    }
+
+    if (recognitionRef.current) {
+      stopVoiceRecognition();
+      return;
     }
 
     const granted = await requestMicrophonePermission();
     if (!granted) {
-      return alert(
-        "Microphone permission denied. Please allow the microphone permission in the app or system settings and try again."
-      );
+      setVoiceError("Microphone access is required for voice search.");
+      return;
     }
 
     const rec = new SpeechRec();
+    recognitionRef.current = rec;
     rec.continuous = false;
-    rec.interimResults = false;
-    rec.onstart = () => setIsListening(true);
-    rec.onend = () => setIsListening(false);
-    rec.onresult = (e) => {
-      setSearch(e.results[0][0].transcript);
-      setIsListening(false);
+    rec.interimResults = true;
+    const browserLang = navigator.language || "en-US";
+    rec.lang = browserLang.startsWith("ta") ? "ta-IN" : browserLang.startsWith("en") ? browserLang : "en-US";
+
+    rec.onstart = () => {
+      setIsListening(true);
+      setIsProcessing(false);
+      setVoiceHint("Listening...");
+      setVoiceError("");
     };
-    rec.onerror = () => setIsListening(false);
-    rec.start();
-  };
+
+    rec.onresult = (event) => {
+      let interimTranscript = "";
+      let finalTranscript = "";
+
+      for (let i = event.resultIndex; i < event.results.length; i += 1) {
+        const transcript = event.results[i][0]?.transcript || "";
+        if (event.results[i].isFinal) {
+          finalTranscript += transcript;
+        } else {
+          interimTranscript += transcript;
+        }
+      }
+
+      const nextText = (finalTranscript || interimTranscript).trim();
+      if (nextText) {
+        setSearch(nextText);
+      }
+
+      if (finalTranscript) {
+        setIsProcessing(true);
+        setVoiceHint("Processing...");
+      } else {
+        setIsProcessing(false);
+        setVoiceHint("Listening...");
+      }
+
+      scheduleSilenceStop();
+    };
+
+    rec.onerror = (event) => {
+      const message = event.error === "not-allowed" || event.error === "service-not-allowed"
+        ? "Microphone permission denied. Please enable microphone access."
+        : "Voice recognition failed. Please try again.";
+      setVoiceError(message);
+      stopVoiceRecognition();
+    };
+
+    rec.onend = () => {
+      setIsListening(false);
+      setIsProcessing(false);
+      setVoiceHint("");
+      recognitionRef.current = null;
+    };
+
+    try {
+      rec.start();
+    } catch (err) {
+      console.warn("Unable to start voice recognition", err);
+      setVoiceError("Unable to start voice recognition. Please try again.");
+      stopVoiceRecognition();
+    }
+  }, [requestMicrophonePermission, scheduleSilenceStop, stopVoiceRecognition]);
+
+  useEffect(() => {
+    return () => stopVoiceRecognition();
+  }, [stopVoiceRecognition]);
 
   const handleClick = (e, action) => {
     restoreScrollToken += 1;
@@ -896,29 +999,42 @@ const searchScore = useCallback((title, query) => {
       <div className="movies-page">
         {/* Search */}
         <div id="search-section" className="search-bar" role="search">
-         <input
-  id="search-input"
-  className="search-input"
-  value={search}
-  onChange={(e) => setSearch(e.target.value)}
-  onKeyDown={(e) => {
-    if (e.key === "Enter") {
-      e.target.blur(); // closes Android keyboard
-    }
-  }}
-  placeholder={isListening ? "Listening…" : "Search movies, series, anime…"}
-  aria-label="Search content"
-  type="search"
-  enterKeyHint="search"
-/>
-          <button
-            className={`mic-btn ${isListening ? "listening-active" : ""}`}
-            onClick={startVoiceSearch}
-            aria-label={isListening ? "Stop voice search" : "Start voice search"}
-            title={isListening ? "Stop listening" : "Voice search"}
-          >
-            {isListening ? "🛑" : "🎙️"}
-          </button>
+          <input
+            id="search-input"
+            className="search-input"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.target.blur(); // closes Android keyboard
+              }
+            }}
+            placeholder={isListening ? "Listening…" : "Search movies, series, anime…"}
+            aria-label="Search content"
+            type="search"
+            enterKeyHint="search"
+          />
+
+          <div className="search-voice-group">
+            <button
+              className={`mic-btn ${isListening ? "listening-active" : isProcessing ? "processing-active" : ""}`}
+              onClick={startVoiceSearch}
+              aria-label={isListening ? "Stop voice search" : "Start voice search"}
+              title={isListening ? "Stop listening" : "Voice search"}
+              type="button"
+            >
+              <svg viewBox="0 0 24 24" className="mic-icon" aria-hidden="true">
+                <path d="M12 14.5c1.93 0 3.5-1.57 3.5-3.5V5c0-1.93-1.57-3.5-3.5-3.5S8.5 3.07 8.5 5v6c0 1.93 1.57 3.5 3.5 3.5ZM7 9.5C7 6.46 9.46 4 12.5 4S18 6.46 18 9.5v1.5H17v-1.5C17 7.57 15.43 6 13.5 6S10 7.57 10 9.5v1.5H7V9.5Z" />
+                <path d="M19 11.5c0 3.38-2.71 6.15-6 6.46V20h2v2h-6v-2h2v-2.04c-3.29-.31-6-3.08-6-6.46h2c0 2.76 2.24 5 5 5s5-2.24 5-5h2Z" />
+              </svg>
+              {isProcessing && <span className="mic-spinner" aria-hidden="true" />}
+            </button>
+          </div>
+        </div>
+
+        <div className="voice-status-row">
+          {voiceHint && <div className="voice-hint">{voiceHint}</div>}
+          {voiceError && <div className="voice-error">{voiceError}</div>}
         </div>
 
         {/* Filters */}
