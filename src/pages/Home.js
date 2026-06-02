@@ -11,9 +11,9 @@ import { db } from "../firebase";
 import { collection, onSnapshot } from "firebase/firestore";
 import DeviceControl from "../plugins/deviceControl";
 import "./Movies.css";
-import banner1 from "../assets/banner1.jpeg";
-import banner2 from "../assets/banner2.jpeg";
-import banner3 from "../assets/banner3.jpeg";
+import banner1 from "../assets/banner1.png";
+import banner2 from "../assets/banner2.png";
+import banner3 from "../assets/banner3.png";
 import noResultsAll    from "../assets/no-results-all.png";
 import noResultsMovie  from "../assets/no-results-movie.png";
 import noResultsSeries from "../assets/no-results-series.png";
@@ -245,7 +245,7 @@ const HeroBanner = React.memo(function HeroBanner({ banners, onPlay }) {
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       onKeyDown={handleKeyDown}
-      tabIndex={-1}
+      tabIndex={0}
     >
       <div
         className={`hero-bg ${isTransitioning ? "hero-bg--out" : "hero-bg--in"}`}

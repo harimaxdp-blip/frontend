@@ -4,18 +4,18 @@ import BannerManager from "./components/Bannermanager";
 import Sidebar from "./components/Sidebar";
 import { FaBars, FaSearch, FaUserCircle } from "react-icons/fa";
 import avatar11 from "./assets/avatars/11.png";
-import avatar12 from "./assets/avatars/12.png";
+//import avatar12 from "./assets/avatars/12.png";
 import avatar13 from "./assets/avatars/13.png";
-import avatar14 from "./assets/avatars/14.png";
-import avatar15 from "./assets/avatars/15.png";
+//import avatar14 from "./assets/avatars/14.png";
+//import avatar15 from "./assets/avatars/15.png";
 import avatar16 from "./assets/avatars/16.png";
-import avatar17 from "./assets/avatars/17.png";
+//import avatar17 from "./assets/avatars/17.png";
 import avatar18 from "./assets/avatars/18.png";
 import avatar19 from "./assets/avatars/19.png";
-import avatar20 from "./assets/avatars/20.png";
-import avatar21 from "./assets/avatars/21.png";
-import avatar22 from "./assets/avatars/22.png";
-import avatar23 from "./assets/avatars/23.png";
+//import avatar20 from "./assets/avatars/20.png";
+//import avatar21 from "./assets/avatars/21.png";
+//import avatar22 from "./assets/avatars/22.png";
+//import avatar23 from "./assets/avatars/23.png";
 import { App as CapacitorApp } from "@capacitor/app";
 import Banner from "./pages/Banner";
 import Home from "./pages/Home";
@@ -32,10 +32,10 @@ const CATEGORY_PATHS = new Set(["/", "/movies", "/series", "/anime"]);
 
 // Moved outside component — fixes ESLint missing-dependency warning
 const avatars = [
-  avatar11, avatar12, avatar13, avatar14, avatar15, avatar16, avatar17,
-  avatar18, avatar19, avatar20, avatar21, avatar22, avatar23,
+   avatar13, avatar16, 
+  avatar18, avatar19, avatar11, 
 ];
-
+// avatar14, avatar15,avatar17,avatar20, avatar21, avatar22, avatar23,avatar12,
 function App() {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(true);

@@ -154,6 +154,7 @@ export default function MoviePlayer() {
 
   // ─── Core Refs ────────────────────────────────────────────────────────────
   const videoRef         = useRef(null);
+  const iframeRef        = useRef(null);
   const containerRef     = useRef(null);
   const viewportRef      = useRef(null);
   const hlsRef           = useRef(null);
@@ -200,6 +201,7 @@ export default function MoviePlayer() {
   const [isMuted, setIsMuted]                   = useState(false);
   const [isBuffering, setIsBuffering]           = useState(false);
   const [isFullscreen, setIsFullscreen]         = useState(false);
+  const [iframePlaying, setIframePlaying]       = useState(false);
 
   const [showControls, setShowControls]         = useState(true);
   const [showVolumeBar, setShowVolumeBar]       = useState(false);
@@ -1061,11 +1063,53 @@ const onProgressKey = useCallback((e) => {
         if (d?.event === "onStateChange" && (d?.info === 0 || d?.info === "0")) startAutoPlayCountdown();
         if (d?.event === "ended" || d?.type === "ended") startAutoPlayCountdown();
         if (d?.currentTime && d?.duration > 0 && d.currentTime >= d.duration - 2) startAutoPlayCountdown();
+        // track iframe YouTube play state (1 = playing, 2 = paused)
+        if (d?.event === "onStateChange") {
+          if (d.info === 1 || d.info === "1") setIframePlaying(true);
+          if (d.info === 2 || d.info === "2") setIframePlaying(false);
+        }
       } catch {}
     };
     window.addEventListener("message", onMsg);
     return () => window.removeEventListener("message", onMsg);
   }, [mode, hasNext, startAutoPlayCountdown]);
+
+  // ─── Forward TV keys to iframe (simple mappings) ─────────────────────────
+  useEffect(() => {
+    const onKey = (e) => {
+      if (mode !== "iframe" || !iframeRef.current) return;
+      const key = e.key;
+      const win = iframeRef.current.contentWindow;
+      if (!win) return;
+      const isYouTube = /youtube/.test(iframeUrl || "");
+
+      const sendYT = (func, args = []) => {
+        try { win.postMessage(JSON.stringify({ event: "command", func, args }), "*"); } catch {}
+      };
+      const sendGeneric = (action, args = []) => {
+        try { win.postMessage({ type: "hm-player", action, args }, "*"); } catch {}
+      };
+
+      const send = (cmd) => { if (isYouTube) sendYT(cmd.func || cmd.action, cmd.args || []); else sendGeneric(cmd.action, cmd.args || []); };
+
+      // Play / pause toggle
+      if (key === "MediaPlayPause" || key === "k" || key === "K" || key === "Enter" || key === " ") {
+        e.preventDefault();
+        if (iframePlaying) send({ func: "pauseVideo" }); else send({ func: "playVideo" });
+        return;
+      }
+
+      // Volume up / down (simple mapping: set to 100 / 0)
+      if (key === "ArrowUp") { e.preventDefault(); send({ func: "unMute" }); send({ func: "setVolume", args: [100] }); return; }
+      if (key === "ArrowDown") { e.preventDefault(); send({ func: "mute" }); send({ func: "setVolume", args: [0] }); return; }
+
+      // Fullscreen handled by parent
+      if (key === "f" || key === "F" || key === "MediaTrackNext") { /* ignore here */ }
+    };
+
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [mode, iframeUrl, iframePlaying]);
 
   // ─── Cleanup ──────────────────────────────────────────────────────────────
   useEffect(() => () => {
@@ -1417,8 +1461,11 @@ const onProgressKey = useCallback((e) => {
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                 allowFullScreen
                 sandbox="allow-scripts allow-same-origin allow-presentation allow-forms"
+                ref={iframeRef}
+                tabIndex={0}
                 className="mp-iframe"
                 onLoad={() => setLoading(false)}
+                onFocus={() => { setShowControls(true); resetControlsTimer(); }}
               />
             </div>
           )}
