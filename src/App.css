@@ -212,7 +212,7 @@ body {
   border-radius: 50%;
   object-fit: cover;
   border: 2px solid #333;
-  transition: border-color 0.2s;
+  transition: border-color 0.2s, opacity 0.4s ease;
 }
 
 .profile-btn:hover .profile-avatar {
@@ -221,8 +221,6 @@ body {
 
 /* ============================================
    PROFILE POPUP
-   — gap from bottom nav: margin-bottom on
-     popup keeps it from touching the nav bar
 ============================================ */
 .profile-popup {
   position: absolute;
@@ -235,14 +233,12 @@ body {
   padding: 18px 16px 16px;
   z-index: 9999;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.75);
-  /* Ensure popup doesn't bleed into the bottom nav */
   max-height: calc(100vh - 130px);
   overflow-y: auto;
 }
 
 .profile-header {
   text-align: center;
-  /* Gap between profile header and anything below */
   margin-bottom: 4px;
 }
 
@@ -261,7 +257,7 @@ body {
   border-radius: 50%;
   object-fit: cover;
   border: 2px solid #2a2a2a;
-  transition: border-color 0.2s, transform 0.2s;
+  transition: border-color 0.2s, transform 0.2s, opacity 0.4s ease;
 }
 
 .profile-avatar-wrap:hover .profile-popup-avatar {
@@ -304,26 +300,37 @@ body {
   border: 1px solid #222;
 }
 
-.avatar-option {
+/* Outer clickable wrapper — handles border, hover, selected ring */
+.avatar-option-wrap {
   width: 100%;
   aspect-ratio: 1;
   border-radius: 50%;
-  object-fit: cover;
   cursor: pointer;
   border: 2px solid transparent;
   transition: border-color 0.2s, transform 0.18s;
+  overflow: hidden;
+  flex-shrink: 0;
 }
 
-.avatar-option:hover {
+.avatar-option-wrap:hover {
   border-color: #e50914;
   transform: scale(1.1);
 }
 
-/* Selected avatar — solid ring, no glow */
+/* Selected ring */
 .avatar-selected {
   border-color: #e50914;
   outline: 2px solid #7a0000;
   outline-offset: 1px;
+}
+
+/* The img inside the grid cell — fills wrapper fully */
+.avatar-option-img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
 }
 
 /* ============================================
@@ -354,10 +361,108 @@ body {
 }
 
 /* ============================================
+   AVATAR SHIMMER SWEEP LOADER
+   ─────────────────────────────────────────
+   1. .avatar-img-wrap is a relative circle
+      container with overflow:hidden — this
+      is what clips the shimmer to the circle.
+   2. .avatar-skeleton sits absolutely inside.
+      A ::after pseudo sweeps a bright band
+      left-to-right over the dark base.
+   3. When show=true, skeleton gets
+      .avatar-skeleton--hidden (opacity 0)
+      and image gets .avatar-img--visible.
+   4. The minDelay timer in AvatarImg ensures
+      shimmer always plays for at least 500ms
+      even for instantly-loaded local PNGs.
+============================================ */
+.avatar-img-wrap {
+  position: relative;
+  border-radius: 50%;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* Small — topbar (32px, matches .profile-avatar) */
+.avatar-img-wrap--sm {
+  width: 32px;
+  height: 32px;
+}
+
+/* Large — popup (68px, matches .profile-popup-avatar) */
+.avatar-img-wrap--lg {
+  width: 68px;
+  height: 68px;
+}
+
+/* Grid — fluid size, fills .avatar-option-wrap */
+.avatar-img-wrap--grid {
+  width: 100%;
+  height: 100%;
+}
+
+/* ── Shimmer skeleton ── */
+@keyframes shimmerSweep {
+  0%   { transform: translateX(-150%); }
+  100% { transform: translateX(250%); }
+}
+
+.avatar-skeleton {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background-color: #2a2a2a;
+  overflow: hidden;
+  z-index: 1;
+  opacity: 1;
+  transition: opacity 0.35s ease;
+  pointer-events: none;
+}
+
+/* The sweeping highlight band */
+.avatar-skeleton::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.13) 50%,
+    transparent 100%
+  );
+  animation: shimmerSweep 1.1s ease-in-out infinite;
+}
+
+/* Skeleton fades out once image is ready */
+.avatar-skeleton--hidden {
+  opacity: 0;
+}
+
+/* ── Image states ── */
+.avatar-img--hidden {
+  opacity: 0;
+  position: relative;
+  z-index: 2;
+}
+
+.avatar-img--visible {
+  opacity: 1;
+  transition: opacity 0.4s ease;
+  position: relative;
+  z-index: 2;
+}
+
+
+/* ============================================
    MOBILE (≤ 768px)
 ============================================ */
 @media (max-width: 768px) {
-  /* Hide hamburger and sidebar on mobile */
   .menu-btn {
     display: none !important;
   }
@@ -366,17 +471,12 @@ body {
     display: none !important;
   }
 
-  /* On mobile: left column is hidden — but to keep logo centered
-     we keep the left column as a zero-width invisible spacer.
-     The right column stays at 80px, so we set left to 80px too
-     via an invisible placeholder so centering stays true. */
   .topbar-left {
-    visibility: hidden;  /* keeps width, invisible */
+    visibility: hidden;
   }
 
   .content {
     padding: 16px;
-    /* Space above bottom nav: nav is ~60px, add 14px breathing room */
     padding-bottom: 74px;
   }
 
@@ -384,11 +484,9 @@ body {
     transform: none;
   }
 
-  /* Profile popup on mobile — prevent overflow off screen */
   .profile-popup {
     right: 0;
     width: 240px;
-    /* Extra bottom margin so popup doesn't touch the bottom nav */
     margin-bottom: 14px;
     max-height: calc(100vh - 145px);
   }

@@ -11,9 +11,9 @@ import { db } from "../firebase";
 import { collection, onSnapshot } from "firebase/firestore";
 import DeviceControl from "../plugins/deviceControl";
 import "./Movies.css";
-import banner1 from "../assets/banner1.png";
+/*import banner1 from "../assets/banner1.png";
 import banner2 from "../assets/banner2.png";
-import banner3 from "../assets/banner3.png";
+import banner3 from "../assets/banner3.png";*/
 import noResultsAll    from "../assets/no-results-all.png";
 import noResultsMovie  from "../assets/no-results-movie.png";
 import noResultsSeries from "../assets/no-results-series.png";
@@ -332,7 +332,7 @@ export default function Home({ type = "all" }) {
   const [viewStack, setViewStack]   = useState([{ kind: "home" }]);
   const [playerLoading, setPlayerLoading] = useState(null);
 const customSlides = [
-  {
+ /* {
     image: banner1,
     title: "",
     description: "For Adevertiment Call"
@@ -346,7 +346,7 @@ const customSlides = [
     image: banner3,
     title: "",
     description: "For Adevertiment Call"
-  }
+  }*/
 ];const mixedBanners = [
   customSlides[0],
   ...banners.slice(0, 1),
