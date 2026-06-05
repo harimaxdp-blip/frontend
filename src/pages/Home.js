@@ -127,7 +127,7 @@ const NoResults = React.memo(function NoResults({ img }) {
 });
 
 // ─── Advertisement Banner Component ──────────────────────────────────────────
-const AdBanner = React.memo(function AdBanner({ ad }) {
+/*const AdBanner = React.memo(function AdBanner({ ad }) {
   if (!ad || !ad.imageUrl || ad.active === false) return null;
 
   const handleClick = () => {
@@ -159,7 +159,7 @@ const AdBanner = React.memo(function AdBanner({ ad }) {
       )}
     </div>
   );
-});
+});*/
 
 // ─── Hero Banner ──────────────────────────────────────────────────────────────
 const HeroBanner = React.memo(function HeroBanner({ banners, onPlay }) {
@@ -316,7 +316,7 @@ const FocusCard = React.forwardRef(function FocusCard(
 export default function Home({ type = "all" }) {
   const [movies, setMovies]             = useState([]);
   const [banners, setBanners]           = useState([]);
-  const [ads, setAds]                   = useState([]);       // ← NEW
+//  const [ads, setAds]                   = useState([]);       // ← NEW
   const [isDataLoaded, setIsDataLoaded] = useState(false);
 
   const [languageFilter, setLanguageFilter] = useState("all");
@@ -414,7 +414,7 @@ const customSlides = [
   }, [type]);
 
   // ── NEW: Load ads ────────────────────────────────────────────────────────────
-  useEffect(() => {
+ /* useEffect(() => {
     const unsub = onSnapshot(collection(db, "ads"), (snap) => {
       const data = snap.docs
         .map((d) => ({ id: d.id, ...d.data() }))
@@ -423,7 +423,7 @@ const customSlides = [
       setAds(data);
     });
     return () => unsub();
-  }, []);
+  }, []);*/
 
   // ─── Type helpers ────────────────────────────────────────────────────────────
   const isMovieType  = useCallback((t) => ["movie", "movies"].includes(normalize(t)), [normalize]);
@@ -1128,7 +1128,7 @@ const searchScore = useCallback((title, query) => {
             )}
 
             {/* ── AD SLOT 1 — after Movies ── */}
-            {ads[0] && <AdBanner ad={ads[0]} />}
+            {/* {ads[0] && <AdBanner ad={ads[0]} />} */}
 
             {(type === "all" || type === "series") && seriesGroups.length > 0 && (
               <section className="content-section">
@@ -1140,7 +1140,7 @@ const searchScore = useCallback((title, query) => {
             )}
 
             {/* ── AD SLOT 2 — after Series ── */}
-            {ads[1] && <AdBanner ad={ads[1]} />}
+            {/* {ads[1] && <AdBanner ad={ads[1]} />} */}
 
             {(type === "all" || type === "anime") && animeMovieGroups.length > 0 && (
               <section className="content-section">
@@ -1152,7 +1152,7 @@ const searchScore = useCallback((title, query) => {
             )}
 
             {/* ── AD SLOT 3 — after Anime Movies ── */}
-            {ads[2] && <AdBanner ad={ads[2]} />}
+            {/* {ads[2] && <AdBanner ad={ads[2]} />} */}
 
             {(type === "all" || type === "anime") && animeSeriesGroups.length > 0 && (
               <section className="content-section">

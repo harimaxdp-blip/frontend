@@ -1,0 +1,410 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/player_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#00000000">
+
+    <!-- ═══════════════════════════════════════════════════
+         GESTURE ZONES  (transparent — widths set in Java)
+         Left  = brightness   |   Right = volume
+    ════════════════════════════════════════════════════ -->
+    <View
+        android:id="@+id/zone_brightness"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_gravity="start"
+        android:background="#00000000"
+        android:contentDescription="Brightness gesture area" />
+
+    <View
+        android:id="@+id/zone_volume"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_gravity="end"
+        android:background="#00000000"
+        android:contentDescription="Volume gesture area" />
+
+    <!-- ═══════════════════════════════════════════════════
+         GRADIENT SCRIMS
+    ════════════════════════════════════════════════════ -->
+    <View
+        android:id="@+id/scrim_top"
+        android:layout_width="match_parent"
+        android:layout_height="120dp"
+        android:layout_gravity="top"
+        android:background="@drawable/gradient_top_scrim" />
+
+    <View
+        android:id="@+id/scrim_bottom"
+        android:layout_width="match_parent"
+        android:layout_height="160dp"
+        android:layout_gravity="bottom"
+        android:background="@drawable/gradient_bottom_scrim" />
+
+    <!-- ═══════════════════════════════════════════════════
+         BRIGHTNESS INDICATOR PILL  (left side)
+         Shown while user swipes up/down on left zone
+    ════════════════════════════════════════════════════ -->
+    <LinearLayout
+        android:id="@+id/gesture_brightness_indicator"
+        android:layout_width="52dp"
+        android:layout_height="220dp"
+        android:layout_gravity="center_vertical|start"
+        android:layout_marginStart="20dp"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:background="@drawable/bg_gesture_pill"
+        android:visibility="gone"
+        android:elevation="8dp">
+
+        <ImageView
+            android:layout_width="22dp"
+            android:layout_height="22dp"
+            android:src="@drawable/ic_brightness"
+            android:tint="#FFFFFFFF"
+            android:layout_marginBottom="8dp" />
+
+        <ProgressBar
+            android:id="@+id/progress_brightness"
+            style="@style/Widget.AppCompat.ProgressBar.Horizontal"
+            android:layout_width="6dp"
+            android:layout_height="140dp"
+            android:max="100"
+            android:progress="50"
+            android:rotation="270"
+            android:progressTint="#FFFFFFFF"
+            android:progressBackgroundTint="#55FFFFFF" />
+
+        <TextView
+            android:id="@+id/tv_brightness_value"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="50%"
+            android:textColor="#FFFFFFFF"
+            android:textSize="11sp"
+            android:fontFamily="monospace" />
+
+    </LinearLayout>
+
+    <!-- ═══════════════════════════════════════════════════
+         VOLUME INDICATOR PILL  (right side)
+    ════════════════════════════════════════════════════ -->
+    <LinearLayout
+        android:id="@+id/gesture_volume_indicator"
+        android:layout_width="52dp"
+        android:layout_height="220dp"
+        android:layout_gravity="center_vertical|end"
+        android:layout_marginEnd="20dp"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:background="@drawable/bg_gesture_pill"
+        android:visibility="gone"
+        android:elevation="8dp">
+
+        <ImageView
+            android:id="@+id/ic_volume_gesture"
+            android:layout_width="22dp"
+            android:layout_height="22dp"
+            android:src="@drawable/ic_volume_up"
+            android:tint="#FFFFFFFF"
+            android:layout_marginBottom="8dp" />
+
+        <ProgressBar
+            android:id="@+id/progress_volume"
+            style="@style/Widget.AppCompat.ProgressBar.Horizontal"
+            android:layout_width="6dp"
+            android:layout_height="140dp"
+            android:max="100"
+            android:progress="70"
+            android:rotation="270"
+            android:progressTint="#FFFFFFFF"
+            android:progressBackgroundTint="#55FFFFFF" />
+
+        <TextView
+            android:id="@+id/tv_volume_value"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="70%"
+            android:textColor="#FFFFFFFF"
+            android:textSize="11sp"
+            android:fontFamily="monospace" />
+
+    </LinearLayout>
+
+    <!-- ═══════════════════════════════════════════════════
+         SEEK INDICATOR  (center, swipe or double-tap)
+    ════════════════════════════════════════════════════ -->
+    <LinearLayout
+        android:id="@+id/seek_indicator"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="@drawable/bg_seek_pill"
+        android:paddingStart="18dp"
+        android:paddingEnd="18dp"
+        android:paddingTop="10dp"
+        android:paddingBottom="10dp"
+        android:visibility="gone"
+        android:elevation="8dp">
+
+        <ImageView
+            android:id="@+id/seek_icon"
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:src="@drawable/ic_forward_30"
+            android:tint="#FFFFFFFF" />
+
+        <TextView
+            android:id="@+id/tv_seek_delta"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:text="+10s"
+            android:textColor="#FFFFFFFF"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+    </LinearLayout>
+
+    <!-- ═══════════════════════════════════════════════════
+         TOP BAR  (unchanged IDs — your existing buttons)
+    ════════════════════════════════════════════════════ -->
+    <LinearLayout
+        android:id="@+id/top_bar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingStart="12dp"
+        android:paddingEnd="16dp"
+        android:paddingTop="16dp"
+        android:paddingBottom="8dp">
+
+        <ImageButton
+            android:id="@+id/btn_back"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:background="@drawable/bg_tv_focus_circle"
+            android:contentDescription="Back"
+            android:src="@drawable/ic_arrow_back"
+            android:tint="#FFFFFF"
+            android:padding="8dp"
+            android:focusable="true"
+            android:nextFocusRight="@id/btn_mute"
+            android:nextFocusDown="@id/exo_rew" />
+
+        <TextView
+            android:id="@+id/tv_title"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="8dp"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:text="Now Playing"
+            android:textColor="#FFFFFF"
+            android:textSize="15sp"
+            android:textStyle="bold"
+            android:shadowColor="#CC000000"
+            android:shadowDx="0"
+            android:shadowDy="1"
+            android:shadowRadius="6"
+            android:focusable="false" />
+
+        <ImageButton
+            android:id="@+id/btn_mute"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_marginStart="4dp"
+            android:background="@drawable/bg_tv_focus_circle"
+            android:contentDescription="Mute"
+            android:src="@drawable/ic_volume_up"
+            android:tint="#FFFFFF"
+            android:padding="8dp"
+            android:focusable="true"
+            android:nextFocusLeft="@id/btn_back"
+            android:nextFocusRight="@id/btn_aspect_ratio"
+            android:nextFocusDown="@id/exo_play_pause" />
+
+        <ImageButton
+            android:id="@+id/btn_aspect_ratio"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_marginStart="4dp"
+            android:background="@drawable/bg_tv_focus_circle"
+            android:contentDescription="Aspect ratio"
+            android:src="@drawable/ic_aspect_ratio"
+            android:tint="#FFFFFF"
+            android:padding="8dp"
+            android:focusable="true"
+            android:nextFocusLeft="@id/btn_mute"
+            android:nextFocusRight="@id/btn_fullscreen"
+            android:nextFocusDown="@id/exo_play_pause" />
+
+        <ImageButton
+            android:id="@+id/btn_fullscreen"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_marginStart="4dp"
+            android:background="@drawable/bg_tv_focus_circle"
+            android:contentDescription="Fullscreen"
+            android:src="@drawable/ic_fullscreen"
+            android:tint="#FFFFFF"
+            android:padding="8dp"
+            android:focusable="true"
+            android:nextFocusLeft="@id/btn_aspect_ratio"
+            android:nextFocusDown="@id/exo_ffwd" />
+
+    </LinearLayout>
+
+    <!-- ═══════════════════════════════════════════════════
+         CENTER CONTROLS  (unchanged IDs)
+    ════════════════════════════════════════════════════ -->
+    <LinearLayout
+        android:id="@+id/center_controls"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <ImageButton
+            android:id="@+id/exo_rew"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            android:background="@drawable/bg_ctrl_circle_dim"
+            android:contentDescription="Rewind 10 seconds"
+            android:src="@drawable/ic_replay_10"
+            android:tint="#FFFFFF"
+            android:padding="12dp"
+            android:focusable="true"
+            android:nextFocusRight="@id/exo_play_pause"
+            android:nextFocusUp="@id/btn_back"
+            android:nextFocusDown="@id/exo_progress" />
+
+        <ImageButton
+            android:id="@+id/exo_play_pause"
+            android:layout_width="80dp"
+            android:layout_height="80dp"
+            android:layout_marginStart="24dp"
+            android:layout_marginEnd="24dp"
+            android:background="@drawable/bg_play_circle"
+            android:contentDescription="Play/Pause"
+            android:src="@drawable/ic_play"
+            android:tint="#FFFFFF"
+            android:padding="20dp"
+            android:focusable="true"
+            android:nextFocusLeft="@id/exo_rew"
+            android:nextFocusRight="@id/exo_ffwd"
+            android:nextFocusUp="@id/btn_mute"
+            android:nextFocusDown="@id/exo_progress" />
+
+        <ImageButton
+            android:id="@+id/exo_ffwd"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            android:background="@drawable/bg_ctrl_circle_dim"
+            android:contentDescription="Forward 30 seconds"
+            android:src="@drawable/ic_forward_30"
+            android:tint="#FFFFFF"
+            android:padding="12dp"
+            android:focusable="true"
+            android:nextFocusLeft="@id/exo_play_pause"
+            android:nextFocusUp="@id/btn_fullscreen"
+            android:nextFocusDown="@id/exo_progress" />
+
+    </LinearLayout>
+
+    <!-- ═══════════════════════════════════════════════════
+         BOTTOM BAR  (unchanged IDs)
+    ════════════════════════════════════════════════════ -->
+    <LinearLayout
+        android:id="@+id/bottom_bar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:orientation="vertical"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:paddingBottom="16dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingBottom="4dp">
+
+            <TextView
+                android:id="@+id/exo_position"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#FFFFFF"
+                android:textSize="13sp"
+                android:fontFamily="monospace"
+                android:text="0:00"
+                android:minWidth="42dp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text=" / "
+                android:textColor="#99FFFFFF"
+                android:textSize="13sp" />
+
+            <TextView
+                android:id="@+id/exo_duration"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:textColor="#99FFFFFF"
+                android:textSize="13sp"
+                android:fontFamily="monospace"
+                android:text="0:00" />
+
+        </LinearLayout>
+
+        <androidx.media3.ui.DefaultTimeBar
+            android:id="@+id/exo_progress"
+            android:layout_width="match_parent"
+            android:layout_height="26dp"
+            android:focusable="true"
+            android:nextFocusUp="@id/exo_play_pause"
+            app:played_color="#FFFFFFFF"
+            app:buffered_color="#66FFFFFF"
+            app:unplayed_color="#33FFFFFF"
+            app:scrubber_color="#FFFFFFFF"
+            app:scrubber_dragged_size="16dp"
+            app:scrubber_enabled_size="12dp"
+            app:scrubber_disabled_size="0dp"
+            app:bar_height="4dp"
+            app:touch_target_height="26dp" />
+
+    </LinearLayout>
+
+    <!-- ═══════════════════════════════════════════════════
+         BUFFERING SPINNER  (unchanged)
+    ════════════════════════════════════════════════════ -->
+    <ProgressBar
+        android:id="@+id/exo_buffering"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_gravity="center"
+        android:indeterminateTint="#FFFFFFFF"
+        android:visibility="gone" />
+
+    <!-- ═══════════════════════════════════════════════════
+         LOCK FAB  (mobile only — hidden on TV in Java)
+         Bottom-end corner, above the progress bar
+    ════════════════════════════════════════════════════ -->
+   
+
+</FrameLayout>

@@ -1,4 +1,8 @@
 package com.harimovies.app;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
 
 import android.content.Intent;
 import android.media.AudioManager;
@@ -23,8 +27,14 @@ import java.util.ArrayList;
 
 public class MainActivity extends BridgeActivity {
 
+    private boolean playerOpened = false;
     private AudioManager audioManager;
+@Override
+public void onResume() {
+    super.onResume();
 
+    playerOpened = false;
+}
     // ─────────────────────────────────────────────
     // REQUEST BRIGHTNESS PERMISSION
     // ─────────────────────────────────────────────
@@ -216,7 +226,63 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(DeviceControlPlugin.class);
 
         super.onCreate(savedInstanceState);
+WebView webView = bridge.getWebView();
 
+webView.setWebViewClient(new WebViewClient() {
+@Override
+public void onPageStarted(
+        WebView view,
+        String url,
+        android.graphics.Bitmap favicon) {
+
+    playerOpened = false;
+
+    super.onPageStarted(view, url, favicon);
+}
+    @Override
+    public WebResourceResponse shouldInterceptRequest(
+            WebView view,
+            WebResourceRequest request) {
+
+        String url = request.getUrl().toString();
+
+        if (
+    url.contains(".mp4") ||
+    url.contains(".m3u8") ||
+    url.contains(".mpd") ||
+    url.contains("stream=1")
+) {
+    Log.e("VIDEO_MATCH", url);
+}
+
+if (playerOpened) {
+    return super.shouldInterceptRequest(view, request);
+}
+
+if (url.contains(".m3u8") ||
+    url.contains(".mp4") ||
+    url.contains(".mpd") ||
+    url.contains("stream=1")) {
+
+    playerOpened = true;
+
+    Log.d("VIDEO_FOUND", url);
+
+    runOnUiThread(() -> {
+
+        Intent intent = new Intent(
+                MainActivity.this,
+                PlayerActivity.class
+        );
+
+        intent.putExtra("url", url);
+
+        startActivity(intent);
+    });
+}
+        return super.shouldInterceptRequest(view, request);
+    }
+});
         requestBrightnessPermission();
 
         setVolumeControlStream(AudioManager.STREAM_MUSIC);

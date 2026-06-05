@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Offline – HariMovies</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #0a0a0a;
+    color: #fff;
+    font-family: Arial, Helvetica, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 24px;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* CRT grain */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: repeating-linear-gradient(
+      0deg, transparent, transparent 2px,
+      rgba(255,255,255,0.012) 2px,
+      rgba(255,255,255,0.012) 4px
+    );
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* Scanline */
+  .scanline {
+    position: fixed;
+    left: 0;
+    width: 100%;
+    height: 3px;
+    background: rgba(229,9,20,0.13);
+    animation: scanline 3s linear infinite;
+    z-index: 1;
+    pointer-events: none;
+  }
+
+  @keyframes scanline {
+    0%   { top: -5%; }
+    100% { top: 105%; }
+  }
+
+  /* Top brand bar */
+  .topbar {
+    position: fixed;
+    top: 18px;
+    left: 0;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 0 20px;
+    z-index: 2;
+  }
+
+  .topbar-line {
+    height: 1px;
+    flex: 1;
+    max-width: 70px;
+    background: #1e1e1e;
+  }
+
+  .topbar-brand {
+    font-size: 11px;
+    color: #3a3a3a;
+    letter-spacing: 0.14em;
+    font-family: monospace;
+  }
+
+  .topbar-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #e50914;
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  /* Main content */
+  .content {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    max-width: 360px;
+  }
+
+  /* Wifi icon */
+  .wifi-wrap {
+    margin-bottom: 20px;
+    animation: float 3s ease-in-out infinite;
+  }
+
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50%       { transform: translateY(-9px); }
+  }
+
+  /* Error badge */
+  .badge {
+    background: #111;
+    border: 1px solid #1e1e1e;
+    border-radius: 8px;
+    padding: 4px 14px;
+    margin-bottom: 14px;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .badge span {
+    font-size: 11px;
+    color: #555;
+    font-family: monospace;
+    letter-spacing: 0.07em;
+  }
+
+  h1 {
+    font-size: 24px;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 8px;
+  }
+
+  p {
+    font-size: 14px;
+    color: #666;
+    line-height: 1.65;
+    margin-bottom: 22px;
+  }
+
+  /* Status row */
+  .status-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    background: #111;
+    border: 1px solid #1e1e1e;
+    border-radius: 8px;
+    width: 100%;
+    margin-bottom: 14px;
+  }
+
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #e50914;
+    flex-shrink: 0;
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+
+  .status-text {
+    font-size: 13px;
+    color: #555;
+  }
+
+  /* Error msg */
+  .error-msg {
+    display: none;
+    background: #1a0a0a;
+    border: 1px solid #3a1010;
+    border-radius: 8px;
+    padding: 9px 14px;
+    width: 100%;
+    font-size: 12px;
+    color: #e50914;
+    margin-bottom: 12px;
+  }
+
+  /* Pulse dots */
+  .dots {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 20px;
+  }
+
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #e50914;
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+  .dot:nth-child(2) { animation-delay: 0.2s; }
+  .dot:nth-child(3) { animation-delay: 0.4s; }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.35; }
+  }
+
+  /* Retry button */
+  #retryBtn {
+    background: #e50914;
+    color: #fff;
+    border: none;
+    padding: 13px 32px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    cursor: pointer;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: background 0.2s;
+  }
+
+  #retryBtn:active { background: #c40812; }
+  #retryBtn.success { background: #1a6b1a; }
+  #retryBtn.failed  { background: #7a0000; }
+
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    20%       { transform: translateX(-8px); }
+    40%       { transform: translateX(8px); }
+    60%       { transform: translateX(-5px); }
+    80%       { transform: translateX(5px); }
+  }
+
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+  }
+
+  .spinning { animation: spin 0.8s linear infinite; }
+  .shake-anim { animation: shake 0.4s ease; }
+
+  .attempts {
+    font-size: 11px;
+    color: #3a3a3a;
+    margin: 10px 0 0;
+    font-family: monospace;
+  }
+</style>
+</head>
+<body>
+
+<div class="scanline"></div>
+
+<div class="topbar">
+  <div class="topbar-line"></div>
+  <span class="topbar-brand">HARIMOVIES</span>
+  <div class="topbar-line"></div>
+  <div class="topbar-dot"></div>
+</div>
+
+<div class="content">
+  <div class="wifi-wrap">
+    <svg width="90" height="90" viewBox="0 0 80 80" fill="none">
+      <circle cx="40" cy="40" r="38" fill="#111" stroke="#222" stroke-width="1"/>
+      <line x1="20" y1="20" x2="60" y2="60" stroke="#e50914" stroke-width="2.5" stroke-linecap="round"/>
+      <path d="M18 34 C24 26 32 22 40 22 C48 22 56 26 62 34" stroke="#2a2a2a" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+      <path d="M25 42 C29 36 34 33 40 33 C46 33 51 36 55 42" stroke="#2a2a2a" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+      <path d="M32 50 C35 46 37 44 40 44 C43 44 45 46 48 50" stroke="#333" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+      <circle cx="40" cy="57" r="3" fill="#333"/>
+    </svg>
+  </div>
+
+  <div class="badge"><span>ERR_INTERNET_DISCONNECTED</span></div>
+
+  <h1>You're offline</h1>
+  <p>Can't reach the server right now.<br>Check your connection and try again.</p>
+
+  <div class="status-row">
+    <div class="status-dot"></div>
+    <span class="status-text">No internet connection</span>
+  </div>
+
+  <div class="error-msg" id="errorMsg">
+    Still no connection. Please check your Wi-Fi or mobile data.
+  </div>
+
+  <div class="dots">
+    <div class="dot"></div>
+    <div class="dot"></div>
+    <div class="dot"></div>
+  </div>
+
+  <button id="retryBtn" onclick="handleRetry()">
+    <svg id="retryIcon" width="16" height="16" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="23 4 23 10 17 10"/>
+      <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+    </svg>
+    <span id="retryText">TRY AGAIN</span>
+  </button>
+
+  <p class="attempts" id="attemptsLabel"></p>
+</div>
+
+<script>
+  var attempts = 0;
+  var checking = false;
+
+  function handleRetry() {
+    if (checking) return;
+    checking = true;
+    attempts++;
+
+    var btn  = document.getElementById('retryBtn');
+    var icon = document.getElementById('retryIcon');
+    var text = document.getElementById('retryText');
+    var msg  = document.getElementById('errorMsg');
+    var lbl  = document.getElementById('attemptsLabel');
+
+    msg.style.display = 'none';
+    btn.className = '';
+    icon.innerHTML = '<path d="M21 12a9 9 0 1 1-6.219-8.56"/>';
+    icon.classList.add('spinning');
+    text.textContent = 'Checking...';
+    btn.style.background = '#7a3a00';
+
+    setTimeout(function() {
+      icon.classList.remove('spinning');
+      // Restore original icon
+      icon.innerHTML = '<polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>';
+
+      if (navigator.onLine) {
+        btn.className = 'success';
+        text.textContent = 'Connected!';
+        setTimeout(function() {
+          window.location.href = 'https://frontend-livid-nu-32.vercel.app/';
+        }, 600);
+      } else {
+        btn.className = 'failed';
+        text.textContent = 'TRY AGAIN';
+        btn.style.background = '';
+        msg.style.display = 'block';
+        btn.classList.add('shake-anim');
+        setTimeout(function() { btn.classList.remove('shake-anim'); }, 400);
+        lbl.textContent = 'Retried ' + attempts + (attempts === 1 ? ' time' : ' times');
+        checking = false;
+      }
+    }, 1200);
+  }
+</script>
+</body>
+</html>
