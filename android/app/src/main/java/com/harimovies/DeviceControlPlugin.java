@@ -6,7 +6,7 @@ import android.net.Uri;
 import android.util.Log;
 
 import androidx.browser.customtabs.CustomTabsIntent;
-
+import com.harimovies.app.WebPlayerActivity;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
@@ -114,7 +114,22 @@ public class DeviceControlPlugin extends Plugin {
 
         call.resolve();
     }
+@PluginMethod
+public void openWebPlayer(PluginCall call) {
+    String url   = call.getString("url", "");
+    String title = call.getString("title", "");
 
+    if (url == null || url.isEmpty()) {
+        call.reject("URL is missing");
+        return;
+    }
+
+    Intent intent = new Intent(getActivity(), WebPlayerActivity.class);
+    intent.putExtra("url",   url);
+    intent.putExtra("title", title != null ? title : "");
+    getActivity().startActivity(intent);
+    call.resolve();
+}
     @PluginMethod
     public void openChromeTab(PluginCall call) {
 
