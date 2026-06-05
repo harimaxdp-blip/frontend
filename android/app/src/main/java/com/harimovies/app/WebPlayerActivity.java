@@ -9,6 +9,7 @@ import android.view.WindowManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -16,12 +17,13 @@ import android.webkit.WebViewClient;
 public class WebPlayerActivity extends Activity {
 
     private WebView webView;
-    private boolean launchedExo = false;
-    private String  videoTitle  = "";
+    private volatile boolean launchedExo = false;
+    private String videoTitle = "";
     private final Handler handler = new Handler(Looper.getMainLooper());
 
     private static final String[] VIDEO_EXTS = {
-        ".mp4", ".m3u8", ".mkv", ".webm", ".ts", ".avi", ".mov", ".flv"
+        ".mp4", ".m3u8", ".mkv", ".webm", ".ts",
+        ".avi", ".mov", ".flv", ".mpd"
     };
 
     @Override
@@ -29,8 +31,8 @@ public class WebPlayerActivity extends Activity {
         super.onCreate(savedInstanceState);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
-        String url  = getIntent().getStringExtra("url");
-        videoTitle  = getIntent().getStringExtra("title");
+        String url = getIntent().getStringExtra("url");
+        videoTitle = getIntent().getStringExtra("title");
         if (videoTitle == null) videoTitle = "";
 
         webView = new WebView(this);
@@ -49,8 +51,8 @@ public class WebPlayerActivity extends Activity {
         s.setAllowContentAccess(true);
         s.setLoadWithOverviewMode(true);
         s.setUseWideViewPort(true);
+        s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
 
-        // Add JS bridge so webpage can call Android.onVideoFound(url)
         webView.addJavascriptInterface(new JsBridge(), "Android");
         webView.setWebChromeClient(new WebChromeClient());
 
@@ -59,13 +61,25 @@ public class WebPlayerActivity extends Activity {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest req) {
                 String reqUrl = req.getUrl().toString();
-                if (isVideoUrl(reqUrl)) { launchExo(reqUrl); return true; }
+                if (isVideoUrl(reqUrl)) {
+                    launchExo(reqUrl);
+                    return true;
+                }
                 return false;
             }
 
             @Override
+            public WebResourceResponse shouldInterceptRequest(
+                    WebView view, WebResourceRequest request) {
+                String reqUrl = request.getUrl().toString();
+                if (isVideoUrl(reqUrl) || isStreamUrl(reqUrl)) {
+                    handler.post(() -> launchExo(reqUrl));
+                }
+                return null;
+            }
+
+            @Override
             public void onPageFinished(WebView view, String pageUrl) {
-                // Inject JS every time page loads to hunt for <video> src
                 injectVideoHunter();
             }
         });
@@ -73,10 +87,11 @@ public class WebPlayerActivity extends Activity {
         if (url != null) webView.loadUrl(url);
     }
 
-    // ── JavaScript injected into every page ───────────────────────────────────
     private void injectVideoHunter() {
         String js =
             "(function() {" +
+            "  if (window.__hmHunterRunning) return;" +
+            "  window.__hmHunterRunning = true;" +
             "  function findAndReport() {" +
             "    var videos = document.querySelectorAll('video');" +
             "    for (var i = 0; i < videos.length; i++) {" +
@@ -91,12 +106,12 @@ public class WebPlayerActivity extends Activity {
             "        }" +
             "      }" +
             "    }" +
-            "    // Also scan all script/link tags for known video patterns" +
             "    var html = document.documentElement.innerHTML;" +
             "    var patterns = [" +
             "      /[\"'`](https?:\\/\\/[^\"'`\\s]+\\.m3u8[^\"'`\\s]*?)[\"'`]/i," +
             "      /[\"'`](https?:\\/\\/[^\"'`\\s]+\\.mp4[^\"'`\\s]*?)[\"'`]/i," +
-            "      /[\"'`](https?:\\/\\/[^\"'`\\s]+\\.mkv[^\"'`\\s]*?)[\"'`]/i" +
+            "      /[\"'`](https?:\\/\\/[^\"'`\\s]+\\.mkv[^\"'`\\s]*?)[\"'`]/i," +
+            "      /[\"'`](https?:\\/\\/[^\"'`\\s]+\\.mpd[^\"'`\\s]*?)[\"'`]/i" +
             "    ];" +
             "    for (var p = 0; p < patterns.length; p++) {" +
             "      var m = html.match(patterns[p]);" +
@@ -106,17 +121,15 @@ public class WebPlayerActivity extends Activity {
             "  findAndReport();" +
             "  setTimeout(findAndReport, 1500);" +
             "  setTimeout(findAndReport, 3000);" +
-            "  setTimeout(findAndReport, 5000);" +
-            "  // Watch for dynamically added videos" +
+            "  setTimeout(findAndReport, 6000);" +
             "  var obs = new MutationObserver(findAndReport);" +
-            "  obs.observe(document.body || document.documentElement, " +
+            "  obs.observe(document.body || document.documentElement," +
             "    { childList: true, subtree: true, attributes: true });" +
             "})();";
 
         webView.evaluateJavascript(js, null);
     }
 
-    // ── JS Bridge ─────────────────────────────────────────────────────────────
     private class JsBridge {
         @JavascriptInterface
         public void onVideoFound(String url) {
@@ -125,16 +138,14 @@ public class WebPlayerActivity extends Activity {
         }
     }
 
-    // ── Launch ExoPlayer ──────────────────────────────────────────────────────
     private void launchExo(String url) {
         if (launchedExo) return;
         launchedExo = true;
-
         Intent intent = new Intent(this, PlayerActivity.class);
-        intent.putExtra(PlayerActivity.EXTRA_URL,   url);
+        intent.putExtra(PlayerActivity.EXTRA_URL, url);
         intent.putExtra(PlayerActivity.EXTRA_TITLE, videoTitle);
         startActivity(intent);
-        finish(); // close WebView once ExoPlayer starts
+        finish();
     }
 
     private boolean isVideoUrl(String url) {
@@ -146,6 +157,15 @@ public class WebPlayerActivity extends Activity {
         return false;
     }
 
+    private boolean isStreamUrl(String url) {
+        if (url == null) return false;
+        return url.contains("stream=1")  ||
+               url.contains(".m3u8")     ||
+               url.contains(".mpd")      ||
+               url.contains("/manifest") ||
+               url.contains("/playlist");
+    }
+
     @Override
     public void onBackPressed() {
         if (webView != null && webView.canGoBack()) webView.goBack();
@@ -154,7 +174,10 @@ public class WebPlayerActivity extends Activity {
 
     @Override
     protected void onDestroy() {
-        if (webView != null) { webView.stopLoading(); webView.destroy(); }
+        if (webView != null) {
+            webView.stopLoading();
+            webView.destroy();
+        }
         super.onDestroy();
     }
 }

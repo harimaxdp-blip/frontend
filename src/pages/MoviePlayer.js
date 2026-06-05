@@ -29,15 +29,14 @@ export default function MoviePlayer() {
 
     const isDirectVideo =
       /\.(mp4|m3u8|mkv|webm|ts|avi|mov|flv)($|\?)/i.test(url) ||
-      /download\.php.*stream=1/i.test(url);
+      /download\.php.*stream=1/i.test(url) ||
+      /\.mpd($|\?)/i.test(url);
 
     if (isDirectVideo) {
-      // Direct video → straight to ExoPlayer
       DeviceControl.openExoPlayer({ url, title })
         .then(handleGoBack)
         .catch(handleGoBack);
     } else {
-      // iframe/webpage → WebView finds video → ExoPlayer
       DeviceControl.openWebPlayer({ url, title })
         .then(handleGoBack)
         .catch(handleGoBack);
