@@ -2,9 +2,11 @@ package com.harimovies.app;
 
 import android.app.Activity;
 import android.content.Intent;
+import android.graphics.Color;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.view.View;
 import android.view.WindowManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
@@ -13,9 +15,10 @@ import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.FrameLayout;
+import android.widget.ProgressBar;
 
 public class WebPlayerActivity extends Activity {
-
     private WebView webView;
     private volatile boolean launchedExo = false;
     private String videoTitle = "";
@@ -28,15 +31,43 @@ public class WebPlayerActivity extends Activity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        
         super.onCreate(savedInstanceState);
+
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+
+        // ── Black screen with spinner — user never sees the WebView ──
+        FrameLayout root = new FrameLayout(this);
+        root.setBackgroundColor(Color.BLACK);
+
+        // Spinner in center
+        ProgressBar spinner = new ProgressBar(this);
+spinner.getIndeterminateDrawable().setColorFilter(
+    android.graphics.Color.RED,
+    android.graphics.PorterDuff.Mode.SRC_IN
+);
+        spinner.setIndeterminate(true);
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT
+        );
+        lp.gravity = android.view.Gravity.CENTER;
+        spinner.setLayoutParams(lp);
+        root.addView(spinner);
+
+        // WebView hidden behind black screen
+        webView = new WebView(this);
+        webView.setVisibility(View.INVISIBLE); // ← NEVER shown to user
+        root.addView(webView, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+        ));
+
+        setContentView(root);
 
         String url = getIntent().getStringExtra("url");
         videoTitle = getIntent().getStringExtra("title");
         if (videoTitle == null) videoTitle = "";
-
-        webView = new WebView(this);
-        setContentView(webView);
 
         WebSettings s = webView.getSettings();
         s.setJavaScriptEnabled(true);
@@ -62,8 +93,7 @@ public class WebPlayerActivity extends Activity {
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest req) {
                 String reqUrl = req.getUrl().toString();
                 if (isVideoUrl(reqUrl)) {
-                    launchExo(reqUrl);
-                    return true;
+                    return false;
                 }
                 return false;
             }
@@ -73,8 +103,8 @@ public class WebPlayerActivity extends Activity {
                     WebView view, WebResourceRequest request) {
                 String reqUrl = request.getUrl().toString();
                 if (isVideoUrl(reqUrl) || isStreamUrl(reqUrl)) {
-                    handler.post(() -> launchExo(reqUrl));
-                }
+    handler.post(() -> launchExo(reqUrl));
+}
                 return null;
             }
 
@@ -137,6 +167,7 @@ public class WebPlayerActivity extends Activity {
             handler.post(() -> launchExo(url));
         }
     }
+
 
     private void launchExo(String url) {
         if (launchedExo) return;

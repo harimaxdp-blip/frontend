@@ -3,6 +3,7 @@ package com.harimovies.app;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
 import android.media.AudioManager;
 import android.net.Uri;
@@ -11,12 +12,14 @@ import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
 import android.util.Log;
+import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
-import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.view.animation.AccelerateDecelerateInterpolator;
+import android.widget.Button;
+import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -42,13 +45,19 @@ public class PlayerActivity extends Activity {
     public static final String EXTRA_URL   = "url";
     public static final String EXTRA_TITLE = "title";
 
+    private static final String PREFS_NAME    = "hm_watch_pos";
+    private static final long   SAVE_EVERY_MS = 5_000L;
+    private static final long   MIN_RESUME_MS = 10_000L; // only resume if > 10s
+
     private ExoPlayer  player;
     private PlayerView playerView;
 
-    private boolean isMuted         = false;
-    private boolean isFullscreen    = false;
+    private String  videoTitle   = "";
+    private String  videoUrl     = "";
+    private boolean isMuted      = false;
+    private boolean isFullscreen = false;
     private int     resizeModeIndex = 0;
-
+private boolean resumeChecked = false;
     private static final int[] RESIZE_MODES = {
         AspectRatioFrameLayout.RESIZE_MODE_FILL,
         AspectRatioFrameLayout.RESIZE_MODE_FIT,
@@ -61,27 +70,31 @@ public class PlayerActivity extends Activity {
     private boolean controlsVisible = false;
     private boolean isLocked        = false;
     private boolean lockUiVisible   = false;
+    private boolean resumeShowing   = false;
+
+    // ── Focus tracking ────────────────────────────────────────────────────────
+    private int     focusRow      = 1;
+    private int     focusCol      = 1;
+    private boolean onProgressBar = false;
+
+    // resume dialog focus: 0 = Resume, 1 = Start Over
+    private int     resumeFocusCol = 0;
 
     private final Handler  autoHideHandler    = new Handler(Looper.getMainLooper());
     private final Runnable autoHideRunnable   = this::hideControls;
     private final Runnable hideLockUiRunnable = this::hideLockUI;
-    private static final long AUTO_HIDE_MS    = 4_000L;
-    private static final long LOCK_UI_MS      = 3_000L;
+    private final Runnable savePositionRunnable = this::saveCurrentPosition;
+    private static final long AUTO_HIDE_MS  = 4_000L;
+    private static final long LOCK_UI_MS    = 3_000L;
 
     // ── Gesture state ─────────────────────────────────────────────────────────
-    private float   downRawX          = 0f;
-    private float   downRawY          = 0f;
-    private boolean downInLeft        = false;
-    private boolean downInRight       = false;
+    private float   downRawX = 0f, downRawY = 0f;
+    private boolean downInLeft = false, downInRight = false;
     private int     gestureStartValue = 0;
-    private boolean dirLocked         = false;
-    private boolean isVertical        = false;
-    private boolean isHorizontal      = false;
-
+    private boolean dirLocked = false, isVertical = false, isHorizontal = false;
     private static final float GESTURE_THRESHOLD = 18f;
     private static final float SEEK_PX_PER_SEC   = 8f;
 
-    // Double-tap
     private long lastTapTime = 0L;
     private int  lastTapSide = 0;
     private static final long DOUBLE_TAP_MS = 300L;
@@ -102,6 +115,15 @@ public class PlayerActivity extends Activity {
     private ImageButton  btnLock;
     private TextView     tvLockHint;
 
+    // ── Button refs ───────────────────────────────────────────────────────────
+    private ImageButton btnBack, btnMute, btnAspect, btnFullscreen;
+    private View        btnRew, btnFfwd, btnPP, progressBar;
+
+    // ── Resume overlay ────────────────────────────────────────────────────────
+    private View   resumeOverlay;
+    private Button btnResume, btnStartOver;
+    private TextView tvResumeTime;
+private long forcedResumePos = 0;
     // ══════════════════════════════════════════════════════════════════════════
     //  onCreate
     // ══════════════════════════════════════════════════════════════════════════
@@ -118,17 +140,20 @@ public class PlayerActivity extends Activity {
 
         playerView = findViewById(R.id.player_view);
 
-        String url   = getIntent().getStringExtra(EXTRA_URL);
-        String title = getIntent().getStringExtra(EXTRA_TITLE);
+        videoUrl   = getIntent().getStringExtra(EXTRA_URL);   if (videoUrl == null) videoUrl = "";
+        videoTitle = getIntent().getStringExtra(EXTRA_TITLE);
+        forcedResumePos =
+        getIntent().getLongExtra("resume_pos", 0);
+         if (videoTitle == null) videoTitle = "";
 
         player = new ExoPlayer.Builder(this).build();
         playerView.setPlayer(player);
         playerView.setControllerShowTimeoutMs(-1);
         playerView.setControllerAutoShow(false);
         playerView.setUseController(true);
-        playerView.showController();
 
         findControllerViews();
+        buildResumeOverlay();
         wireButtons();
         setupGestures();
         setupLockButton();
@@ -136,9 +161,8 @@ public class PlayerActivity extends Activity {
         hideControls();
 
         TextView tvTitle = playerView.findViewById(R.id.tv_title);
-        if (tvTitle != null && title != null) tvTitle.setText(title);
+        if (tvTitle != null) tvTitle.setText(videoTitle);
 
-        // Media source
         DefaultHttpDataSource.Factory dsFactory =
                 new DefaultHttpDataSource.Factory()
                         .setUserAgent(
@@ -153,49 +177,493 @@ public class PlayerActivity extends Activity {
 
         MediaSource mediaSource =
                 new ProgressiveMediaSource.Factory(dsFactory)
-                        .createMediaSource(MediaItem.fromUri(Uri.parse(url)));
+                        .createMediaSource(MediaItem.fromUri(Uri.parse(videoUrl)));
 
         player.addListener(new Player.Listener() {
             @Override public void onPlayerError(PlaybackException e) {
                 Log.e("PLAYER", "Error: " + e.getMessage(), e);
             }
-            @Override public void onPlaybackStateChanged(int state) {
-                Log.d("PLAYER", "State: " + state);
-            }
+@Override
+public void onPlaybackStateChanged(int state) {
+
+    Log.d("PLAYER", "State: " + state);
+
+    if (state == Player.STATE_ENDED) {
+        clearSavedPosition();
+    }
+
+    if (state == Player.STATE_READY && !resumeChecked) {
+        resumeChecked = true;
+        if (forcedResumePos > 0) {
+
+    player.seekTo(forcedResumePos);
+    player.play();
+
+    forcedResumePos = 0;
+    return;
+}
+        checkResumePosition();
+    }
+}
         });
 
-        player.setMediaSource(mediaSource);
-        player.prepare();
+player.setMediaSource(mediaSource);
+player.prepare();
+        // Start periodic position saving
+        scheduleSavePosition();
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    //  Resume position storage
+    // ══════════════════════════════════════════════════════════════════════════
+private String posKey() {
+    return "pos_" + videoTitle;
+}
+    private void saveCurrentPosition() {
+        if (player == null || resumeShowing) return;
+        long pos = player.getCurrentPosition();
+        long dur = player.getDuration();
+        // Don't save if near end (last 5s) — clear it instead
+        if (dur > 0 && pos >= dur - 5_000) {
+            clearSavedPosition();
+        } else if (pos > MIN_RESUME_MS) {
+            getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                    .edit().putLong(posKey(), pos).apply();
+        }
+        scheduleSavePosition();
+    }
+
+    private void scheduleSavePosition() {
+        autoHideHandler.removeCallbacks(savePositionRunnable);
+        autoHideHandler.postDelayed(savePositionRunnable, SAVE_EVERY_MS);
+    }
+
+    private long getSavedPosition() {
+        return getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                .getLong(posKey(), 0L);
+    }
+
+    private void clearSavedPosition() {
+        getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                .edit().remove(posKey()).apply();
+    }
+private void checkResumePosition() {
+
+    long saved = getSavedPosition();
+
+    Log.d("RESUME", "TITLE = " + videoTitle);
+    Log.d("RESUME", "URL = " + videoUrl);
+    Log.d("RESUME", "SAVED = " + saved);
+
+    if (saved > 10000) {
+        player.pause();
+        showResumeOverlay(saved);
+    } else {
+        clearSavedPosition();
         player.play();
+    }
+}
+
+    // ══════════════════════════════════════════════════════════════════════════
+    //  Build resume overlay in code (no XML needed)
+    // ══════════════════════════════════════════════════════════════════════════
+    private void buildResumeOverlay() {
+        // Semi-transparent dark overlay
+        FrameLayout root = findViewById(android.R.id.content);
+
+        // Outer dim
+
+
+        // Card
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setGravity(Gravity.CENTER);
+        card.setBackgroundColor(0xEE1A1A2E);
+        card.setPadding(dp(32), dp(28), dp(32), dp(28));
+
+        FrameLayout.LayoutParams cardLp = new FrameLayout.LayoutParams(
+                dp(340), FrameLayout.LayoutParams.WRAP_CONTENT);
+        cardLp.gravity = Gravity.CENTER;
+        card.setLayoutParams(cardLp);
+        card.setElevation(dp(8));
+
+        // Title
+        TextView tvTitle = new TextView(this);
+        tvTitle.setText("Continue Watching?");
+        tvTitle.setTextColor(0xFFFFFFFF);
+        tvTitle.setTextSize(18);
+        tvTitle.setTypeface(null, android.graphics.Typeface.BOLD);
+        tvTitle.setGravity(Gravity.CENTER);
+        card.addView(tvTitle);
+
+        // Subtitle — resume time
+        tvResumeTime = new TextView(this);
+        tvResumeTime.setTextColor(0xAAFFFFFF);
+        tvResumeTime.setTextSize(13);
+        tvResumeTime.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams subLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        subLp.setMargins(0, dp(8), 0, dp(20));
+        tvResumeTime.setLayoutParams(subLp);
+        card.addView(tvResumeTime);
+
+        // Hint for remote
+        TextView tvHint = new TextView(this);
+        tvHint.setText("◀ ▶ navigate  •  OK select");
+        tvHint.setTextColor(0x88FFFFFF);
+        tvHint.setTextSize(11);
+        tvHint.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams hintLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        hintLp.setMargins(0, 0, 0, dp(16));
+        tvHint.setLayoutParams(hintLp);
+        card.addView(tvHint);
+
+        // Buttons row
+        LinearLayout btnRow = new LinearLayout(this);
+        btnRow.setOrientation(LinearLayout.HORIZONTAL);
+        btnRow.setGravity(Gravity.CENTER);
+
+        btnResume = makeDialogButton("▶  Resume", true);
+        btnStartOver = makeDialogButton("↺  Start Over", false);
+
+        LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+        btnLp.setMargins(0, 0, dp(8), 0);
+        btnResume.setLayoutParams(btnLp);
+
+        LinearLayout.LayoutParams btnLp2 = new LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+        btnStartOver.setLayoutParams(btnLp2);
+
+        btnRow.addView(btnResume);
+        btnRow.addView(btnStartOver);
+        card.addView(btnRow);
+FrameLayout overlayContainer = new FrameLayout(this);
+
+overlayContainer.setBackgroundColor(0xAA000000);
+overlayContainer.setVisibility(View.GONE);
+
+overlayContainer.addView(card);
+
+resumeOverlay = overlayContainer;
+
+root.addView(
+    resumeOverlay,
+    new FrameLayout.LayoutParams(
+        FrameLayout.LayoutParams.MATCH_PARENT,
+        FrameLayout.LayoutParams.MATCH_PARENT
+    )
+);
+
+        btnResume.setOnClickListener(v -> doResume());
+        btnStartOver.setOnClickListener(v -> doStartOver());
+    }
+
+    private Button makeDialogButton(String text, boolean primary) {
+        Button btn = new Button(this);
+        btn.setText(text);
+        btn.setTextColor(0xFFFFFFFF);
+        btn.setTextSize(13);
+        btn.setPadding(dp(16), dp(12), dp(16), dp(12));
+        if (primary) {
+            btn.setBackgroundColor(0xFFE50914); // red = primary
+        } else {
+            btn.setBackgroundColor(0xFF333355); // dark = secondary
+        }
+        return btn;
+    }
+
+    private void showResumeOverlay(long savedMs) {
+        resumeShowing = true;
+        resumeFocusCol = 0;
+btnResume.setFocusable(true);
+btnResume.setFocusableInTouchMode(true);
+
+btnStartOver.setFocusable(true);
+btnStartOver.setFocusableInTouchMode(true);
+
+btnResume.requestFocus();
+        String timeStr = fmt(savedMs / 1000);
+        if (tvResumeTime != null) tvResumeTime.setText("Paused at " + timeStr);
+
+        resumeOverlay.setVisibility(View.VISIBLE);
+
+        updateResumeHighlight();
+    }
+
+    private void hideResumeOverlay() {
+        resumeShowing = false;
+        resumeOverlay.setVisibility(View.GONE);
+    }
+
+private void updateResumeHighlight() {
+
+    if (resumeFocusCol == 0) {
+
+        btnResume.requestFocus();
+
+        btnResume.setScaleX(1.1f);
+        btnResume.setScaleY(1.1f);
+
+        btnStartOver.setScaleX(1f);
+        btnStartOver.setScaleY(1f);
+
+    } else {
+
+        btnStartOver.requestFocus();
+
+        btnStartOver.setScaleX(1.1f);
+        btnStartOver.setScaleY(1.1f);
+
+        btnResume.setScaleX(1f);
+        btnResume.setScaleY(1f);
+    }
+}
+
+private void doResume() {
+
+    long saved = forcedResumePos > 0
+            ? forcedResumePos
+            : getSavedPosition();
+
+    hideResumeOverlay();
+
+    if (player != null) {
+        player.seekTo(saved);
+        player.play();
+    }
+
+    forcedResumePos = 0;
+}
+
+private void doStartOver() {
+
+    forcedResumePos = 0;
+
+    clearSavedPosition();
+    hideResumeOverlay();
+
+    if (player != null) {
+        player.seekTo(0);
+        player.play();
+    }
+}
+
+    // ══════════════════════════════════════════════════════════════════════════
+    //  Format ms → m:ss or h:mm:ss
+    // ══════════════════════════════════════════════════════════════════════════
+    private String fmt(long secs) {
+        long h = secs / 3600, m = (secs % 3600) / 60, s = secs % 60;
+        if (h > 0) return h + ":" + pad(m) + ":" + pad(s);
+        return m + ":" + pad(s);
+    }
+
+    private String pad(long n) { return n < 10 ? "0" + n : String.valueOf(n); }
+    private int dp(int val) {
+        return (int)(val * getResources().getDisplayMetrics().density);
     }
 
     // ══════════════════════════════════════════════════════════════════════════
     //  Find views
     // ══════════════════════════════════════════════════════════════════════════
-private void findControllerViews() {
-    brightnessIndicator = playerView.findViewById(R.id.gesture_brightness_indicator);
-    progressBrightness  = playerView.findViewById(R.id.progress_brightness);
-    tvBrightnessValue   = playerView.findViewById(R.id.tv_brightness_value);
+    private void findControllerViews() {
+        brightnessIndicator = playerView.findViewById(R.id.gesture_brightness_indicator);
+        progressBrightness  = playerView.findViewById(R.id.progress_brightness);
+        tvBrightnessValue   = playerView.findViewById(R.id.tv_brightness_value);
+        volumeIndicator     = playerView.findViewById(R.id.gesture_volume_indicator);
+        progressVolume      = playerView.findViewById(R.id.progress_volume);
+        tvVolumeValue       = playerView.findViewById(R.id.tv_volume_value);
+        seekIndicator       = playerView.findViewById(R.id.seek_indicator);
+        seekIcon            = playerView.findViewById(R.id.seek_icon);
+        tvSeekDelta         = playerView.findViewById(R.id.tv_seek_delta);
+        topBar              = playerView.findViewById(R.id.top_bar);
+        centerControls      = playerView.findViewById(R.id.center_controls);
+        bottomBar           = playerView.findViewById(R.id.bottom_bar);
+        scrimTop            = playerView.findViewById(R.id.scrim_top);
+        scrimBottom         = playerView.findViewById(R.id.scrim_bottom);
+        exoPlayPause        = playerView.findViewById(R.id.exo_play_pause);
+        btnLock             = findViewById(R.id.btn_lock);
+        tvLockHint          = findViewById(R.id.tv_lock_hint);
+    }
 
-    volumeIndicator     = playerView.findViewById(R.id.gesture_volume_indicator);
-    progressVolume      = playerView.findViewById(R.id.progress_volume);
-    tvVolumeValue       = playerView.findViewById(R.id.tv_volume_value);
+    // ══════════════════════════════════════════════════════════════════════════
+    //  Focus helpers
+    // ══════════════════════════════════════════════════════════════════════════
+    private void updateFocusHighlight() {
+        clearHighlight(btnBack); clearHighlight(btnMute);
+        clearHighlight(btnAspect); clearHighlight(btnFullscreen);
+        clearHighlight(btnRew); clearHighlight(btnPP); clearHighlight(btnFfwd);
+        if (progressBar != null) progressBar.setScaleY(1f);
 
-    seekIndicator       = playerView.findViewById(R.id.seek_indicator);
-    seekIcon            = playerView.findViewById(R.id.seek_icon);
-    tvSeekDelta         = playerView.findViewById(R.id.tv_seek_delta);
+        if (onProgressBar) {
+            if (progressBar != null) progressBar.setScaleY(2.5f);
+            return;
+        }
+        if (focusRow == 0) {
+            switch (focusCol) {
+                case 0: applyHighlight(btnBack);       break;
+                case 1: applyHighlight(btnMute);       break;
+                case 2: applyHighlight(btnAspect);     break;
+                case 3: applyHighlight(btnFullscreen); break;
+            }
+        } else {
+            switch (focusCol) {
+                case 0: applyHighlight(btnRew);  break;
+                case 1: applyHighlight(btnPP);   break;
+                case 2: applyHighlight(btnFfwd); break;
+            }
+        }
+    }
 
-    topBar              = playerView.findViewById(R.id.top_bar);
-    centerControls      = playerView.findViewById(R.id.center_controls);
-    bottomBar           = playerView.findViewById(R.id.bottom_bar);
-    scrimTop            = playerView.findViewById(R.id.scrim_top);
-    scrimBottom         = playerView.findViewById(R.id.scrim_bottom);
-    exoPlayPause        = playerView.findViewById(R.id.exo_play_pause);
+    private void applyHighlight(View v) {
+        if (v == null) return;
+        v.setScaleX(1.25f); v.setScaleY(1.25f); v.setAlpha(1.0f);
+    }
 
-    // ↓ These two now come from Activity layout, NOT playerView
-    btnLock             = findViewById(R.id.btn_lock);
-    tvLockHint          = findViewById(R.id.tv_lock_hint);
+    private void clearHighlight(View v) {
+        if (v == null) return;
+        v.setScaleX(1f); v.setScaleY(1f); v.setAlpha(0.85f);
+    }
+
+    private void activateFocused() {
+        if (onProgressBar) return;
+        if (focusRow == 0) {
+            switch (focusCol) {
+                case 0: onBackPressed(); break;
+                case 1: if (btnMute != null) btnMute.performClick(); break;
+                case 2: if (btnAspect != null) btnAspect.performClick(); break;
+                case 3: if (btnFullscreen != null) btnFullscreen.performClick(); break;
+            }
+        } else {
+            switch (focusCol) {
+                case 0: seekBy(-10_000); showSeekIndicatorTimed(-10_000); break;
+                case 1:
+                    if (player != null) {
+                        if (player.isPlaying()) player.pause(); else player.play();
+                    }
+                    animatePlayPause(); break;
+                case 2: seekBy(30_000); showSeekIndicatorTimed(30_000); break;
+            }
+        }
+        scheduleHide();
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    //  TV Remote / D-pad
+    // ══════════════════════════════════════════════════════════════════════════
+    @Override
+    public boolean onKeyDown(int keyCode, KeyEvent event) {
+        if (player == null) return super.onKeyDown(keyCode, event);
+
+        // Volume always works
+        if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
+            audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC,
+                    AudioManager.ADJUST_RAISE, AudioManager.FLAG_SHOW_UI); return true;
+        }
+        if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
+            audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC,
+                    AudioManager.ADJUST_LOWER, AudioManager.FLAG_SHOW_UI); return true;
+        }
+        if (keyCode == KeyEvent.KEYCODE_BACK) { onBackPressed(); return true; }
+
+        // ── Resume overlay is showing ─────────────────────────────────────────
+if (resumeShowing) {
+
+    switch (keyCode) {
+
+        case KeyEvent.KEYCODE_DPAD_LEFT:
+            resumeFocusCol = 0;
+            updateResumeHighlight();
+            return true;
+
+        case KeyEvent.KEYCODE_DPAD_RIGHT:
+            resumeFocusCol = 1;
+            updateResumeHighlight();
+            return true;
+
+        case KeyEvent.KEYCODE_DPAD_CENTER:
+        case KeyEvent.KEYCODE_ENTER:
+
+            if (resumeFocusCol == 0) {
+                doResume();
+            } else {
+                doStartOver();
+            }
+
+            return true;
+    }
+
+    return true;
 }
+
+        // Media keys
+        if (keyCode == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE) {
+            if (player.isPlaying()) player.pause(); else player.play();
+            animatePlayPause(); return true;
+        }
+        if (keyCode == KeyEvent.KEYCODE_MEDIA_REWIND) {
+            seekBy(-10_000); showSeekIndicatorTimed(-10_000); return true;
+        }
+        if (keyCode == KeyEvent.KEYCODE_MEDIA_FAST_FORWARD) {
+            seekBy(30_000); showSeekIndicatorTimed(30_000); return true;
+        }
+
+        if (isLocked) return super.onKeyDown(keyCode, event);
+
+        // First press shows controls
+        if (!controlsVisible) {
+            showControls(); updateFocusHighlight(); return true;
+        }
+
+        scheduleHide();
+
+        switch (keyCode) {
+            case KeyEvent.KEYCODE_DPAD_CENTER:
+            case KeyEvent.KEYCODE_ENTER:
+                activateFocused(); return true;
+
+            case KeyEvent.KEYCODE_DPAD_UP:
+                if (onProgressBar) {
+                    onProgressBar = false; focusRow = 1; focusCol = 1;
+                } else if (focusRow == 1) {
+                    focusRow = 0; focusCol = Math.min(focusCol, 3);
+                }
+                updateFocusHighlight(); return true;
+
+            case KeyEvent.KEYCODE_DPAD_DOWN:
+                if (focusRow == 0) {
+                    focusRow = 1; focusCol = 1;
+                } else if (focusRow == 1) {
+                    onProgressBar = true;
+                }
+                updateFocusHighlight(); return true;
+
+            case KeyEvent.KEYCODE_DPAD_LEFT:
+                if (onProgressBar) {
+                    seekBy(-10_000); showSeekIndicatorTimed(-10_000);
+                } else {
+                    int max = (focusRow == 0) ? 3 : 2;
+                    if (focusCol > 0) focusCol--;
+                    updateFocusHighlight();
+                }
+                return true;
+
+            case KeyEvent.KEYCODE_DPAD_RIGHT:
+                if (onProgressBar) {
+                    seekBy(30_000); showSeekIndicatorTimed(30_000);
+                } else {
+                    int max = (focusRow == 0) ? 3 : 2;
+                    if (focusCol < max) focusCol++;
+                    updateFocusHighlight();
+                }
+                return true;
+        }
+
+        return super.onKeyDown(keyCode, event);
+    }
 
     // ══════════════════════════════════════════════════════════════════════════
     //  Show / Hide controls
@@ -204,7 +672,6 @@ private void findControllerViews() {
         if (isLocked) return;
         controlsVisible = true;
         playerView.showController();
-
         View[] targets = { topBar, centerControls, bottomBar, scrimTop, scrimBottom };
         for (View v : targets) {
             if (v == null) continue;
@@ -218,13 +685,17 @@ private void findControllerViews() {
             btnLock.setVisibility(View.VISIBLE);
             btnLock.animate().alpha(1f).setDuration(220).start();
         }
+        focusRow = 1; focusCol = 1; onProgressBar = false;
+        updateFocusHighlight();
         scheduleHide();
     }
 
     private void hideControls() {
-        controlsVisible = false;
+        controlsVisible = false; onProgressBar = false;
         playerView.hideController();
-
+        clearHighlight(btnBack); clearHighlight(btnMute);
+        clearHighlight(btnAspect); clearHighlight(btnFullscreen);
+        clearHighlight(btnRew); clearHighlight(btnPP); clearHighlight(btnFfwd);
         View[] targets = { topBar, centerControls, bottomBar, scrimTop, scrimBottom };
         for (View v : targets) {
             if (v == null) continue;
@@ -251,18 +722,15 @@ private void findControllerViews() {
     private void showLockUI() {
         lockUiVisible = true;
         autoHideHandler.removeCallbacks(hideLockUiRunnable);
-
         if (btnLock != null) {
             btnLock.animate().cancel();
-            btnLock.setAlpha(0f);
-            btnLock.setVisibility(View.VISIBLE);
+            btnLock.setAlpha(0f); btnLock.setVisibility(View.VISIBLE);
             btnLock.bringToFront();
             btnLock.animate().alpha(1f).setDuration(200).start();
         }
         if (tvLockHint != null) {
             tvLockHint.animate().cancel();
-            tvLockHint.setAlpha(0f);
-            tvLockHint.setVisibility(View.VISIBLE);
+            tvLockHint.setAlpha(0f); tvLockHint.setVisibility(View.VISIBLE);
             tvLockHint.bringToFront();
             tvLockHint.animate().alpha(1f).setDuration(200).start();
         }
@@ -272,7 +740,6 @@ private void findControllerViews() {
     private void hideLockUI() {
         lockUiVisible = false;
         autoHideHandler.removeCallbacks(hideLockUiRunnable);
-
         if (btnLock != null) {
             btnLock.animate().cancel();
             btnLock.animate().alpha(0f).setDuration(300)
@@ -290,28 +757,19 @@ private void findControllerViews() {
     // ══════════════════════════════════════════════════════════════════════════
     private void setupLockButton() {
         if (btnLock == null) return;
-
         btnLock.setOnTouchListener((v, event) -> {
             if (event.getAction() == MotionEvent.ACTION_UP) {
-                if (isLocked) {
-                    unlock();
-                } else {
-                    lock();
-                }
+                if (isLocked) unlock(); else lock();
             }
-            return true; // consume all events — never propagate to playerView
+            return true;
         });
     }
 
     private void lock() {
-        isLocked      = true;
-        lockUiVisible = false;
+        isLocked = true; lockUiVisible = false;
         autoHideHandler.removeCallbacks(autoHideRunnable);
         autoHideHandler.removeCallbacks(hideLockUiRunnable);
-
         playerView.hideController();
-
-        // Fade out all controls
         View[] toHide = { topBar, centerControls, bottomBar, scrimTop, scrimBottom };
         for (View v : toHide) {
             if (v == null) continue;
@@ -319,45 +777,31 @@ private void findControllerViews() {
             v.animate().alpha(0f).setDuration(250)
                     .withEndAction(() -> v.setVisibility(View.GONE)).start();
         }
-
-        // Pulse the lock icon, keep visible, then auto-hide
         if (btnLock != null) {
             btnLock.setImageResource(R.drawable.ic_lock_closed);
             btnLock.animate().cancel();
-            btnLock.setVisibility(View.VISIBLE);
-            btnLock.bringToFront();
-            btnLock.setAlpha(1f);
+            btnLock.setVisibility(View.VISIBLE); btnLock.bringToFront(); btnLock.setAlpha(1f);
             btnLock.animate().scaleX(1.25f).scaleY(1.25f).setDuration(120)
                     .withEndAction(() ->
-                        btnLock.animate().scaleX(1f).scaleY(1f).setDuration(120).start())
-                    .start();
+                        btnLock.animate().scaleX(1f).scaleY(1f).setDuration(120).start()).start();
             lockUiVisible = true;
         }
         if (tvLockHint != null) {
             tvLockHint.setText("Tap 🔒 to unlock");
             tvLockHint.animate().cancel();
-            tvLockHint.bringToFront();
-            tvLockHint.setAlpha(1f);
-            tvLockHint.setVisibility(View.VISIBLE);
+            tvLockHint.bringToFront(); tvLockHint.setAlpha(1f); tvLockHint.setVisibility(View.VISIBLE);
         }
-        // Auto-hide lock UI after 3s
         autoHideHandler.postDelayed(hideLockUiRunnable, LOCK_UI_MS);
     }
 
     private void unlock() {
-        isLocked      = false;
-        lockUiVisible = false;
+        isLocked = false; lockUiVisible = false;
         autoHideHandler.removeCallbacks(hideLockUiRunnable);
-
-        if (tvLockHint != null) {
-            tvLockHint.animate().cancel();
-            tvLockHint.setVisibility(View.GONE);
-        }
+        if (tvLockHint != null) { tvLockHint.animate().cancel(); tvLockHint.setVisibility(View.GONE); }
         if (btnLock != null) {
             btnLock.animate().cancel();
             btnLock.setImageResource(R.drawable.ic_lock_open);
-            btnLock.setVisibility(View.VISIBLE);
-            btnLock.setAlpha(1f);
+            btnLock.setVisibility(View.VISIBLE); btnLock.setAlpha(1f);
         }
         showControls();
     }
@@ -366,42 +810,28 @@ private void findControllerViews() {
     //  Gestures
     // ══════════════════════════════════════════════════════════════════════════
     private void setupGestures() {
-        playerView.setOnTouchListener((v, e) -> {
-            handleTouch(e);
-            return true;
-        });
+        playerView.setOnTouchListener((v, e) -> { handleTouch(e); return true; });
     }
 
     private void handleTouch(MotionEvent e) {
-        final float rawX = e.getRawX();
-        final float rawY = e.getRawY();
-        final int   w    = playerView.getWidth();
-
+        if (resumeShowing) return; // block touch while resume shown
+        final float rawX = e.getRawX(), rawY = e.getRawY();
+        final int w = playerView.getWidth();
         switch (e.getAction()) {
-
             case MotionEvent.ACTION_DOWN:
-                downRawX     = rawX;
-                downRawY     = rawY;
-                downInLeft   = rawX < w / 3f;
-                downInRight  = rawX > w * 2f / 3f;
-                dirLocked    = false;
-                isVertical   = false;
-                isHorizontal = false;
-
+                downRawX = rawX; downRawY = rawY;
+                downInLeft = rawX < w / 3f; downInRight = rawX > w * 2f / 3f;
+                dirLocked = false; isVertical = false; isHorizontal = false;
                 if (downInLeft)  gestureStartValue = getBrightnessPct();
                 if (downInRight) gestureStartValue = getVolumePct();
                 break;
-
             case MotionEvent.ACTION_MOVE:
-                float dx = rawX - downRawX;
-                float dy = rawY - downRawY;
-
+                float dx = rawX - downRawX, dy = rawY - downRawY;
                 if (!dirLocked) {
                     if (Math.abs(dx) > GESTURE_THRESHOLD || Math.abs(dy) > GESTURE_THRESHOLD) {
-                        dirLocked    = true;
-                        isVertical   = Math.abs(dy) >= Math.abs(dx);
+                        dirLocked = true;
+                        isVertical = Math.abs(dy) >= Math.abs(dx);
                         isHorizontal = !isVertical;
-
                         if (!isLocked) {
                             if (isVertical && downInLeft)  showGestureIndicator(true);
                             if (isVertical && downInRight) showGestureIndicator(false);
@@ -409,9 +839,7 @@ private void findControllerViews() {
                         }
                     }
                 }
-
                 if (isLocked) break;
-
                 if (isVertical) {
                     int pct = Math.max(0, Math.min(100,
                             (int)(gestureStartValue - dy / playerView.getHeight() * 100)));
@@ -425,135 +853,86 @@ private void findControllerViews() {
                         if (tvVolumeValue   != null) tvVolumeValue.setText(pct + "%");
                     }
                 }
-
-                if (isHorizontal) {
-                    long ms = (long)(dx / SEEK_PX_PER_SEC) * 1000L;
-                    updateSeekIndicator(ms);
-                }
+                if (isHorizontal) updateSeekIndicator((long)(dx / SEEK_PX_PER_SEC) * 1000L);
                 break;
-
             case MotionEvent.ACTION_UP:
             case MotionEvent.ACTION_CANCEL:
-
                 if (isLocked) {
-                    // Any tap on screen (not on lock button) → toggle lock UI
-                    if (!dirLocked) {
-                        if (lockUiVisible) {
-                            hideLockUI();
-                        } else {
-                            showLockUI();
-                        }
-                    }
-                    dirLocked    = false;
-                    isVertical   = false;
-                    isHorizontal = false;
-                    break;
+                    if (!dirLocked) { if (lockUiVisible) hideLockUI(); else showLockUI(); }
+                    dirLocked = false; isVertical = false; isHorizontal = false; break;
                 }
-
                 if (isVertical) {
-                    hideGestureIndicator(downInLeft);
-                    scheduleHide();
+                    hideGestureIndicator(downInLeft); scheduleHide();
                 } else if (isHorizontal) {
                     long ms = (long)((rawX - downRawX) / SEEK_PX_PER_SEC) * 1000L;
-                    seekBy(ms);
-                    hideSeekIndicator();
-                    scheduleHide();
-                } else {
-                    handleTap(downRawX);
-                }
-
-                dirLocked    = false;
-                isVertical   = false;
-                isHorizontal = false;
+                    seekBy(ms); hideSeekIndicator(); scheduleHide();
+                } else { handleTap(downRawX); }
+                dirLocked = false; isVertical = false; isHorizontal = false;
                 break;
         }
     }
 
-    // ── Single / Double tap ───────────────────────────────────────────────────
     private void handleTap(float x) {
-        long now  = System.currentTimeMillis();
-        int  side = (x < playerView.getWidth() / 2f) ? -1 : 1;
-
+        long now = System.currentTimeMillis();
+        int side = (x < playerView.getWidth() / 2f) ? -1 : 1;
         if (now - lastTapTime < DOUBLE_TAP_MS && side == lastTapSide) {
             long ms = side == -1 ? -10_000L : 10_000L;
-            seekBy(ms);
-            showSeekIndicatorTimed(ms);
-            lastTapTime = 0;
+            seekBy(ms); showSeekIndicatorTimed(ms); lastTapTime = 0;
         } else {
-            lastTapTime = now;
-            lastTapSide = side;
-            if (controlsVisible) hideControls();
-            else                 showControls();
+            lastTapTime = now; lastTapSide = side;
+            if (controlsVisible) hideControls(); else showControls();
         }
     }
 
     // ══════════════════════════════════════════════════════════════════════════
-    //  Wire existing buttons
+    //  Wire buttons
     // ══════════════════════════════════════════════════════════════════════════
     private void wireButtons() {
-        ImageButton btnBack = playerView.findViewById(R.id.btn_back);
+        btnBack       = playerView.findViewById(R.id.btn_back);
+        btnMute       = playerView.findViewById(R.id.btn_mute);
+        btnAspect     = playerView.findViewById(R.id.btn_aspect_ratio);
+        btnFullscreen = playerView.findViewById(R.id.btn_fullscreen);
+        btnRew        = playerView.findViewById(R.id.exo_rew);
+        btnFfwd       = playerView.findViewById(R.id.exo_ffwd);
+        btnPP         = playerView.findViewById(R.id.exo_play_pause);
+        progressBar   = playerView.findViewById(R.id.exo_progress);
+
         if (btnBack != null) btnBack.setOnClickListener(v -> onBackPressed());
-
-        ImageButton btnMute = playerView.findViewById(R.id.btn_mute);
-        if (btnMute != null) {
-            btnMute.setOnClickListener(v -> {
-                isMuted = !isMuted;
-                if (player != null) player.setVolume(isMuted ? 0f : 1f);
-                btnMute.setImageResource(isMuted
-                        ? R.drawable.ic_volume_off : R.drawable.ic_volume_up);
-                scheduleHide();
-            });
-        }
-
-        ImageButton btnAspect = playerView.findViewById(R.id.btn_aspect_ratio);
-        if (btnAspect != null) {
-            btnAspect.setOnClickListener(v -> {
-                resizeModeIndex = (resizeModeIndex + 1) % RESIZE_MODES.length;
-                playerView.setResizeMode(RESIZE_MODES[resizeModeIndex]);
-                Toast.makeText(this, RESIZE_LABELS[resizeModeIndex], Toast.LENGTH_SHORT).show();
-                scheduleHide();
-            });
-        }
-
-        ImageButton btnFullscreen = playerView.findViewById(R.id.btn_fullscreen);
-        if (btnFullscreen != null) {
-            btnFullscreen.setOnClickListener(v -> {
-                isFullscreen = !isFullscreen;
-                if (isFullscreen) {
-                    hideSystemUI();
-                    btnFullscreen.setImageResource(R.drawable.ic_fullscreen_exit);
-                    setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
-                } else {
-                    showSystemUI();
-                    btnFullscreen.setImageResource(R.drawable.ic_fullscreen);
-                    setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
-                }
-                scheduleHide();
-            });
-        }
-
-        View btnRew = playerView.findViewById(R.id.exo_rew);
-        if (btnRew != null) btnRew.setOnClickListener(v -> {
-            seekBy(-10_000); showSeekIndicatorTimed(-10_000); scheduleHide();
-        });
-
-        View btnFfwd = playerView.findViewById(R.id.exo_ffwd);
-        if (btnFfwd != null) btnFfwd.setOnClickListener(v -> {
-            seekBy(30_000); showSeekIndicatorTimed(30_000); scheduleHide();
-        });
-
-        View btnPP = playerView.findViewById(R.id.exo_play_pause);
-        if (btnPP != null) btnPP.setOnClickListener(v -> {
-            if (player != null) {
-                if (player.isPlaying()) player.pause(); else player.play();
-            }
-            animatePlayPause();
+        if (btnMute != null) btnMute.setOnClickListener(v -> {
+            isMuted = !isMuted;
+            if (player != null) player.setVolume(isMuted ? 0f : 1f);
+            btnMute.setImageResource(isMuted ? R.drawable.ic_volume_off : R.drawable.ic_volume_up);
             scheduleHide();
+        });
+        if (btnAspect != null) btnAspect.setOnClickListener(v -> {
+            resizeModeIndex = (resizeModeIndex + 1) % RESIZE_MODES.length;
+            playerView.setResizeMode(RESIZE_MODES[resizeModeIndex]);
+            Toast.makeText(this, RESIZE_LABELS[resizeModeIndex], Toast.LENGTH_SHORT).show();
+            scheduleHide();
+        });
+        if (btnFullscreen != null) btnFullscreen.setOnClickListener(v -> {
+            isFullscreen = !isFullscreen;
+            if (isFullscreen) {
+                hideSystemUI();
+                btnFullscreen.setImageResource(R.drawable.ic_fullscreen_exit);
+                setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+            } else {
+                showSystemUI();
+                btnFullscreen.setImageResource(R.drawable.ic_fullscreen);
+                setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
+            }
+            scheduleHide();
+        });
+        if (btnRew  != null) btnRew.setOnClickListener(v ->  { seekBy(-10_000); showSeekIndicatorTimed(-10_000); scheduleHide(); });
+        if (btnFfwd != null) btnFfwd.setOnClickListener(v -> { seekBy(30_000);  showSeekIndicatorTimed(30_000);  scheduleHide(); });
+        if (btnPP   != null) btnPP.setOnClickListener(v ->   {
+            if (player != null) { if (player.isPlaying()) player.pause(); else player.play(); }
+            animatePlayPause(); scheduleHide();
         });
     }
 
     // ══════════════════════════════════════════════════════════════════════════
-    //  Seek helpers
+    //  Seek / indicators
     // ══════════════════════════════════════════════════════════════════════════
     private void seekBy(long ms) {
         if (player == null) return;
@@ -564,8 +943,7 @@ private void findControllerViews() {
     private void updateSeekIndicator(long ms) {
         if (seekIndicator == null) return;
         if (seekIndicator.getVisibility() != View.VISIBLE) {
-            seekIndicator.setAlpha(0f);
-            seekIndicator.setVisibility(View.VISIBLE);
+            seekIndicator.setAlpha(0f); seekIndicator.setVisibility(View.VISIBLE);
             seekIndicator.animate().alpha(1f).setDuration(150).start();
         }
         long secs = Math.abs(ms / 1000);
@@ -585,20 +963,13 @@ private void findControllerViews() {
                 .withEndAction(() -> seekIndicator.setVisibility(View.GONE)).start();
     }
 
-    // ══════════════════════════════════════════════════════════════════════════
-    //  Play/Pause pulse animation
-    // ══════════════════════════════════════════════════════════════════════════
     private void animatePlayPause() {
         if (exoPlayPause == null) return;
         exoPlayPause.animate().scaleX(1.25f).scaleY(1.25f).setDuration(100)
                 .withEndAction(() ->
-                        exoPlayPause.animate().scaleX(1f).scaleY(1f).setDuration(150).start())
-                .start();
+                        exoPlayPause.animate().scaleX(1f).scaleY(1f).setDuration(150).start()).start();
     }
 
-    // ══════════════════════════════════════════════════════════════════════════
-    //  Gesture indicator pills
-    // ══════════════════════════════════════════════════════════════════════════
     private void showGestureIndicator(boolean isBrightness) {
         LinearLayout v = isBrightness ? brightnessIndicator : volumeIndicator;
         if (v == null) return;
@@ -614,24 +985,19 @@ private void findControllerViews() {
                 .withEndAction(() -> v.setVisibility(View.GONE)).start();
     }
 
-    // ══════════════════════════════════════════════════════════════════════════
-    //  Brightness / Volume
-    // ══════════════════════════════════════════════════════════════════════════
     private int getBrightnessPct() {
         WindowManager.LayoutParams lp = getWindow().getAttributes();
         if (lp.screenBrightness < 0) {
-            try {
-                return Settings.System.getInt(getContentResolver(),
-                        Settings.System.SCREEN_BRIGHTNESS) * 100 / 255;
-            } catch (Exception e) { return 50; }
+            try { return Settings.System.getInt(getContentResolver(),
+                    Settings.System.SCREEN_BRIGHTNESS) * 100 / 255; }
+            catch (Exception e) { return 50; }
         }
         return (int)(lp.screenBrightness * 100);
     }
 
     private void setBrightness(int pct) {
         WindowManager.LayoutParams lp = getWindow().getAttributes();
-        lp.screenBrightness = pct / 100f;
-        getWindow().setAttributes(lp);
+        lp.screenBrightness = pct / 100f; getWindow().setAttributes(lp);
     }
 
     private int getVolumePct() {
@@ -644,65 +1010,36 @@ private void findControllerViews() {
     }
 
     // ══════════════════════════════════════════════════════════════════════════
-    //  TV Remote / D-pad
-    // ══════════════════════════════════════════════════════════════════════════
-    @Override
-    public boolean onKeyDown(int keyCode, KeyEvent event) {
-        if (player == null) return super.onKeyDown(keyCode, event);
-        if (!isLocked) showControls();
-
-        switch (keyCode) {
-            case KeyEvent.KEYCODE_DPAD_CENTER:
-            case KeyEvent.KEYCODE_ENTER:
-                if (player.isPlaying()) player.pause(); else player.play();
-                animatePlayPause(); return true;
-            case KeyEvent.KEYCODE_DPAD_LEFT:
-            case KeyEvent.KEYCODE_MEDIA_REWIND:
-                seekBy(-10_000); showSeekIndicatorTimed(-10_000); return true;
-            case KeyEvent.KEYCODE_DPAD_RIGHT:
-            case KeyEvent.KEYCODE_MEDIA_FAST_FORWARD:
-                seekBy(30_000); showSeekIndicatorTimed(30_000); return true;
-            case KeyEvent.KEYCODE_VOLUME_UP:
-                audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC,
-                        AudioManager.ADJUST_RAISE, AudioManager.FLAG_SHOW_UI); return true;
-            case KeyEvent.KEYCODE_VOLUME_DOWN:
-                audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC,
-                        AudioManager.ADJUST_LOWER, AudioManager.FLAG_SHOW_UI); return true;
-            case KeyEvent.KEYCODE_BACK:
-                onBackPressed(); return true;
-        }
-        return super.onKeyDown(keyCode, event);
-    }
-
-    // ══════════════════════════════════════════════════════════════════════════
     //  Lifecycle
     // ══════════════════════════════════════════════════════════════════════════
     @Override public void onBackPressed() {
+        saveCurrentPosition();
         releasePlayer();
         Intent i = new Intent(this, MainActivity.class);
         i.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-        startActivity(i);
-        finish();
+        startActivity(i); finish();
     }
 
-    @Override protected void onResume() {
-        super.onResume();
-        hideSystemUI();
-        if (player != null) player.play();
-    }
+@Override
+protected void onResume() {
+    super.onResume();
+    hideSystemUI();
+}
 
     @Override protected void onPause() {
         super.onPause();
+        saveCurrentPosition();
         if (player != null) player.pause();
         autoHideHandler.removeCallbacks(autoHideRunnable);
         autoHideHandler.removeCallbacks(hideLockUiRunnable);
+        autoHideHandler.removeCallbacks(savePositionRunnable);
     }
 
     @Override protected void onDestroy() {
         autoHideHandler.removeCallbacks(autoHideRunnable);
         autoHideHandler.removeCallbacks(hideLockUiRunnable);
-        releasePlayer();
-        super.onDestroy();
+        autoHideHandler.removeCallbacks(savePositionRunnable);
+        releasePlayer(); super.onDestroy();
     }
 
     private void releasePlayer() {
@@ -711,12 +1048,9 @@ private void findControllerViews() {
 
     private void hideSystemUI() {
         getWindow().getDecorView().setSystemUiVisibility(
-                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-                | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                | View.SYSTEM_UI_FLAG_FULLSCREEN);
+                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_FULLSCREEN);
     }
 
     private void showSystemUI() {
