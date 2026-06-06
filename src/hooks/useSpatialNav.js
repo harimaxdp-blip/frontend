@@ -49,14 +49,19 @@ function focusElement(el, preventScroll = false) {
   return true;
 }
 
+function isVisibleCard(el) {
+  const rect = el.getBoundingClientRect();
+  return rect.width > 0 && rect.height > 0;
+}
+
 export function useSpatialNav() {
   const handleKeyDown = useCallback((e) => {
     const { key } = e;
     const direction = KEY_TO_DIRECTION[key];
     if (!direction) return;
 
-    const grid = e.currentTarget;
-    const cards = Array.from(grid.querySelectorAll(FOCUSABLE_CARD_SELECTOR));
+    const scope = document.querySelector(".content") || document;
+    const cards = Array.from(scope.querySelectorAll(FOCUSABLE_CARD_SELECTOR)).filter(isVisibleCard);
     const focused = document.activeElement;
     const idx = cards.indexOf(focused);
     if (idx === -1) return;

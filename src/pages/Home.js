@@ -334,32 +334,6 @@ export default function Home({ type = "all" }) {
   const [showUpBtn, setShowUpBtn]   = useState(false);
   const [viewStack, setViewStack]   = useState([{ kind: "home" }]);
   const [playerLoading, setPlayerLoading] = useState(null);
-const customSlides = [
- /* {
-    image: banner1,
-    title: "",
-    description: "For Adevertiment Call"
-  },
-  {
-    image: banner2,
-    title: "",
-    description: "For Adevertiment Call"
-  },
-  {
-    image: banner3,
-    title: "",
-    description: "For Adevertiment Call"
-  }*/
-];const mixedBanners = [
-  customSlides[0],
-  ...banners.slice(0, 1),
-
-  customSlides[1],
-  ...banners.slice(1, 2),
-
-  customSlides[2],
-  ...banners.slice(2),
-];
   const navigate         = useNavigate();
   const savedScrollMap   = useRef({});
   const isNavigatingBack = useRef(false);
@@ -399,23 +373,6 @@ const customSlides = [
     return () => unsub();
   }, []);
 
-  useEffect(() => {
-    const unsub = onSnapshot(collection(db, "banners"), (snap) => {
-      const data = snap.docs
-        .map((d) => ({ id: d.id, ...d.data() }))
-        .filter((b) => {
-          if (b.active === false) return false;
-          if (type === "movie")  return b.bannerType === "movie";
-          if (type === "series") return b.bannerType === "series";
-          if (type === "anime")  return b.bannerType === "anime";
-          return true;
-        })
-        .sort((a, b) => (a.order || 0) - (b.order || 0));
-      setBanners(data);
-    });
-    return () => unsub();
-  }, [type]);
-
   // ── NEW: Load ads ────────────────────────────────────────────────────────────
  /* useEffect(() => {
     const unsub = onSnapshot(collection(db, "ads"), (snap) => {
@@ -432,7 +389,46 @@ const customSlides = [
   const isMovieType  = useCallback((t) => ["movie", "movies"].includes(normalize(t)), [normalize]);
   const isSeriesType = useCallback((t) => ["series", "tv", "show"].includes(normalize(t)), [normalize]);
   const isAnimeType  = useCallback((t) => normalize(t) === "anime", [normalize]);
-  const isAnimeGenre = useCallback((item) => normalize(item.genre) === "anime", [normalize]);
+  const isAnimeGenre = useCallback((item) => normalize(item?.genre) === "anime", [normalize]);
+
+  const bannerMatchesTab = useCallback((banner) => {
+    if (banner.active === false) return false;
+    if (!banner.image && !banner.imageUrl) return false;
+    const description = normalize(banner.description);
+    const title = normalize(banner.title);
+    if (description.includes("advertisement") || description.includes("adevertiment") || title === "ad") return false;
+
+    const bannerType = normalize(banner.bannerType);
+    const movieRef = banner.movieRef || {};
+
+    if (type === "movie") {
+      if (bannerType) return bannerType === "movie";
+      return isMovieType(movieRef.type) && !isAnimeGenre(movieRef);
+    }
+
+    if (type === "series") {
+      if (bannerType) return ["series", "tv", "show"].includes(bannerType);
+      return isSeriesType(movieRef.type) && !isAnimeGenre(movieRef);
+    }
+
+    if (type === "anime") {
+      if (bannerType) return bannerType === "anime";
+      return isAnimeType(movieRef.type) || isAnimeGenre(movieRef) || normalize(banner.genre) === "anime";
+    }
+
+    return true;
+  }, [isAnimeGenre, isAnimeType, isMovieType, isSeriesType, normalize, type]);
+
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, "banners"), (snap) => {
+      const data = snap.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .filter(bannerMatchesTab)
+        .sort((a, b) => (a.order || 0) - (b.order || 0));
+      setBanners(data);
+    });
+    return () => unsub();
+  }, [bannerMatchesTab]);
 
   const matchesTab = useCallback((item) => {
     const clean = normalize(item.type);
@@ -1007,7 +1003,7 @@ const searchScore = useCallback((title, query) => {
 
       {/* Hero banner */}
       {currentView.kind === "home" && banners.length > 0 && (
-        <HeroBanner banners={mixedBanners} onPlay={playMovie} />
+        <HeroBanner banners={banners} onPlay={playMovie} />
       )}
 
       <div className="movies-page">
