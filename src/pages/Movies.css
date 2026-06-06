@@ -1392,6 +1392,38 @@ select.tv-input {
     border-color: #2e2e2e;
   }
 }
+
+/* TV remote focus must stay visible even in Android TV/WebView coarse-pointer mode. */
+.card:focus,
+.episode-card:focus,
+.card:focus-visible,
+.episode-card:focus-visible {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow:
+    0 0  0  4px rgba(229,9,20,0.60),
+    0 0  34px rgba(229,9,20,0.45),
+    0 28px 64px rgba(0,0,0,0.92);
+  transform: translateZ(0) translateY(-10px) scale(1.055);
+  z-index: 20;
+}
+
+.card:focus img,
+.episode-card:focus img,
+.card:focus-visible img,
+.episode-card:focus-visible img {
+  transform: scale(1.07);
+  filter: brightness(1.08) saturate(1.12);
+}
+
+.card.is-collection:focus,
+.card.is-collection:focus-visible {
+  border-color: var(--gold);
+  box-shadow:
+    0 0  0  4px rgba(245,197,24,0.52),
+    0 0  34px rgba(245,197,24,0.34),
+    0 28px 64px rgba(0,0,0,0.92);
+}
 .dice-scene{
   width:32px;
   height:32px;

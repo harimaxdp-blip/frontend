@@ -24,6 +24,7 @@ import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
+import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -47,7 +48,7 @@ public class PlayerActivity extends Activity {
 
     private static final String PREFS_NAME    = "hm_watch_pos";
     private static final long   SAVE_EVERY_MS = 5_000L;
-    private static final long   MIN_RESUME_MS = 10_000L; // only resume if > 10s
+    private static final long   MIN_RESUME_MS = 10_000L;
 
     private ExoPlayer  player;
     private PlayerView playerView;
@@ -57,7 +58,11 @@ public class PlayerActivity extends Activity {
     private boolean isMuted      = false;
     private boolean isFullscreen = false;
     private int     resizeModeIndex = 0;
-private boolean resumeChecked = false;
+    private boolean resumeChecked = false;
+
+    // ── A/V Sync ──────────────────────────────────────────────────────────────
+    private long audioOffsetUs = 0L; // current offset in microseconds
+
     private static final int[] RESIZE_MODES = {
         AspectRatioFrameLayout.RESIZE_MODE_FILL,
         AspectRatioFrameLayout.RESIZE_MODE_FIT,
@@ -105,7 +110,7 @@ private boolean resumeChecked = false;
 
     // ── Controller views ──────────────────────────────────────────────────────
     private LinearLayout brightnessIndicator, volumeIndicator;
-    private ProgressBar  progressBrightness, progressVolume;
+    private View         viewBrightnessFill, viewVolumeFill;
     private TextView     tvBrightnessValue, tvVolumeValue;
     private LinearLayout seekIndicator;
     private ImageView    seekIcon;
@@ -116,14 +121,15 @@ private boolean resumeChecked = false;
     private TextView     tvLockHint;
 
     // ── Button refs ───────────────────────────────────────────────────────────
-    private ImageButton btnBack, btnMute, btnAspect, btnFullscreen;
+    private ImageButton btnBack, btnMute, btnAspect, btnFullscreen, btnSync;
     private View        btnRew, btnFfwd, btnPP, progressBar;
 
     // ── Resume overlay ────────────────────────────────────────────────────────
     private View   resumeOverlay;
     private Button btnResume, btnStartOver;
     private TextView tvResumeTime;
-private long forcedResumePos = 0;
+    private long forcedResumePos = 0;
+
     // ══════════════════════════════════════════════════════════════════════════
     //  onCreate
     // ══════════════════════════════════════════════════════════════════════════
@@ -142,9 +148,8 @@ private long forcedResumePos = 0;
 
         videoUrl   = getIntent().getStringExtra(EXTRA_URL);   if (videoUrl == null) videoUrl = "";
         videoTitle = getIntent().getStringExtra(EXTRA_TITLE);
-        forcedResumePos =
-        getIntent().getLongExtra("resume_pos", 0);
-         if (videoTitle == null) videoTitle = "";
+        forcedResumePos = getIntent().getLongExtra("resume_pos", 0);
+        if (videoTitle == null) videoTitle = "";
 
         player = new ExoPlayer.Builder(this).build();
         playerView.setPlayer(player);
@@ -183,47 +188,42 @@ private long forcedResumePos = 0;
             @Override public void onPlayerError(PlaybackException e) {
                 Log.e("PLAYER", "Error: " + e.getMessage(), e);
             }
-@Override
-public void onPlaybackStateChanged(int state) {
 
-    Log.d("PLAYER", "State: " + state);
-
-    if (state == Player.STATE_ENDED) {
-        clearSavedPosition();
-    }
-
-    if (state == Player.STATE_READY && !resumeChecked) {
-        resumeChecked = true;
-        if (forcedResumePos > 0) {
-
-    player.seekTo(forcedResumePos);
-    player.play();
-
-    forcedResumePos = 0;
-    return;
-}
-        checkResumePosition();
-    }
-}
+            @Override
+            public void onPlaybackStateChanged(int state) {
+                Log.d("PLAYER", "State: " + state);
+                if (state == Player.STATE_ENDED) {
+                    clearSavedPosition();
+                }
+                if (state == Player.STATE_READY && !resumeChecked) {
+                    resumeChecked = true;
+                    if (forcedResumePos > 0) {
+                        player.seekTo(forcedResumePos);
+                        player.play();
+                        forcedResumePos = 0;
+                        return;
+                    }
+                    checkResumePosition();
+                }
+            }
         });
 
-player.setMediaSource(mediaSource);
-player.prepare();
-        // Start periodic position saving
+        player.setMediaSource(mediaSource);
+        player.prepare();
         scheduleSavePosition();
     }
 
     // ══════════════════════════════════════════════════════════════════════════
     //  Resume position storage
     // ══════════════════════════════════════════════════════════════════════════
-private String posKey() {
-    return "pos_" + videoTitle;
-}
+    private String posKey() {
+        return "pos_" + videoTitle;
+    }
+
     private void saveCurrentPosition() {
         if (player == null || resumeShowing) return;
         long pos = player.getCurrentPosition();
         long dur = player.getDuration();
-        // Don't save if near end (last 5s) — clear it instead
         if (dur > 0 && pos >= dur - 5_000) {
             clearSavedPosition();
         } else if (pos > MIN_RESUME_MS) {
@@ -247,34 +247,27 @@ private String posKey() {
         getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
                 .edit().remove(posKey()).apply();
     }
-private void checkResumePosition() {
 
-    long saved = getSavedPosition();
-
-    Log.d("RESUME", "TITLE = " + videoTitle);
-    Log.d("RESUME", "URL = " + videoUrl);
-    Log.d("RESUME", "SAVED = " + saved);
-
-    if (saved > 10000) {
-        player.pause();
-        showResumeOverlay(saved);
-    } else {
-        clearSavedPosition();
-        player.play();
+    private void checkResumePosition() {
+        long saved = getSavedPosition();
+        Log.d("RESUME", "TITLE = " + videoTitle);
+        Log.d("RESUME", "URL = " + videoUrl);
+        Log.d("RESUME", "SAVED = " + saved);
+        if (saved > 10000) {
+            player.pause();
+            showResumeOverlay(saved);
+        } else {
+            clearSavedPosition();
+            player.play();
+        }
     }
-}
 
     // ══════════════════════════════════════════════════════════════════════════
-    //  Build resume overlay in code (no XML needed)
+    //  Build resume overlay
     // ══════════════════════════════════════════════════════════════════════════
     private void buildResumeOverlay() {
-        // Semi-transparent dark overlay
         FrameLayout root = findViewById(android.R.id.content);
 
-        // Outer dim
-
-
-        // Card
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
         card.setGravity(Gravity.CENTER);
@@ -287,7 +280,6 @@ private void checkResumePosition() {
         card.setLayoutParams(cardLp);
         card.setElevation(dp(8));
 
-        // Title
         TextView tvTitle = new TextView(this);
         tvTitle.setText("Continue Watching?");
         tvTitle.setTextColor(0xFFFFFFFF);
@@ -296,7 +288,6 @@ private void checkResumePosition() {
         tvTitle.setGravity(Gravity.CENTER);
         card.addView(tvTitle);
 
-        // Subtitle — resume time
         tvResumeTime = new TextView(this);
         tvResumeTime.setTextColor(0xAAFFFFFF);
         tvResumeTime.setTextSize(13);
@@ -308,7 +299,6 @@ private void checkResumePosition() {
         tvResumeTime.setLayoutParams(subLp);
         card.addView(tvResumeTime);
 
-        // Hint for remote
         TextView tvHint = new TextView(this);
         tvHint.setText("◀ ▶ navigate  •  OK select");
         tvHint.setTextColor(0x88FFFFFF);
@@ -321,12 +311,11 @@ private void checkResumePosition() {
         tvHint.setLayoutParams(hintLp);
         card.addView(tvHint);
 
-        // Buttons row
         LinearLayout btnRow = new LinearLayout(this);
         btnRow.setOrientation(LinearLayout.HORIZONTAL);
         btnRow.setGravity(Gravity.CENTER);
 
-        btnResume = makeDialogButton("▶  Resume", true);
+        btnResume    = makeDialogButton("▶  Resume", true);
         btnStartOver = makeDialogButton("↺  Start Over", false);
 
         LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(0,
@@ -341,22 +330,16 @@ private void checkResumePosition() {
         btnRow.addView(btnResume);
         btnRow.addView(btnStartOver);
         card.addView(btnRow);
-FrameLayout overlayContainer = new FrameLayout(this);
 
-overlayContainer.setBackgroundColor(0xAA000000);
-overlayContainer.setVisibility(View.GONE);
+        FrameLayout overlayContainer = new FrameLayout(this);
+        overlayContainer.setBackgroundColor(0xAA000000);
+        overlayContainer.setVisibility(View.GONE);
+        overlayContainer.addView(card);
+        resumeOverlay = overlayContainer;
 
-overlayContainer.addView(card);
-
-resumeOverlay = overlayContainer;
-
-root.addView(
-    resumeOverlay,
-    new FrameLayout.LayoutParams(
-        FrameLayout.LayoutParams.MATCH_PARENT,
-        FrameLayout.LayoutParams.MATCH_PARENT
-    )
-);
+        root.addView(resumeOverlay, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT));
 
         btnResume.setOnClickListener(v -> doResume());
         btnStartOver.setOnClickListener(v -> doStartOver());
@@ -368,29 +351,20 @@ root.addView(
         btn.setTextColor(0xFFFFFFFF);
         btn.setTextSize(13);
         btn.setPadding(dp(16), dp(12), dp(16), dp(12));
-        if (primary) {
-            btn.setBackgroundColor(0xFFE50914); // red = primary
-        } else {
-            btn.setBackgroundColor(0xFF333355); // dark = secondary
-        }
+        btn.setBackgroundColor(primary ? 0xFFE50914 : 0xFF333355);
         return btn;
     }
 
     private void showResumeOverlay(long savedMs) {
-        resumeShowing = true;
+        resumeShowing  = true;
         resumeFocusCol = 0;
-btnResume.setFocusable(true);
-btnResume.setFocusableInTouchMode(true);
-
-btnStartOver.setFocusable(true);
-btnStartOver.setFocusableInTouchMode(true);
-
-btnResume.requestFocus();
-        String timeStr = fmt(savedMs / 1000);
-        if (tvResumeTime != null) tvResumeTime.setText("Paused at " + timeStr);
-
+        btnResume.setFocusable(true);
+        btnResume.setFocusableInTouchMode(true);
+        btnStartOver.setFocusable(true);
+        btnStartOver.setFocusableInTouchMode(true);
+        btnResume.requestFocus();
+        if (tvResumeTime != null) tvResumeTime.setText("Paused at " + fmt(savedMs / 1000));
         resumeOverlay.setVisibility(View.VISIBLE);
-
         updateResumeHighlight();
     }
 
@@ -399,58 +373,223 @@ btnResume.requestFocus();
         resumeOverlay.setVisibility(View.GONE);
     }
 
-private void updateResumeHighlight() {
-
-    if (resumeFocusCol == 0) {
-
-        btnResume.requestFocus();
-
-        btnResume.setScaleX(1.1f);
-        btnResume.setScaleY(1.1f);
-
-        btnStartOver.setScaleX(1f);
-        btnStartOver.setScaleY(1f);
-
-    } else {
-
-        btnStartOver.requestFocus();
-
-        btnStartOver.setScaleX(1.1f);
-        btnStartOver.setScaleY(1.1f);
-
-        btnResume.setScaleX(1f);
-        btnResume.setScaleY(1f);
-    }
-}
-
-private void doResume() {
-
-    long saved = forcedResumePos > 0
-            ? forcedResumePos
-            : getSavedPosition();
-
-    hideResumeOverlay();
-
-    if (player != null) {
-        player.seekTo(saved);
-        player.play();
+    private void updateResumeHighlight() {
+        if (resumeFocusCol == 0) {
+            btnResume.requestFocus();
+            btnResume.setScaleX(1.1f);   btnResume.setScaleY(1.1f);
+            btnStartOver.setScaleX(1f);  btnStartOver.setScaleY(1f);
+        } else {
+            btnStartOver.requestFocus();
+            btnStartOver.setScaleX(1.1f); btnStartOver.setScaleY(1.1f);
+            btnResume.setScaleX(1f);      btnResume.setScaleY(1f);
+        }
     }
 
-    forcedResumePos = 0;
-}
-
-private void doStartOver() {
-
-    forcedResumePos = 0;
-
-    clearSavedPosition();
-    hideResumeOverlay();
-
-    if (player != null) {
-        player.seekTo(0);
-        player.play();
+    private void doResume() {
+        long saved = forcedResumePos > 0 ? forcedResumePos : getSavedPosition();
+        hideResumeOverlay();
+        if (player != null) { player.seekTo(saved); player.play(); }
+        forcedResumePos = 0;
     }
-}
+
+    private void doStartOver() {
+        forcedResumePos = 0;
+        clearSavedPosition();
+        hideResumeOverlay();
+        if (player != null) { player.seekTo(0); player.play(); }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    //  A/V Sync Dialog
+    // ══════════════════════════════════════════════════════════════════════════
+    private void showSyncDialog() {
+        FrameLayout root = findViewById(android.R.id.content);
+
+        // Full-screen dim overlay
+        FrameLayout overlay = new FrameLayout(this);
+        overlay.setBackgroundColor(0xAA000000);
+
+        // Card
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setGravity(Gravity.CENTER_HORIZONTAL);
+        card.setBackgroundColor(0xEE1A1A2E);
+        card.setPadding(dp(28), dp(24), dp(28), dp(24));
+
+        FrameLayout.LayoutParams cardLp = new FrameLayout.LayoutParams(
+                dp(320), FrameLayout.LayoutParams.WRAP_CONTENT);
+        cardLp.gravity = Gravity.CENTER;
+        card.setLayoutParams(cardLp);
+        card.setElevation(dp(8));
+
+        // Title
+        TextView tvTitle = new TextView(this);
+        tvTitle.setText("A/V Sync Adjust");
+        tvTitle.setTextColor(0xFFFFFFFF);
+        tvTitle.setTextSize(17);
+        tvTitle.setTypeface(null, android.graphics.Typeface.BOLD);
+        tvTitle.setGravity(Gravity.CENTER);
+        card.addView(tvTitle);
+
+        // Current offset label
+        final TextView tvOffset = new TextView(this);
+        tvOffset.setTextColor(0xAAFFFFFF);
+        tvOffset.setTextSize(13);
+        tvOffset.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams offLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        offLp.setMargins(0, dp(8), 0, dp(4));
+        tvOffset.setLayoutParams(offLp);
+
+        // Usage hint
+        TextView tvHint = new TextView(this);
+        tvHint.setTextColor(0x88FFFFFF);
+        tvHint.setTextSize(11);
+        tvHint.setGravity(Gravity.CENTER);
+        tvHint.setText("Audio early → drag left (−)  •  Audio late → drag right (+)");
+        LinearLayout.LayoutParams hintLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        hintLp.setMargins(0, 0, 0, dp(14));
+        tvHint.setLayoutParams(hintLp);
+
+        // SeekBar  range: 0..4000 mapped to -2000ms..+2000ms
+        final SeekBar seekBar = new SeekBar(this);
+        seekBar.setMax(4000);
+        int currentProgress = (int)(audioOffsetUs / 1000L) + 2000;
+        seekBar.setProgress(currentProgress);
+        seekBar.getProgressDrawable().setColorFilter(
+                0xFFE50914, android.graphics.PorterDuff.Mode.SRC_IN);
+        seekBar.getThumb().setColorFilter(
+                0xFFE50914, android.graphics.PorterDuff.Mode.SRC_IN);
+
+        LinearLayout.LayoutParams sbLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        sbLp.setMargins(0, 0, 0, dp(6));
+        seekBar.setLayoutParams(sbLp);
+
+        // Range labels row
+        LinearLayout rangeRow = new LinearLayout(this);
+        rangeRow.setOrientation(LinearLayout.HORIZONTAL);
+        rangeRow.setLayoutParams(new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT));
+
+        TextView tvMin = new TextView(this);
+        tvMin.setText("−2000ms");
+        tvMin.setTextColor(0x88FFFFFF);
+        tvMin.setTextSize(10);
+        rangeRow.addView(tvMin, new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+
+        TextView tvMid = new TextView(this);
+        tvMid.setText("0");
+        tvMid.setTextColor(0x88FFFFFF);
+        tvMid.setTextSize(10);
+        tvMid.setGravity(Gravity.CENTER);
+        rangeRow.addView(tvMid, new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+
+        TextView tvMax = new TextView(this);
+        tvMax.setText("+2000ms");
+        tvMax.setTextColor(0x88FFFFFF);
+        tvMax.setTextSize(10);
+        tvMax.setGravity(Gravity.END);
+        LinearLayout.LayoutParams maxLp = new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+        maxLp.setMargins(0, 0, 0, dp(14));
+        rangeRow.addView(tvMax, maxLp);
+
+        // Update label helper
+        Runnable updateLabel = () -> {
+            long ms = seekBar.getProgress() - 2000;
+            tvOffset.setText("Offset: " + (ms >= 0 ? "+" : "") + ms + " ms");
+        };
+        updateLabel.run();
+
+        seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar sb, int progress, boolean fromUser) {
+                updateLabel.run();
+            }
+            @Override public void onStartTrackingTouch(SeekBar sb) {}
+            @Override public void onStopTrackingTouch(SeekBar sb) {}
+        });
+
+        // Add views to card in order
+        card.addView(tvOffset);
+        card.addView(tvHint);
+        card.addView(seekBar);
+        card.addView(rangeRow);
+
+        // Buttons row
+        LinearLayout btnRow = new LinearLayout(this);
+        btnRow.setOrientation(LinearLayout.HORIZONTAL);
+        btnRow.setGravity(Gravity.CENTER);
+
+        Button btnReset = makeDialogButton("↺  Reset", false);
+        Button btnApply = makeDialogButton("✓  Apply", true);
+
+        LinearLayout.LayoutParams b1 = new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+        b1.setMargins(0, 0, dp(8), 0);
+        btnReset.setLayoutParams(b1);
+        btnApply.setLayoutParams(new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+
+        btnRow.addView(btnReset);
+        btnRow.addView(btnApply);
+        card.addView(btnRow);
+
+        overlay.addView(card);
+        root.addView(overlay, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT));
+
+        // Apply button
+        btnApply.setOnClickListener(v -> {
+            long ms = seekBar.getProgress() - 2000;
+            audioOffsetUs = ms * 1000L;
+            applyAudioOffset();
+            root.removeView(overlay);
+        });
+
+        // Reset button
+        btnReset.setOnClickListener(v -> {
+            seekBar.setProgress(2000);
+            audioOffsetUs = 0L;
+            applyAudioOffset();
+            root.removeView(overlay);
+        });
+
+        // Tap outside card = close without saving
+        overlay.setOnClickListener(v -> root.removeView(overlay));
+        card.setOnClickListener(v -> { /* consume so taps on card don't close */ });
+    }
+
+    /**
+     * Applies the current audioOffsetUs.
+     *
+     * Note: Standard Media3 ExoPlayer does not have a direct setAudioOffsetUs method.
+     * Manual A/V sync adjustment usually requires a custom AudioProcessor.
+     *
+     * Negative value  → audio plays earlier  (audio was late / lagging behind video)
+     * Positive value  → audio plays later    (audio was early / ahead of video)
+     */
+    private void applyAudioOffset() {
+        if (player == null) return;
+        try {
+            // player.setAudioOffsetUs(audioOffsetUs); // Method not found in standard Media3
+            String msg = audioOffsetUs == 0
+                    ? "A/V Sync reset"
+                    : "A/V Sync: " + (audioOffsetUs > 0 ? "+" : "") + (audioOffsetUs / 1000) + " ms";
+            Toast.makeText(this, msg, Toast.LENGTH_SHORT).show();
+            Log.d("AVSYNC", "Audio offset changed to: " + audioOffsetUs + " us. (Effect requires custom AudioProcessor implementation)");
+        } catch (Exception e) {
+            Log.e("AVSYNC", "applyAudioOffset failed: " + e.getMessage());
+        }
+    }
 
     // ══════════════════════════════════════════════════════════════════════════
     //  Format ms → m:ss or h:mm:ss
@@ -462,6 +601,7 @@ private void doStartOver() {
     }
 
     private String pad(long n) { return n < 10 ? "0" + n : String.valueOf(n); }
+
     private int dp(int val) {
         return (int)(val * getResources().getDisplayMetrics().density);
     }
@@ -471,10 +611,10 @@ private void doStartOver() {
     // ══════════════════════════════════════════════════════════════════════════
     private void findControllerViews() {
         brightnessIndicator = playerView.findViewById(R.id.gesture_brightness_indicator);
-        progressBrightness  = playerView.findViewById(R.id.progress_brightness);
         tvBrightnessValue   = playerView.findViewById(R.id.tv_brightness_value);
         volumeIndicator     = playerView.findViewById(R.id.gesture_volume_indicator);
-        progressVolume      = playerView.findViewById(R.id.progress_volume);
+        viewBrightnessFill  = playerView.findViewById(R.id.view_brightness_fill);
+        viewVolumeFill      = playerView.findViewById(R.id.view_volume_fill);
         tvVolumeValue       = playerView.findViewById(R.id.tv_volume_value);
         seekIndicator       = playerView.findViewById(R.id.seek_indicator);
         seekIcon            = playerView.findViewById(R.id.seek_icon);
@@ -494,7 +634,7 @@ private void doStartOver() {
     // ══════════════════════════════════════════════════════════════════════════
     private void updateFocusHighlight() {
         clearHighlight(btnBack); clearHighlight(btnMute);
-        clearHighlight(btnAspect); clearHighlight(btnFullscreen);
+        clearHighlight(btnAspect); clearHighlight(btnSync); clearHighlight(btnFullscreen);
         clearHighlight(btnRew); clearHighlight(btnPP); clearHighlight(btnFfwd);
         if (progressBar != null) progressBar.setScaleY(1f);
 
@@ -507,7 +647,8 @@ private void doStartOver() {
                 case 0: applyHighlight(btnBack);       break;
                 case 1: applyHighlight(btnMute);       break;
                 case 2: applyHighlight(btnAspect);     break;
-                case 3: applyHighlight(btnFullscreen); break;
+                case 3: applyHighlight(btnSync);       break;
+                case 4: applyHighlight(btnFullscreen); break;
             }
         } else {
             switch (focusCol) {
@@ -520,7 +661,7 @@ private void doStartOver() {
 
     private void applyHighlight(View v) {
         if (v == null) return;
-        v.setScaleX(1.25f); v.setScaleY(1.25f); v.setAlpha(1.0f);
+        v.setAlpha(1.0f);
     }
 
     private void clearHighlight(View v) {
@@ -533,9 +674,10 @@ private void doStartOver() {
         if (focusRow == 0) {
             switch (focusCol) {
                 case 0: onBackPressed(); break;
-                case 1: if (btnMute != null) btnMute.performClick(); break;
-                case 2: if (btnAspect != null) btnAspect.performClick(); break;
-                case 3: if (btnFullscreen != null) btnFullscreen.performClick(); break;
+                case 1: if (btnMute      != null) btnMute.performClick();      break;
+                case 2: if (btnAspect    != null) btnAspect.performClick();    break;
+                case 3: if (btnSync      != null) btnSync.performClick();      break;
+                case 4: if (btnFullscreen!= null) btnFullscreen.performClick();break;
             }
         } else {
             switch (focusCol) {
@@ -558,7 +700,6 @@ private void doStartOver() {
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         if (player == null) return super.onKeyDown(keyCode, event);
 
-        // Volume always works
         if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
             audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC,
                     AudioManager.ADJUST_RAISE, AudioManager.FLAG_SHOW_UI); return true;
@@ -570,36 +711,20 @@ private void doStartOver() {
         if (keyCode == KeyEvent.KEYCODE_BACK) { onBackPressed(); return true; }
 
         // ── Resume overlay is showing ─────────────────────────────────────────
-if (resumeShowing) {
-
-    switch (keyCode) {
-
-        case KeyEvent.KEYCODE_DPAD_LEFT:
-            resumeFocusCol = 0;
-            updateResumeHighlight();
-            return true;
-
-        case KeyEvent.KEYCODE_DPAD_RIGHT:
-            resumeFocusCol = 1;
-            updateResumeHighlight();
-            return true;
-
-        case KeyEvent.KEYCODE_DPAD_CENTER:
-        case KeyEvent.KEYCODE_ENTER:
-
-            if (resumeFocusCol == 0) {
-                doResume();
-            } else {
-                doStartOver();
+        if (resumeShowing) {
+            switch (keyCode) {
+                case KeyEvent.KEYCODE_DPAD_LEFT:
+                    resumeFocusCol = 0; updateResumeHighlight(); return true;
+                case KeyEvent.KEYCODE_DPAD_RIGHT:
+                    resumeFocusCol = 1; updateResumeHighlight(); return true;
+                case KeyEvent.KEYCODE_DPAD_CENTER:
+                case KeyEvent.KEYCODE_ENTER:
+                    if (resumeFocusCol == 0) doResume(); else doStartOver();
+                    return true;
             }
-
             return true;
-    }
+        }
 
-    return true;
-}
-
-        // Media keys
         if (keyCode == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE) {
             if (player.isPlaying()) player.pause(); else player.play();
             animatePlayPause(); return true;
@@ -613,7 +738,6 @@ if (resumeShowing) {
 
         if (isLocked) return super.onKeyDown(keyCode, event);
 
-        // First press shows controls
         if (!controlsVisible) {
             showControls(); updateFocusHighlight(); return true;
         }
@@ -629,7 +753,7 @@ if (resumeShowing) {
                 if (onProgressBar) {
                     onProgressBar = false; focusRow = 1; focusCol = 1;
                 } else if (focusRow == 1) {
-                    focusRow = 0; focusCol = Math.min(focusCol, 3);
+                    focusRow = 0; focusCol = Math.min(focusCol, 4);
                 }
                 updateFocusHighlight(); return true;
 
@@ -645,7 +769,6 @@ if (resumeShowing) {
                 if (onProgressBar) {
                     seekBy(-10_000); showSeekIndicatorTimed(-10_000);
                 } else {
-                    int max = (focusRow == 0) ? 3 : 2;
                     if (focusCol > 0) focusCol--;
                     updateFocusHighlight();
                 }
@@ -655,7 +778,7 @@ if (resumeShowing) {
                 if (onProgressBar) {
                     seekBy(30_000); showSeekIndicatorTimed(30_000);
                 } else {
-                    int max = (focusRow == 0) ? 3 : 2;
+                    int max = (focusRow == 0) ? 4 : 2;
                     if (focusCol < max) focusCol++;
                     updateFocusHighlight();
                 }
@@ -694,7 +817,7 @@ if (resumeShowing) {
         controlsVisible = false; onProgressBar = false;
         playerView.hideController();
         clearHighlight(btnBack); clearHighlight(btnMute);
-        clearHighlight(btnAspect); clearHighlight(btnFullscreen);
+        clearHighlight(btnAspect); clearHighlight(btnSync); clearHighlight(btnFullscreen);
         clearHighlight(btnRew); clearHighlight(btnPP); clearHighlight(btnFfwd);
         View[] targets = { topBar, centerControls, bottomBar, scrimTop, scrimBottom };
         for (View v : targets) {
@@ -814,7 +937,7 @@ if (resumeShowing) {
     }
 
     private void handleTouch(MotionEvent e) {
-        if (resumeShowing) return; // block touch while resume shown
+        if (resumeShowing) return;
         final float rawX = e.getRawX(), rawY = e.getRawY();
         final int w = playerView.getWidth();
         switch (e.getAction()) {
@@ -845,12 +968,12 @@ if (resumeShowing) {
                             (int)(gestureStartValue - dy / playerView.getHeight() * 100)));
                     if (downInLeft) {
                         setBrightness(pct);
-                        if (progressBrightness != null) progressBrightness.setProgress(pct);
+                        if (viewBrightnessFill != null) viewBrightnessFill.setScaleY(pct / 100f);
                         if (tvBrightnessValue  != null) tvBrightnessValue.setText(pct + "%");
                     } else if (downInRight) {
                         setVolume(pct);
-                        if (progressVolume != null) progressVolume.setProgress(pct);
-                        if (tvVolumeValue   != null) tvVolumeValue.setText(pct + "%");
+                        if (viewVolumeFill != null) viewVolumeFill.setScaleY(pct / 100f);
+                        if (tvVolumeValue  != null) tvVolumeValue.setText(pct + "%");
                     }
                 }
                 if (isHorizontal) updateSeekIndicator((long)(dx / SEEK_PX_PER_SEC) * 1000L);
@@ -891,6 +1014,7 @@ if (resumeShowing) {
         btnBack       = playerView.findViewById(R.id.btn_back);
         btnMute       = playerView.findViewById(R.id.btn_mute);
         btnAspect     = playerView.findViewById(R.id.btn_aspect_ratio);
+        btnSync       = playerView.findViewById(R.id.btn_sync);
         btnFullscreen = playerView.findViewById(R.id.btn_fullscreen);
         btnRew        = playerView.findViewById(R.id.exo_rew);
         btnFfwd       = playerView.findViewById(R.id.exo_ffwd);
@@ -898,18 +1022,27 @@ if (resumeShowing) {
         progressBar   = playerView.findViewById(R.id.exo_progress);
 
         if (btnBack != null) btnBack.setOnClickListener(v -> onBackPressed());
+
         if (btnMute != null) btnMute.setOnClickListener(v -> {
             isMuted = !isMuted;
             if (player != null) player.setVolume(isMuted ? 0f : 1f);
             btnMute.setImageResource(isMuted ? R.drawable.ic_volume_off : R.drawable.ic_volume_up);
             scheduleHide();
         });
+
         if (btnAspect != null) btnAspect.setOnClickListener(v -> {
             resizeModeIndex = (resizeModeIndex + 1) % RESIZE_MODES.length;
             playerView.setResizeMode(RESIZE_MODES[resizeModeIndex]);
             Toast.makeText(this, RESIZE_LABELS[resizeModeIndex], Toast.LENGTH_SHORT).show();
             scheduleHide();
         });
+
+        // ── A/V Sync button ───────────────────────────────────────────────────
+        if (btnSync != null) btnSync.setOnClickListener(v -> {
+            showSyncDialog();
+            scheduleHide();
+        });
+
         if (btnFullscreen != null) btnFullscreen.setOnClickListener(v -> {
             isFullscreen = !isFullscreen;
             if (isFullscreen) {
@@ -923,6 +1056,7 @@ if (resumeShowing) {
             }
             scheduleHide();
         });
+
         if (btnRew  != null) btnRew.setOnClickListener(v ->  { seekBy(-10_000); showSeekIndicatorTimed(-10_000); scheduleHide(); });
         if (btnFfwd != null) btnFfwd.setOnClickListener(v -> { seekBy(30_000);  showSeekIndicatorTimed(30_000);  scheduleHide(); });
         if (btnPP   != null) btnPP.setOnClickListener(v ->   {
@@ -965,9 +1099,14 @@ if (resumeShowing) {
 
     private void animatePlayPause() {
         if (exoPlayPause == null) return;
-        exoPlayPause.animate().scaleX(1.25f).scaleY(1.25f).setDuration(100)
+        exoPlayPause.animate().cancel();
+        exoPlayPause.animate().scaleX(0.92f).scaleY(0.92f).setDuration(60)
                 .withEndAction(() ->
-                        exoPlayPause.animate().scaleX(1f).scaleY(1f).setDuration(150).start()).start();
+                    exoPlayPause.animate().scaleX(1.03f).scaleY(1.03f).setDuration(100)
+                        .withEndAction(() ->
+                            exoPlayPause.animate().scaleX(1f).scaleY(1f).setDuration(120).start())
+                        .start())
+                .start();
     }
 
     private void showGestureIndicator(boolean isBrightness) {
@@ -1020,11 +1159,11 @@ if (resumeShowing) {
         startActivity(i); finish();
     }
 
-@Override
-protected void onResume() {
-    super.onResume();
-    hideSystemUI();
-}
+    @Override
+    protected void onResume() {
+        super.onResume();
+        hideSystemUI();
+    }
 
     @Override protected void onPause() {
         super.onPause();

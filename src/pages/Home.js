@@ -19,6 +19,8 @@ import noResultsMovie  from "../assets/no-results-movie.png";
 import noResultsSeries from "../assets/no-results-series.png";
 import noResultsAnime  from "../assets/no-results-anime.png";
 
+import { useSpatialNav } from "../hooks/useSpatialNav";
+
 import tvIcon1 from "../assets/tv1.png";
 import tvIcon2 from "../assets/tv2.png";
 import tvIcon3 from "../assets/tv.png";
@@ -318,6 +320,7 @@ export default function Home({ type = "all" }) {
   const [banners, setBanners]           = useState([]);
 //  const [ads, setAds]                   = useState([]);       // ← NEW
   const [isDataLoaded, setIsDataLoaded] = useState(false);
+  const handleGridKeyDown = useSpatialNav();
 
   const [languageFilter, setLanguageFilter] = useState("all");
   const [genreFilter, setGenreFilter]       = useState("all");
@@ -682,6 +685,15 @@ const searchScore = useCallback((title, query) => {
     restoreScrollAndFocus(scrollY, focusId);
   }, [isDataLoaded, movieGroups, animeMovieGroups, seriesGroups, animeSeriesGroups]);
 
+  useEffect(() => {
+    if (!isDataLoaded) return;
+    requestAnimationFrame(() => {
+      if (document.activeElement !== document.body) return;
+      const firstCard = document.querySelector("[data-card-id]");
+      if (firstCard) firstCard.focus({ preventScroll: true });
+    });
+  }, [isDataLoaded, currentView.kind]);
+
   useLayoutEffect(() => {
     setLanguageFilter("all"); setGenreFilter("all"); setYearFilter("all"); setSearch("");
     setViewStack([{ kind: "home" }]);
@@ -951,7 +963,7 @@ const searchScore = useCallback((title, query) => {
     return (
       <section key={seriesTitle} className="series-section">
         <h2 className="series-main-title">{seriesTitle}</h2>
-        <div className="grid">
+        <div className="grid" onKeyDown={handleGridKeyDown}>
           {seasons.map(([sNum, eps], i) => {
             const coverImg = randomImg(eps);
             const total    = eps.length;
@@ -1059,7 +1071,7 @@ const searchScore = useCallback((title, query) => {
         {!isDataLoaded ? (
           <section className="content-section" aria-busy="true" aria-label="Loading content">
             <h2 className="section-title">Loading…</h2>
-            <div className="grid">
+            <div className="grid" onKeyDown={handleGridKeyDown}>
               {Array.from({ length: 12 }).map((_, i) => <SkeletonCard key={i} />)}
             </div>
           </section>
@@ -1069,7 +1081,7 @@ const searchScore = useCallback((title, query) => {
           <section key="episode-list" className="collection-view slide-in-premium">
             <button type="button" className="back-btn" onClick={() => window.history.back()} aria-label="Go back">← Back</button>
             <h2 className="section-title">{selectedSeason.seriesTitle} — Season {selectedSeason.seasonNum}</h2>
-            <div className="grid">
+            <div className="grid" onKeyDown={handleGridKeyDown}>
               {(() => {
                 const sortedEps = [...selectedSeason.episodes].sort(
                   (a, b) => naturalSort(String(a.episode), String(b.episode))
@@ -1097,7 +1109,7 @@ const searchScore = useCallback((title, query) => {
           <section key="collection-view" className="collection-view slide-in-premium">
             <button type="button" className="back-btn" onClick={() => window.history.back()} aria-label="Go back">← Back</button>
             <h2 className="section-title">{selectedCollection.name} Collection</h2>
-            <div className="grid">
+            <div className="grid" onKeyDown={handleGridKeyDown}>
               {selectedCollection.items.map((m, i) => {
                 const cid = cardId("col", m.id);
                 return (
@@ -1123,7 +1135,7 @@ const searchScore = useCallback((title, query) => {
                 <h2 className="section-title">
                   <img src={tvIcon1} alt="" className="section-icon" aria-hidden="true" /> Movies
                 </h2>
-                <div className="grid">{renderMovieGrid(movieGroups, "mg")}</div>
+                <div className="grid" onKeyDown={handleGridKeyDown}>{renderMovieGrid(movieGroups, "mg")}</div>
               </section>
             )}
 
@@ -1147,7 +1159,7 @@ const searchScore = useCallback((title, query) => {
                 <h2 className="section-title">
                   <img src={tvIcon3} alt="" className="section-icon" aria-hidden="true" /> Anime Movies
                 </h2>
-                <div className="grid">{renderMovieGrid(animeMovieGroups, "amg")}</div>
+                <div className="grid" onKeyDown={handleGridKeyDown}>{renderMovieGrid(animeMovieGroups, "amg")}</div>
               </section>
             )}
 

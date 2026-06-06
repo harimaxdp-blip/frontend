@@ -2,7 +2,6 @@
 <!--
     res/layout/exo_player_controller.xml
     Styled to match ott_player_ui_mockup.html
-    + A/V Sync button added between btn_aspect_ratio and btn_fullscreen
 -->
 <FrameLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
@@ -61,7 +60,7 @@
         android:paddingTop="14dp"
         android:paddingBottom="10dp">
 
-        <!-- Back — 36×36 circle -->
+        <!-- Back — 36×36 circle, rgba(255,255,255,0.10) -->
         <ImageButton
             android:id="@+id/btn_back"
             android:layout_width="36dp"
@@ -75,7 +74,7 @@
             android:nextFocusRight="@id/btn_mute"
             android:nextFocusDown="@id/exo_rew" />
 
-        <!-- Title -->
+        <!-- Title: 13sp, weight 500, text-shadow -->
         <TextView
             android:id="@+id/tv_title"
             android:layout_width="0dp"
@@ -125,26 +124,6 @@
             android:padding="9dp"
             android:focusable="true"
             android:nextFocusLeft="@id/btn_mute"
-            android:nextFocusRight="@id/btn_sync"
-            android:nextFocusDown="@id/exo_play_pause" />
-
-        <!-- ═══════════════════════════════════════
-             A/V SYNC — NEW BUTTON
-             Tap to open the sync adjustment dialog.
-             Use ic_sync vector drawable (see below).
-        ═══════════════════════════════════════ -->
-        <ImageButton
-            android:id="@+id/btn_sync"
-            android:layout_width="36dp"
-            android:layout_height="36dp"
-            android:layout_marginStart="8dp"
-            android:background="@drawable/bg_icon_btn"
-            android:src="@drawable/ic_sync"
-            android:tint="#FFFFFFFF"
-            android:contentDescription="A/V Sync"
-            android:padding="9dp"
-            android:focusable="true"
-            android:nextFocusLeft="@id/btn_aspect_ratio"
             android:nextFocusRight="@id/btn_fullscreen"
             android:nextFocusDown="@id/exo_play_pause" />
 
@@ -160,7 +139,7 @@
             android:contentDescription="Fullscreen"
             android:padding="9dp"
             android:focusable="true"
-            android:nextFocusLeft="@id/btn_sync"
+            android:nextFocusLeft="@id/btn_aspect_ratio"
             android:nextFocusDown="@id/exo_ffwd" />
 
     </LinearLayout>
@@ -168,6 +147,7 @@
     <!-- ═══════════════════════════════════════
          CENTER CONTROLS
          rew 52dp | play 60dp | ffwd 52dp
+         gap: 28dp
     ═══════════════════════════════════════ -->
     <LinearLayout
         android:id="@+id/center_controls"
@@ -177,7 +157,7 @@
         android:orientation="horizontal"
         android:gravity="center_vertical">
 
-        <!-- Rewind 10s -->
+        <!-- Rewind 10s — 52dp, rgba(255,255,255,0.12), blur backdrop -->
         <ImageButton
             android:id="@+id/exo_rew"
             android:layout_width="52dp"
@@ -192,7 +172,7 @@
             android:nextFocusUp="@id/btn_back"
             android:nextFocusDown="@id/exo_progress" />
 
-        <!-- Play/Pause -->
+        <!-- Play/Pause — 60dp, rgba(255,255,255,0.18) + 1.5dp border -->
         <ImageButton
             android:id="@+id/exo_play_pause"
             android:layout_width="60dp"
@@ -229,6 +209,7 @@
 
     <!-- ═══════════════════════════════════════
          BRIGHTNESS PILL (left)
+         52dp wide, backdrop blur, border
     ═══════════════════════════════════════ -->
     <LinearLayout
         android:id="@+id/gesture_brightness_indicator"
@@ -344,6 +325,7 @@
 
     <!-- ═══════════════════════════════════════
          SEEK INDICATOR PILL (center)
+         border-radius 20dp, border 1dp
     ═══════════════════════════════════════ -->
     <LinearLayout
         android:id="@+id/seek_indicator"
@@ -382,6 +364,7 @@
 
     <!-- ═══════════════════════════════════════
          BOTTOM BAR
+         padding: 0 16dp 14dp
     ═══════════════════════════════════════ -->
     <LinearLayout
         android:id="@+id/bottom_bar"
@@ -393,7 +376,7 @@
         android:paddingEnd="16dp"
         android:paddingBottom="14dp">
 
-        <!-- Time row -->
+        <!-- Time row: current / duration, 12sp monospace -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -434,7 +417,7 @@
 
         </LinearLayout>
 
-        <!-- Progress bar -->
+        <!-- Progress bar: 3dp track, white scrubber -->
         <androidx.media3.ui.DefaultTimeBar
             android:id="@+id/exo_progress"
             android:layout_width="match_parent"

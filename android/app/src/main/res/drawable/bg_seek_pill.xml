@@ -1,8 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- res/drawable/bg_seek_pill.xml
-     Dark frosted pill for seek delta label and lock hint -->
+<!-- rgba(15,15,20,0.80) + border rgba(255,255,255,0.15), border-radius 20dp — matches .seek-pill -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
-    <solid android:color="#BB000000" />
+    <solid android:color="#CC0F0F14" />
+    <stroke
+        android:width="1dp"
+        android:color="#26FFFFFF" />
     <corners android:radius="20dp" />
 </shape>

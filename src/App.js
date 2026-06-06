@@ -86,6 +86,7 @@ function App() {
   const [loading, setLoading] = useState(true);
   const contentRef = useRef(null);
   const profileRef = useRef(null);
+  const menuButtonRef = useRef(null);
   const previousPathRef = useRef(null);
   const [user, setUser] = useState(null);
   const [showProfile, setShowProfile] = useState(false);
@@ -171,6 +172,41 @@ function App() {
   };
 
   const active = getActive();
+  const isPlayerPage = location.pathname.startsWith("/player");
+  const focusFirstSidebarItem = useCallback(() => {
+    requestAnimationFrame(() => {
+      document.querySelector(".sidebar.open [data-sidebar-item]")?.focus({ preventScroll: true });
+    });
+  }, []);
+
+  const handleMenuKeyDown = useCallback((e) => {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setOpen(true);
+      focusFirstSidebarItem();
+      return;
+    }
+
+    if (e.key === "ArrowRight") {
+      e.preventDefault();
+      document.querySelector(".search-btn")?.focus({ preventScroll: true });
+      return;
+    }
+
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      setOpen((nextOpen) => {
+        const shouldOpen = !nextOpen;
+        if (shouldOpen) focusFirstSidebarItem();
+        return shouldOpen;
+      });
+    }
+  }, [focusFirstSidebarItem]);
+
+  useEffect(() => {
+    if (!open || isPlayerPage) return;
+    focusFirstSidebarItem();
+  }, [focusFirstSidebarItem, isPlayerPage, open]);
 
   // ── Scroll to top on category switch ──
   useLayoutEffect(() => {
@@ -204,8 +240,6 @@ function App() {
     }
   };
 
-  const isPlayerPage = location.pathname.startsWith("/player");
-
   // ── Early returns — ORDER MATTERS ──
   if (loading)            return <Loader />;
   if (user === undefined) return <Loader />;
@@ -225,7 +259,21 @@ function App() {
       {!isPlayerPage && (
         <div className="topbar">
           <div className="topbar-left">
-            <button className="menu-btn" onClick={() => setOpen(!open)}>
+            <button
+              ref={menuButtonRef}
+              className="menu-btn"
+              data-menu-button
+              aria-label="Open navigation menu"
+              aria-expanded={open}
+              onClick={() => {
+                setOpen((nextOpen) => {
+                  const shouldOpen = !nextOpen;
+                  if (shouldOpen) focusFirstSidebarItem();
+                  return shouldOpen;
+                });
+              }}
+              onKeyDown={handleMenuKeyDown}
+            >
               <FaBars />
             </button>
           </div>
@@ -237,6 +285,7 @@ function App() {
           <div className="topbar-right">
             <button
               className="search-btn"
+              aria-label="Search"
               onClick={() => {
                 navigate("/");
                 setTimeout(() => {
@@ -246,6 +295,15 @@ function App() {
                     block: "center",
                   });
                 }, 300);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "ArrowLeft") {
+                  e.preventDefault();
+                  menuButtonRef.current?.focus({ preventScroll: true });
+                } else if (e.key === "ArrowDown") {
+                  e.preventDefault();
+                  document.querySelector("#search-input, [data-card-id]")?.focus({ preventScroll: false });
+                }
               }}
             >
               <FaSearch />
