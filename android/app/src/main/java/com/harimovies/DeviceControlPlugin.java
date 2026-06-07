@@ -124,10 +124,12 @@ public class DeviceControlPlugin extends Plugin {
         intent.putExtra("title", movieTitle);
 
         // Handle playlist for series safely
-        com.getcapacitor.JSArray playlist = call.getArray("playlist");
-        if (playlist != null) {
-            intent.putExtra("playlist", playlist.toString());
-            intent.putExtra("index", call.getInt("currentIndex", 0));
+        if (call.hasOption("playlist")) {
+            com.getcapacitor.JSArray playlist = call.getArray("playlist");
+            if (playlist != null) {
+                intent.putExtra("playlist", playlist.toString());
+                intent.putExtra("index", call.getInt("currentIndex", 0));
+            }
         }
 
         getActivity().startActivity(intent);

@@ -83,6 +83,7 @@ public class PlayerActivity extends AppCompatActivity {
     private TextView tvEpBadge;
     private LinearLayout episodeContainer;
     private View episodeBar;
+    private TextView tvTitle;
 
     // ── A/V Sync ──────────────────────────────────────────────────────────────
     private long audioOffsetUs = 0L; // current offset in microseconds
@@ -177,102 +178,122 @@ public class PlayerActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
+        Log.d("PLAYER", "onCreate started");
+        try {
+            overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
 
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        hideSystemUI();
-        setContentView(R.layout.activity_player);
+            getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            hideSystemUI();
+            setContentView(R.layout.activity_player);
 
-        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
-            @Override
-            public void handleOnBackPressed() {
-                if (resumeShowing) {
-                    performBackAction();
-                } else if (controlsVisible) {
-                    hideControls();
-                } else {
-                    performBackAction();
+            getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+                @Override
+                public void handleOnBackPressed() {
+                    if (resumeShowing) {
+                        performBackAction();
+                    } else if (controlsVisible) {
+                        hideControls();
+                    } else {
+                        performBackAction();
+                    }
+                }
+            });
+
+            audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+            maxVolume    = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+
+            playerView = findViewById(R.id.player_view);
+
+            videoUrl   = getIntent().getStringExtra(EXTRA_URL);   if (videoUrl == null) videoUrl = "";
+            videoTitle = getIntent().getStringExtra(EXTRA_TITLE);
+            forcedResumePos = getIntent().getLongExtra("resume_pos", 0);
+            if (videoTitle == null) videoTitle = "";
+
+            Log.d("PLAYER", "Initial URL: " + videoUrl);
+
+            // Parse playlist if available
+            String playlistJson = getIntent().getStringExtra("playlist");
+            if (playlistJson != null) {
+                try {
+                    JSONArray array = new JSONArray(playlistJson);
+                    playlist.clear();
+                    for (int i = 0; i < array.length(); i++) {
+                        playlist.add(array.getJSONObject(i));
+                    }
+                    currentIndex = getIntent().getIntExtra("index", 0);
+                    
+                    // If it's a series, sync current video info with the index
+                    if (currentIndex >= 0 && currentIndex < playlist.size()) {
+                        JSONObject ep = playlist.get(currentIndex);
+                        videoUrl = ep.optString("link", videoUrl);
+                        videoTitle = ep.optString("title", videoTitle);
+                    }
+                    Log.d("PLAYER", "Playlist size: " + playlist.size() + ", Index: " + currentIndex);
+                } catch (Exception e) {
+                    Log.e("PLAYER", "Playlist parse error", e);
                 }
             }
-        });
 
-        audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
-        maxVolume    = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+            player = new ExoPlayer.Builder(this).build();
+            player.setSeekParameters(SeekParameters.EXACT);
+            playerView.setPlayer(player);
+            playerView.setControllerShowTimeoutMs(-1);
+            playerView.setControllerAutoShow(false);
+            playerView.setUseController(true);
 
-        playerView = findViewById(R.id.player_view);
-
-        videoUrl   = getIntent().getStringExtra(EXTRA_URL);   if (videoUrl == null) videoUrl = "";
-        videoTitle = getIntent().getStringExtra(EXTRA_TITLE);
-        forcedResumePos = getIntent().getLongExtra("resume_pos", 0);
-        if (videoTitle == null) videoTitle = "";
-
-        // Parse playlist if available
-        String playlistJson = getIntent().getStringExtra("playlist");
-        if (playlistJson != null) {
-            try {
-                JSONArray array = new JSONArray(playlistJson);
-                for (int i = 0; i < array.length(); i++) {
-                    playlist.add(array.getJSONObject(i));
+            player.addListener(new Player.Listener() {
+                @Override public void onPlayerError(PlaybackException e) {
+                    Log.e("PLAYER", "Error: " + e.getMessage(), e);
+                    runOnUiThread(() -> Toast.makeText(PlayerActivity.this, "Playback Error: " + e.getErrorCodeName(), Toast.LENGTH_SHORT).show());
                 }
-                currentIndex = getIntent().getIntExtra("index", 0);
-            } catch (Exception e) {
-                Log.e("PLAYER", "Playlist parse error", e);
-            }
+
+                @Override
+                public void onPlaybackStateChanged(int state) {
+                    Log.d("PLAYER", "State: " + state);
+                    if (state == Player.STATE_ENDED) {
+                        clearSavedPosition();
+                        // Auto-play next episode
+                        if (!playlist.isEmpty() && currentIndex < playlist.size() - 1) {
+                            playEpisode(currentIndex + 1);
+                        }
+                    }
+                    if (state == Player.STATE_READY && !resumeChecked) {
+                        resumeChecked = true;
+                        if (forcedResumePos > 0) {
+                            player.seekTo(forcedResumePos);
+                            player.play();
+                            forcedResumePos = 0;
+                            return;
+                        }
+                        checkResumePosition();
+                    }
+                }
+            });
+
+            findControllerViews();
+            updateSeriesUI();
+            buildResumeOverlay();
+            wireButtons();
+            setupGestures();
+            setupLockButton();
+            setupPreviewRetriever();
+
+            hideControls();
+
+            loadCurrentEpisode();
+            Log.d("PLAYER", "onCreate completed");
+        } catch (Exception e) {
+            Log.e("PLAYER", "CRASH IN ONCREATE", e);
+            Toast.makeText(this, "Player Error: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            finish();
         }
-
-        player = new ExoPlayer.Builder(this).build();
-        player.setSeekParameters(SeekParameters.EXACT);
-        playerView.setPlayer(player);
-        playerView.setControllerShowTimeoutMs(-1);
-        playerView.setControllerAutoShow(false);
-        playerView.setUseController(true);
-
-        player.addListener(new Player.Listener() {
-            @Override public void onPlayerError(PlaybackException e) {
-                Log.e("PLAYER", "Error: " + e.getMessage(), e);
-            }
-
-            @Override
-            public void onPlaybackStateChanged(int state) {
-                Log.d("PLAYER", "State: " + state);
-                if (state == Player.STATE_ENDED) {
-                    clearSavedPosition();
-                    // Auto-play next episode
-                    if (!playlist.isEmpty() && currentIndex < playlist.size() - 1) {
-                        playEpisode(currentIndex + 1);
-                    }
-                }
-                if (state == Player.STATE_READY && !resumeChecked) {
-                    resumeChecked = true;
-                    if (forcedResumePos > 0) {
-                        player.seekTo(forcedResumePos);
-                        player.play();
-                        forcedResumePos = 0;
-                        return;
-                    }
-                    checkResumePosition();
-                }
-            }
-        });
-
-        findControllerViews();
-        updateSeriesUI();
-        buildResumeOverlay();
-        wireButtons();
-        setupGestures();
-        setupLockButton();
-        setupPreviewRetriever();
-
-        hideControls();
-
-        TextView tvTitle = playerView.findViewById(R.id.tv_title);
-        if (tvTitle != null) tvTitle.setText(videoTitle);
-
-        loadCurrentEpisode();
     }
 
     private void loadCurrentEpisode() {
-        if (player == null) return;
+        if (player == null || videoUrl == null || videoUrl.isEmpty()) {
+            Log.e("PLAYER", "Aborting load: videoUrl is empty");
+            return;
+        }
         
         resumeChecked = false;
         
@@ -303,7 +324,8 @@ public class PlayerActivity extends AppCompatActivity {
         dsFactory.setDefaultRequestProperties(headers);
 
         MediaSource mediaSource =
-                new DefaultMediaSourceFactory(dsFactory)
+                new DefaultMediaSourceFactory(this)
+                        .setDataSourceFactory(dsFactory)
                         .createMediaSource(MediaItem.fromUri(Uri.parse(videoUrl)));
 
         player.setMediaSource(mediaSource);
@@ -314,6 +336,8 @@ public class PlayerActivity extends AppCompatActivity {
     }
 
     private void updateSeriesUI() {
+        if (tvTitle != null) tvTitle.setText(videoTitle);
+
         if (playlist.isEmpty()) {
             if (btnPrevEp != null) btnPrevEp.setVisibility(View.GONE);
             if (btnNextEp != null) btnNextEp.setVisibility(View.GONE);
@@ -330,30 +354,31 @@ public class PlayerActivity extends AppCompatActivity {
 
         String displayTitle = videoTitle;
         try {
-            JSONObject current = playlist.get(currentIndex);
-            String epNum = current.optString("episode", "");
-            String season = current.optString("season", "1");
-            
-            if (!epNum.isEmpty()) {
-                String badge = "S" + season + " • E" + epNum;
-                if (tvEpBadge != null) {
-                    tvEpBadge.setText(badge);
-                    tvEpBadge.setVisibility(View.VISIBLE);
+            if (currentIndex >= 0 && currentIndex < playlist.size()) {
+                JSONObject current = playlist.get(currentIndex);
+                String epNum = current.optString("episode", "");
+                String season = current.optString("season", "1");
+                
+                if (!epNum.isEmpty()) {
+                    String badge = "S" + season + " • E" + epNum;
+                    if (tvEpBadge != null) {
+                        tvEpBadge.setText(badge);
+                        tvEpBadge.setVisibility(View.VISIBLE);
+                    }
+                    displayTitle = videoTitle + " • " + badge;
+                } else {
+                    String badge = "Episode " + (currentIndex + 1);
+                    if (tvEpBadge != null) {
+                        tvEpBadge.setText(badge);
+                        tvEpBadge.setVisibility(View.VISIBLE);
+                    }
+                    displayTitle = videoTitle + " • " + badge;
                 }
-                displayTitle = videoTitle + " • " + badge;
-            } else {
-                String badge = "Episode " + (currentIndex + 1);
-                if (tvEpBadge != null) {
-                    tvEpBadge.setText(badge);
-                    tvEpBadge.setVisibility(View.VISIBLE);
-                }
-                displayTitle = videoTitle + " • " + badge;
             }
         } catch (Exception ignored) {
             if (tvEpBadge != null) tvEpBadge.setVisibility(View.GONE);
         }
 
-        TextView tvTitle = playerView.findViewById(R.id.tv_title);
         if (tvTitle != null) tvTitle.setText(displayTitle);
     }
 
@@ -963,6 +988,7 @@ public class PlayerActivity extends AppCompatActivity {
         tvEpBadge           = playerView.findViewById(R.id.mp_ep_badge);
         episodeBar          = playerView.findViewById(R.id.episode_bar);
         episodeContainer    = playerView.findViewById(R.id.episode_container);
+        tvTitle             = playerView.findViewById(R.id.tv_title);
 
         progressBar         = playerView.findViewById(R.id.exo_progress);
         previewContainer    = playerView.findViewById(R.id.preview_container);
