@@ -10,7 +10,9 @@
     android:id="@+id/player_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#00000000">
+    android:background="#00000000"
+    android:clipChildren="false"
+    android:clipToPadding="false">
 
     <!-- TOP SCRIM: 28% height, strong black→transparent -->
     <View
@@ -175,7 +177,9 @@
         android:layout_height="wrap_content"
         android:layout_gravity="center"
         android:orientation="horizontal"
-        android:gravity="center_vertical">
+        android:gravity="center_vertical"
+        android:clipChildren="false"
+        android:clipToPadding="false">
 
         <!-- Rewind 10s -->
         <ImageButton
@@ -188,6 +192,8 @@
             android:contentDescription="Rewind 10 seconds"
             android:padding="12dp"
             android:focusable="true"
+            android:elevation="0dp"
+            android:outlineProvider="none"
             android:nextFocusRight="@id/exo_play_pause"
             android:nextFocusUp="@id/btn_back"
             android:nextFocusDown="@id/exo_progress" />
@@ -205,6 +211,8 @@
             android:contentDescription="Play/Pause"
             android:padding="15dp"
             android:focusable="true"
+            android:elevation="0dp"
+            android:outlineProvider="none"
             android:nextFocusLeft="@id/exo_rew"
             android:nextFocusRight="@id/exo_ffwd"
             android:nextFocusUp="@id/btn_mute"
@@ -221,6 +229,8 @@
             android:contentDescription="Forward 30 seconds"
             android:padding="12dp"
             android:focusable="true"
+            android:elevation="0dp"
+            android:outlineProvider="none"
             android:nextFocusLeft="@id/exo_play_pause"
             android:nextFocusUp="@id/btn_fullscreen"
             android:nextFocusDown="@id/exo_progress" />
@@ -383,6 +393,45 @@
     <!-- ═══════════════════════════════════════
          BOTTOM BAR
     ═══════════════════════════════════════ -->
+    <!-- PREVIEW THUMBNAIL CONTAINER -->
+    <LinearLayout
+        android:id="@+id/preview_container"
+        android:layout_width="120dp"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:visibility="gone"
+        android:layout_marginBottom="85dp">
+
+        <FrameLayout
+            android:layout_width="120dp"
+            android:layout_height="68dp"
+            android:background="@drawable/bg_preview_frame">
+
+            <ImageView
+                android:id="@+id/preview_image"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:scaleType="centerCrop"
+                android:layout_margin="1.5dp" />
+        </FrameLayout>
+
+        <TextView
+            android:id="@+id/preview_time"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:background="@drawable/bg_seek_pill"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:paddingTop="3dp"
+            android:paddingBottom="3dp"
+            android:text="00:00"
+            android:textColor="#FFFFFF"
+            android:textSize="10sp" />
+    </LinearLayout>
+
     <LinearLayout
         android:id="@+id/bottom_bar"
         android:layout_width="match_parent"

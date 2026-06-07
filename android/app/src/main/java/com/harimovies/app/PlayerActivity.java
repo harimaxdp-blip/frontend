@@ -6,9 +6,13 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
 import android.media.AudioManager;
+import android.graphics.Bitmap;
+import android.media.MediaMetadataRetriever;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.HandlerThread;
 import android.os.Looper;
 import android.provider.Settings;
 import android.util.Log;
@@ -18,6 +22,7 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
 import android.view.animation.AccelerateDecelerateInterpolator;
+import android.view.animation.OvershootInterpolator;
 import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.ImageButton;
@@ -36,7 +41,9 @@ import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.source.MediaSource;
 import androidx.media3.exoplayer.source.ProgressiveMediaSource;
 import androidx.media3.ui.AspectRatioFrameLayout;
+import androidx.media3.ui.DefaultTimeBar;
 import androidx.media3.ui.PlayerView;
+import androidx.media3.ui.TimeBar;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -81,8 +88,6 @@ public class PlayerActivity extends Activity {
     private int     focusRow      = 1;
     private int     focusCol      = 1;
     private boolean onProgressBar = false;
-
-    // resume dialog focus: 0 = Resume, 1 = Start Over
     private int     resumeFocusCol = 0;
 
     private final Handler  autoHideHandler    = new Handler(Looper.getMainLooper());
@@ -130,6 +135,18 @@ public class PlayerActivity extends Activity {
     private TextView tvResumeTime;
     private long forcedResumePos = 0;
 
+    // ── Preview ──────────────────────────────────────────────────────────────
+    private View         previewContainer;
+    private ImageView    previewImage;
+    private TextView     previewTimeText;
+    private MediaMetadataRetriever retriever;
+    private HandlerThread previewThread;
+    private Handler       previewHandler;
+    private final Map<String, String> requestHeaders = new HashMap<>();
+
+    private boolean isPreviewLoading = false;
+    private long    lastPreviewPos   = -1;
+
     // ══════════════════════════════════════════════════════════════════════════
     //  onCreate
     // ══════════════════════════════════════════════════════════════════════════
@@ -162,6 +179,7 @@ public class PlayerActivity extends Activity {
         wireButtons();
         setupGestures();
         setupLockButton();
+        setupPreviewRetriever();
 
         hideControls();
 
@@ -178,6 +196,7 @@ public class PlayerActivity extends Activity {
         Map<String, String> headers = new HashMap<>();
         headers.put("Referer", "https://dub.onestream.today/");
         headers.put("Cookie",  "cache_2685d8fa2727bff6=1781032689");
+        requestHeaders.putAll(headers);
         dsFactory.setDefaultRequestProperties(headers);
 
         MediaSource mediaSource =
@@ -216,9 +235,9 @@ public class PlayerActivity extends Activity {
     // ══════════════════════════════════════════════════════════════════════════
     //  Resume position storage
     // ══════════════════════════════════════════════════════════════════════════
-    private String posKey() {
-        return "pos_" + videoTitle;
-    }
+private String posKey() {
+    return "pos_" + videoUrl.hashCode();
+}
 
     private void saveCurrentPosition() {
         if (player == null || resumeShowing) return;
@@ -591,6 +610,101 @@ public class PlayerActivity extends Activity {
         }
     }
 
+    private void setupPreviewRetriever() {
+        previewThread = new HandlerThread("PreviewFrameThread");
+        previewThread.start();
+        previewHandler = new Handler(previewThread.getLooper());
+
+        previewHandler.post(() -> {
+            try {
+                retriever = new MediaMetadataRetriever();
+                retriever.setDataSource(videoUrl, requestHeaders);
+            } catch (Exception e) {
+                Log.e("PREVIEW", "Retriever error: " + e.getMessage());
+            }
+        });
+
+        if (progressBar instanceof DefaultTimeBar) {
+            ((DefaultTimeBar) progressBar).addListener(new TimeBar.OnScrubListener() {
+                @Override
+                public void onScrubStart(TimeBar timeBar, long position) {
+                    autoHideHandler.removeCallbacks(autoHideRunnable);
+                    if (previewContainer != null) previewContainer.setVisibility(View.VISIBLE);
+                    updatePreviewFrame(position);
+                }
+
+                @Override
+                public void onScrubMove(TimeBar timeBar, long position) {
+                    autoHideHandler.removeCallbacks(autoHideRunnable);
+                    updatePreviewFrame(position);
+                }
+
+                @Override
+                public void onScrubStop(TimeBar timeBar, long position, boolean canceled) {
+                    if (previewContainer != null) previewContainer.setVisibility(View.GONE);
+                    scheduleHide();
+                }
+            });
+        }
+    }
+
+    private void updatePreviewFrame(long positionMs) {
+        if (previewTimeText != null) previewTimeText.setText(fmt(positionMs / 1000));
+
+        if (progressBar != null && previewContainer != null) {
+            long duration = player != null ? player.getDuration() : 0;
+            if (duration > 0) {
+                float progress = (float) positionMs / duration;
+                int barWidth = progressBar.getWidth();
+                float rawX = progressBar.getLeft() + (barWidth * progress) - (previewContainer.getWidth() / 2f);
+                float margin = dp(12);
+                float finalX = Math.max(margin, Math.min(rawX, playerView.getWidth() - previewContainer.getWidth() - margin));
+                previewContainer.setX(finalX);
+            }
+        }
+
+        lastPreviewPos = positionMs;
+        if (!isPreviewLoading && retriever != null) {
+            fetchNextPreviewFrame();
+        }
+    }
+
+    private void fetchNextPreviewFrame() {
+        if (lastPreviewPos == -1 || retriever == null || previewHandler == null) return;
+
+        final long posUs = lastPreviewPos * 1000L;
+        isPreviewLoading = true;
+
+        previewHandler.post(() -> {
+            try {
+                Bitmap bmp;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                    // Fetching a scaled frame is MUCH faster and saves memory
+                    // 120dp wide -> ~240-360px. Requesting 240px width.
+                    bmp = retriever.getScaledFrameAtTime(posUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC, 240, 135);
+                } else {
+                    bmp = retriever.getFrameAtTime(posUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC);
+                }
+
+                if (bmp != null) {
+                    runOnUiThread(() -> {
+                        if (previewImage != null) previewImage.setImageBitmap(bmp);
+                    });
+                }
+            } catch (Exception e) {
+                Log.e("PREVIEW", "Frame fetch error: " + e.getMessage());
+            } finally {
+                isPreviewLoading = false;
+                // If the user moved the seekbar while we were busy, fetch the latest position now
+                runOnUiThread(() -> {
+                    if (Math.abs(lastPreviewPos * 1000L - posUs) > 500000L) { // > 0.5s difference
+                        fetchNextPreviewFrame();
+                    }
+                });
+            }
+        });
+    }
+
     // ══════════════════════════════════════════════════════════════════════════
     //  Format ms → m:ss or h:mm:ss
     // ══════════════════════════════════════════════════════════════════════════
@@ -627,6 +741,11 @@ public class PlayerActivity extends Activity {
         exoPlayPause        = playerView.findViewById(R.id.exo_play_pause);
         btnLock             = findViewById(R.id.btn_lock);
         tvLockHint          = findViewById(R.id.tv_lock_hint);
+
+        progressBar         = playerView.findViewById(R.id.exo_progress);
+        previewContainer    = playerView.findViewById(R.id.preview_container);
+        previewImage        = playerView.findViewById(R.id.preview_image);
+        previewTimeText     = playerView.findViewById(R.id.preview_time);
     }
 
     // ══════════════════════════════════════════════════════════════════════════
@@ -636,11 +755,22 @@ public class PlayerActivity extends Activity {
         clearHighlight(btnBack); clearHighlight(btnMute);
         clearHighlight(btnAspect); clearHighlight(btnSync); clearHighlight(btnFullscreen);
         clearHighlight(btnRew); clearHighlight(btnPP); clearHighlight(btnFfwd);
-        if (progressBar != null) progressBar.setScaleY(1f);
+        if (progressBar != null) {
+            progressBar.setScaleY(1f);
+            progressBar.setAlpha(1f); // Reset transparency
+        }
 
         if (onProgressBar) {
-            if (progressBar != null) progressBar.setScaleY(2.5f);
+            if (progressBar != null) {
+                progressBar.setScaleY(2.5f);
+                progressBar.requestFocus();
+            }
+            if (previewContainer != null) previewContainer.setVisibility(View.VISIBLE);
+            updatePreviewFrame(player != null ? player.getCurrentPosition() : 0);
             return;
+        } else {
+            if (previewContainer != null) previewContainer.setVisibility(View.GONE);
+            if (progressBar != null) progressBar.setAlpha(0.7f); // Dim progress bar when not focused
         }
         if (focusRow == 0) {
             switch (focusCol) {
@@ -661,12 +791,13 @@ public class PlayerActivity extends Activity {
 
     private void applyHighlight(View v) {
         if (v == null) return;
-        v.setAlpha(1.0f);
+        v.animate().scaleX(1.18f).scaleY(1.18f).alpha(1.0f).setDuration(200)
+                .setInterpolator(new OvershootInterpolator()).start();
     }
 
     private void clearHighlight(View v) {
         if (v == null) return;
-        v.setScaleX(1f); v.setScaleY(1f); v.setAlpha(0.85f);
+        v.animate().scaleX(1f).scaleY(1f).alpha(0.85f).setDuration(200).start();
     }
 
     private void activateFocused() {
@@ -687,7 +818,7 @@ public class PlayerActivity extends Activity {
                         if (player.isPlaying()) player.pause(); else player.play();
                     }
                     animatePlayPause(); break;
-                case 2: seekBy(30_000); showSeekIndicatorTimed(30_000); break;
+                case 2: seekBy(10_000); showSeekIndicatorTimed(10_000); break;
             }
         }
         scheduleHide();
@@ -708,7 +839,18 @@ public class PlayerActivity extends Activity {
             audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC,
                     AudioManager.ADJUST_LOWER, AudioManager.FLAG_SHOW_UI); return true;
         }
-        if (keyCode == KeyEvent.KEYCODE_BACK) { onBackPressed(); return true; }
+        if (keyCode == KeyEvent.KEYCODE_BACK) {
+            if (resumeShowing) {
+                doStartOver(); // or just finish
+                return true;
+            }
+            if (controlsVisible) {
+                hideControls();
+                return true;
+            }
+            onBackPressed();
+            return true;
+        }
 
         // ── Resume overlay is showing ─────────────────────────────────────────
         if (resumeShowing) {
@@ -738,10 +880,36 @@ public class PlayerActivity extends Activity {
 
         if (isLocked) return super.onKeyDown(keyCode, event);
 
+        // --- Hotstar logic: Controls Hidden ---
         if (!controlsVisible) {
-            showControls(); updateFocusHighlight(); return true;
+            switch (keyCode) {
+                case KeyEvent.KEYCODE_DPAD_CENTER:
+                case KeyEvent.KEYCODE_ENTER:
+                    if (player.isPlaying()) player.pause(); else player.play();
+                    animatePlayPause();
+                    focusRow = 1; focusCol = 1; onProgressBar = false;
+                    showControls();
+                    return true;
+                case KeyEvent.KEYCODE_DPAD_LEFT:
+                    seekBy(-10_000); showSeekIndicatorTimed(-10_000);
+                    onProgressBar = true; // Focus the progress bar immediately
+                    showControls();
+                    return true;
+                case KeyEvent.KEYCODE_DPAD_RIGHT:
+                    seekBy(10_000); showSeekIndicatorTimed(10_000);
+                    onProgressBar = true; // Focus the progress bar immediately
+                    showControls();
+                    return true;
+                case KeyEvent.KEYCODE_DPAD_UP:
+                case KeyEvent.KEYCODE_DPAD_DOWN:
+                    focusRow = 1; focusCol = 1; onProgressBar = false;
+                    showControls();
+                    return true;
+            }
+            return super.onKeyDown(keyCode, event);
         }
 
+        // --- Hotstar logic: Controls Visible ---
         scheduleHide();
 
         switch (keyCode) {
@@ -768,6 +936,7 @@ public class PlayerActivity extends Activity {
             case KeyEvent.KEYCODE_DPAD_LEFT:
                 if (onProgressBar) {
                     seekBy(-10_000); showSeekIndicatorTimed(-10_000);
+                    updatePreviewFrame(player.getCurrentPosition());
                 } else {
                     if (focusCol > 0) focusCol--;
                     updateFocusHighlight();
@@ -776,7 +945,8 @@ public class PlayerActivity extends Activity {
 
             case KeyEvent.KEYCODE_DPAD_RIGHT:
                 if (onProgressBar) {
-                    seekBy(30_000); showSeekIndicatorTimed(30_000);
+                    seekBy(10_000); showSeekIndicatorTimed(10_000);
+                    updatePreviewFrame(player.getCurrentPosition());
                 } else {
                     int max = (focusRow == 0) ? 4 : 2;
                     if (focusCol < max) focusCol++;
@@ -808,7 +978,7 @@ public class PlayerActivity extends Activity {
             btnLock.setVisibility(View.VISIBLE);
             btnLock.animate().alpha(1f).setDuration(220).start();
         }
-        focusRow = 1; focusCol = 1; onProgressBar = false;
+        // focusRow = 1; focusCol = 1; onProgressBar = false; // Resetting focus was causing issues with Hotstar-style logic
         updateFocusHighlight();
         scheduleHide();
     }
@@ -963,6 +1133,11 @@ public class PlayerActivity extends Activity {
                     }
                 }
                 if (isLocked) break;
+
+                if (isVertical || isHorizontal) {
+                    autoHideHandler.removeCallbacks(autoHideRunnable);
+                }
+
                 if (isVertical) {
                     int pct = Math.max(0, Math.min(100,
                             (int)(gestureStartValue - dy / playerView.getHeight() * 100)));
@@ -1003,7 +1178,12 @@ public class PlayerActivity extends Activity {
             seekBy(ms); showSeekIndicatorTimed(ms); lastTapTime = 0;
         } else {
             lastTapTime = now; lastTapSide = side;
-            if (controlsVisible) hideControls(); else showControls();
+            if (controlsVisible) {
+                hideControls();
+            } else {
+                focusRow = 1; focusCol = 1; onProgressBar = false; // Reset focus for touch
+                showControls();
+            }
         }
     }
 
@@ -1019,7 +1199,6 @@ public class PlayerActivity extends Activity {
         btnRew        = playerView.findViewById(R.id.exo_rew);
         btnFfwd       = playerView.findViewById(R.id.exo_ffwd);
         btnPP         = playerView.findViewById(R.id.exo_play_pause);
-        progressBar   = playerView.findViewById(R.id.exo_progress);
 
         if (btnBack != null) btnBack.setOnClickListener(v -> onBackPressed());
 
@@ -1100,12 +1279,14 @@ public class PlayerActivity extends Activity {
     private void animatePlayPause() {
         if (exoPlayPause == null) return;
         exoPlayPause.animate().cancel();
-        exoPlayPause.animate().scaleX(0.92f).scaleY(0.92f).setDuration(60)
-                .withEndAction(() ->
-                    exoPlayPause.animate().scaleX(1.03f).scaleY(1.03f).setDuration(100)
-                        .withEndAction(() ->
-                            exoPlayPause.animate().scaleX(1f).scaleY(1f).setDuration(120).start())
-                        .start())
+        // Snap scale down slightly then bounce back up to focused size
+        exoPlayPause.setScaleX(0.85f);
+        exoPlayPause.setScaleY(0.85f);
+        exoPlayPause.animate()
+                .scaleX(1.18f)
+                .scaleY(1.18f)
+                .setDuration(400)
+                .setInterpolator(new OvershootInterpolator(2.5f))
                 .start();
     }
 
@@ -1175,6 +1356,14 @@ public class PlayerActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        if (previewThread != null) {
+            previewThread.quitSafely();
+            previewThread = null;
+        }
+        if (retriever != null) {
+            try { retriever.release(); } catch (Exception ignored) {}
+            retriever = null;
+        }
         autoHideHandler.removeCallbacks(autoHideRunnable);
         autoHideHandler.removeCallbacks(hideLockUiRunnable);
         autoHideHandler.removeCallbacks(savePositionRunnable);
