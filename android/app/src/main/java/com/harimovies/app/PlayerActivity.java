@@ -310,8 +310,6 @@ public class PlayerActivity extends AppCompatActivity {
         player.prepare();
         player.play();
         
-        TextView tvTitle = playerView.findViewById(R.id.tv_title);
-        if (tvTitle != null) tvTitle.setText(videoTitle);
         updateSeriesUI();
     }
 
@@ -320,27 +318,75 @@ public class PlayerActivity extends AppCompatActivity {
             if (btnPrevEp != null) btnPrevEp.setVisibility(View.GONE);
             if (btnNextEp != null) btnNextEp.setVisibility(View.GONE);
             if (tvEpBadge != null) tvEpBadge.setVisibility(View.GONE);
+            if (episodeBar != null) episodeBar.setVisibility(View.GONE);
             return;
         }
 
         if (btnPrevEp != null) btnPrevEp.setVisibility(currentIndex > 0 ? View.VISIBLE : View.GONE);
         if (btnNextEp != null) btnNextEp.setVisibility(currentIndex < playlist.size() - 1 ? View.VISIBLE : View.GONE);
         
-        if (tvEpBadge != null) {
-            try {
-                JSONObject current = playlist.get(currentIndex);
-                String epNum = current.optString("episode", "");
-                String season = current.optString("season", "1");
-                if (!epNum.isEmpty()) {
-                    tvEpBadge.setText("S" + season + " • E" + epNum);
-                    tvEpBadge.setVisibility(View.VISIBLE);
-                } else {
-                    tvEpBadge.setText("Episode " + (currentIndex + 1));
+        if (episodeBar != null) episodeBar.setVisibility(View.VISIBLE);
+        buildEpisodeList();
+
+        String displayTitle = videoTitle;
+        try {
+            JSONObject current = playlist.get(currentIndex);
+            String epNum = current.optString("episode", "");
+            String season = current.optString("season", "1");
+            
+            if (!epNum.isEmpty()) {
+                String badge = "S" + season + " • E" + epNum;
+                if (tvEpBadge != null) {
+                    tvEpBadge.setText(badge);
                     tvEpBadge.setVisibility(View.VISIBLE);
                 }
-            } catch (Exception ignored) {
-                tvEpBadge.setVisibility(View.GONE);
+                displayTitle = videoTitle + " • " + badge;
+            } else {
+                String badge = "Episode " + (currentIndex + 1);
+                if (tvEpBadge != null) {
+                    tvEpBadge.setText(badge);
+                    tvEpBadge.setVisibility(View.VISIBLE);
+                }
+                displayTitle = videoTitle + " • " + badge;
             }
+        } catch (Exception ignored) {
+            if (tvEpBadge != null) tvEpBadge.setVisibility(View.GONE);
+        }
+
+        TextView tvTitle = playerView.findViewById(R.id.tv_title);
+        if (tvTitle != null) tvTitle.setText(displayTitle);
+    }
+
+    private void buildEpisodeList() {
+        if (episodeContainer == null) return;
+        episodeContainer.removeAllViews();
+
+        for (int i = 0; i < playlist.size(); i++) {
+            final int index = i;
+            Button btn = new Button(this);
+            
+            // Styled button
+            String label = String.valueOf(i + 1);
+            btn.setText(label);
+            btn.setTextColor(0xFFFFFFFF);
+            btn.setFocusable(true);
+            btn.setMinWidth(dp(44));
+            btn.setHeight(dp(44));
+            
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT);
+            lp.setMargins(0, 0, dp(8), 0);
+            btn.setLayoutParams(lp);
+
+            if (i == currentIndex) {
+                btn.setBackgroundColor(0xFFE50914); // Hotstar Red
+            } else {
+                btn.setBackgroundColor(0x33FFFFFF); // Transparent Gray
+            }
+
+            btn.setOnClickListener(v -> playEpisode(index));
+            episodeContainer.addView(btn);
         }
     }
 
@@ -362,6 +408,14 @@ public class PlayerActivity extends AppCompatActivity {
     //  Resume position storage
     // ══════════════════════════════════════════════════════════════════════════
     private String posKey() {
+        if (!playlist.isEmpty()) {
+            // Use episode specific key for series
+            try {
+                JSONObject current = playlist.get(currentIndex);
+                String epId = current.optString("id", String.valueOf(currentIndex));
+                return "pos_ser_" + videoTitle.hashCode() + "_" + epId;
+            } catch (Exception ignored) {}
+        }
         // Use title if available as it's more stable than dynamic URLs
         if (videoTitle != null && !videoTitle.isEmpty()) {
             return "pos_" + videoTitle.hashCode();
@@ -907,6 +961,8 @@ public class PlayerActivity extends AppCompatActivity {
         btnPrevEp           = playerView.findViewById(R.id.btn_prev_ep);
         btnNextEp           = playerView.findViewById(R.id.btn_next_ep);
         tvEpBadge           = playerView.findViewById(R.id.mp_ep_badge);
+        episodeBar          = playerView.findViewById(R.id.episode_bar);
+        episodeContainer    = playerView.findViewById(R.id.episode_container);
 
         progressBar         = playerView.findViewById(R.id.exo_progress);
         previewContainer    = playerView.findViewById(R.id.preview_container);
