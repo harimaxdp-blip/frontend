@@ -721,7 +721,11 @@ const searchScore = useCallback((title, query) => {
       filters: { language: languageFilter, genre: genreFilter, year: yearFilter, search },
     };
     ss.setJSON("ott_nav_state", navState);
-    setTimeout(() => { navigate("/player", { state: { movie, playlist, currentIndex } }); }, 550);
+    setTimeout(() => {
+  navigate("/player", {
+    state: { movie, playlist, currentIndex }
+  });
+}, 700);
   }, [navigate, currentView, languageFilter, genreFilter, yearFilter, search]);
 
   const requestMicrophonePermission = useCallback(async () => {
