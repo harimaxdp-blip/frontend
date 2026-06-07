@@ -98,6 +98,23 @@
             android:shadowRadius="6"
             android:focusable="false" />
 
+        <!-- Episode Badge -->
+        <TextView
+            android:id="@+id/mp_ep_badge"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="12dp"
+            android:background="@drawable/bg_seek_pill"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:paddingTop="2dp"
+            android:paddingBottom="2dp"
+            android:text="S1 • E1"
+            android:textColor="#FFFFFFFF"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+
         <!-- Mute -->
         <ImageButton
             android:id="@+id/btn_mute"
@@ -181,6 +198,20 @@
         android:clipChildren="false"
         android:clipToPadding="false">
 
+        <!-- Previous Episode -->
+        <ImageButton
+            android:id="@+id/btn_prev_ep"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginEnd="12dp"
+            android:background="@drawable/bg_ctrl_side"
+            android:src="@drawable/ic_step_backward"
+            android:tint="#FFFFFFFF"
+            android:contentDescription="Previous Episode"
+            android:padding="12dp"
+            android:visibility="gone"
+            android:focusable="true" />
+
         <!-- Rewind 10s -->
         <ImageButton
             android:id="@+id/exo_rew"
@@ -203,8 +234,8 @@
             android:id="@+id/exo_play_pause"
             android:layout_width="60dp"
             android:layout_height="60dp"
-            android:layout_marginStart="28dp"
-            android:layout_marginEnd="28dp"
+            android:layout_marginStart="20dp"
+            android:layout_marginEnd="20dp"
             android:background="@drawable/bg_ctrl_play"
             android:src="@drawable/ic_play"
             android:tint="#FFFFFFFF"
@@ -234,6 +265,20 @@
             android:nextFocusLeft="@id/exo_play_pause"
             android:nextFocusUp="@id/btn_fullscreen"
             android:nextFocusDown="@id/exo_progress" />
+
+        <!-- Next Episode -->
+        <ImageButton
+            android:id="@+id/btn_next_ep"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginStart="12dp"
+            android:background="@drawable/bg_ctrl_side"
+            android:src="@drawable/ic_step_forward"
+            android:tint="#FFFFFFFF"
+            android:contentDescription="Next Episode"
+            android:padding="12dp"
+            android:visibility="gone"
+            android:focusable="true" />
 
     </LinearLayout>
 

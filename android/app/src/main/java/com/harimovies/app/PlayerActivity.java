@@ -48,7 +48,12 @@ import androidx.media3.ui.DefaultTimeBar;
 import androidx.media3.ui.PlayerView;
 import androidx.media3.ui.TimeBar;
 
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @UnstableApi
@@ -70,6 +75,12 @@ public class PlayerActivity extends AppCompatActivity {
     private boolean isFullscreen = false;
     private int     resizeModeIndex = 0;
     private boolean resumeChecked = false;
+
+    // ── Playlist for series ──────────────────────────────────────────────────
+    private List<JSONObject> playlist = new ArrayList<>();
+    private int currentIndex = 0;
+    private ImageButton btnPrevEp, btnNextEp;
+    private TextView tvEpBadge;
 
     // ── A/V Sync ──────────────────────────────────────────────────────────────
     private long audioOffsetUs = 0L; // current offset in microseconds
@@ -193,6 +204,20 @@ public class PlayerActivity extends AppCompatActivity {
         forcedResumePos = getIntent().getLongExtra("resume_pos", 0);
         if (videoTitle == null) videoTitle = "";
 
+        // Parse playlist if available
+        String playlistJson = getIntent().getStringExtra("playlist");
+        if (playlistJson != null) {
+            try {
+                JSONArray array = new JSONArray(playlistJson);
+                for (int i = 0; i < array.length(); i++) {
+                    playlist.add(array.getJSONObject(i));
+                }
+                currentIndex = getIntent().getIntExtra("index", 0);
+            } catch (Exception e) {
+                Log.e("PLAYER", "Playlist parse error", e);
+            }
+        }
+
         player = new ExoPlayer.Builder(this).build();
         player.setSeekParameters(SeekParameters.EXACT);
         playerView.setPlayer(player);
@@ -201,6 +226,7 @@ public class PlayerActivity extends AppCompatActivity {
         playerView.setUseController(true);
 
         findControllerViews();
+        updateSeriesUI();
         buildResumeOverlay();
         wireButtons();
         setupGestures();
@@ -212,6 +238,45 @@ public class PlayerActivity extends AppCompatActivity {
         TextView tvTitle = playerView.findViewById(R.id.tv_title);
         if (tvTitle != null) tvTitle.setText(videoTitle);
 
+        loadCurrentEpisode();
+    }
+
+    private void loadCurrentEpisode() {
+        if (player == null) return;
+        
+        resumeChecked = false;
+        
+        // Remove old listeners if any
+        player.clearVideoSurface();
+        
+        player.addListener(new Player.Listener() {
+            @Override public void onPlayerError(PlaybackException e) {
+                Log.e("PLAYER", "Error: " + e.getMessage(), e);
+            }
+
+            @Override
+            public void onPlaybackStateChanged(int state) {
+                Log.d("PLAYER", "State: " + state);
+                if (state == Player.STATE_ENDED) {
+                    clearSavedPosition();
+                    // Auto-play next episode
+                    if (!playlist.isEmpty() && currentIndex < playlist.size() - 1) {
+                        playEpisode(currentIndex + 1);
+                    }
+                }
+                if (state == Player.STATE_READY && !resumeChecked) {
+                    resumeChecked = true;
+                    if (forcedResumePos > 0) {
+                        player.seekTo(forcedResumePos);
+                        player.play();
+                        forcedResumePos = 0;
+                        return;
+                    }
+                    checkResumePosition();
+                }
+            }
+        });
+        
         DefaultHttpDataSource.Factory dsFactory =
                 new DefaultHttpDataSource.Factory()
                         .setUserAgent(
@@ -229,33 +294,56 @@ public class PlayerActivity extends AppCompatActivity {
                 new ProgressiveMediaSource.Factory(dsFactory)
                         .createMediaSource(MediaItem.fromUri(Uri.parse(videoUrl)));
 
-        player.addListener(new Player.Listener() {
-            @Override public void onPlayerError(PlaybackException e) {
-                Log.e("PLAYER", "Error: " + e.getMessage(), e);
-            }
-
-            @Override
-            public void onPlaybackStateChanged(int state) {
-                Log.d("PLAYER", "State: " + state);
-                if (state == Player.STATE_ENDED) {
-                    clearSavedPosition();
-                }
-                if (state == Player.STATE_READY && !resumeChecked) {
-                    resumeChecked = true;
-                    if (forcedResumePos > 0) {
-                        player.seekTo(forcedResumePos);
-                        player.play();
-                        forcedResumePos = 0;
-                        return;
-                    }
-                    checkResumePosition();
-                }
-            }
-        });
-
         player.setMediaSource(mediaSource);
         player.prepare();
-        scheduleSavePosition();
+        player.play();
+        
+        TextView tvTitle = playerView.findViewById(R.id.tv_title);
+        if (tvTitle != null) tvTitle.setText(videoTitle);
+        updateSeriesUI();
+    }
+
+    private void updateSeriesUI() {
+        if (playlist.isEmpty()) {
+            if (btnPrevEp != null) btnPrevEp.setVisibility(View.GONE);
+            if (btnNextEp != null) btnNextEp.setVisibility(View.GONE);
+            if (tvEpBadge != null) tvEpBadge.setVisibility(View.GONE);
+            return;
+        }
+
+        if (btnPrevEp != null) btnPrevEp.setVisibility(currentIndex > 0 ? View.VISIBLE : View.GONE);
+        if (btnNextEp != null) btnNextEp.setVisibility(currentIndex < playlist.size() - 1 ? View.VISIBLE : View.GONE);
+        
+        if (tvEpBadge != null) {
+            try {
+                JSONObject current = playlist.get(currentIndex);
+                String epNum = current.optString("episode", "");
+                String season = current.optString("season", "1");
+                if (!epNum.isEmpty()) {
+                    tvEpBadge.setText("S" + season + " • E" + epNum);
+                    tvEpBadge.setVisibility(View.VISIBLE);
+                } else {
+                    tvEpBadge.setText("Episode " + (currentIndex + 1));
+                    tvEpBadge.setVisibility(View.VISIBLE);
+                }
+            } catch (Exception ignored) {
+                tvEpBadge.setVisibility(View.GONE);
+            }
+        }
+    }
+
+    private void playEpisode(int index) {
+        if (index < 0 || index >= playlist.size()) return;
+        saveCurrentPosition();
+        currentIndex = index;
+        try {
+            JSONObject ep = playlist.get(currentIndex);
+            videoUrl = ep.getString("link");
+            videoTitle = ep.optString("title", videoTitle);
+            loadCurrentEpisode();
+        } catch (Exception e) {
+            Toast.makeText(this, "Error loading episode", Toast.LENGTH_SHORT).show();
+        }
     }
 
     // ══════════════════════════════════════════════════════════════════════════
@@ -804,6 +892,10 @@ public class PlayerActivity extends AppCompatActivity {
         btnLock             = findViewById(R.id.btn_lock);
         tvLockHint          = findViewById(R.id.tv_lock_hint);
 
+        btnPrevEp           = playerView.findViewById(R.id.btn_prev_ep);
+        btnNextEp           = playerView.findViewById(R.id.btn_next_ep);
+        tvEpBadge           = playerView.findViewById(R.id.mp_ep_badge);
+
         progressBar         = playerView.findViewById(R.id.exo_progress);
         previewContainer    = playerView.findViewById(R.id.preview_container);
         previewImage        = playerView.findViewById(R.id.preview_image);
@@ -1320,6 +1412,16 @@ public class PlayerActivity extends AppCompatActivity {
         if (btnPP   != null) btnPP.setOnClickListener(v ->   {
             if (player != null) { if (player.isPlaying()) player.pause(); else player.play(); }
             animatePlayPause(); scheduleHide();
+        });
+
+        if (btnPrevEp != null) btnPrevEp.setOnClickListener(v -> {
+            playEpisode(currentIndex - 1);
+            scheduleHide();
+        });
+
+        if (btnNextEp != null) btnNextEp.setOnClickListener(v -> {
+            playEpisode(currentIndex + 1);
+            scheduleHide();
         });
     }
 
