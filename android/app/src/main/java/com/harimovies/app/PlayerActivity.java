@@ -81,6 +81,8 @@ public class PlayerActivity extends AppCompatActivity {
     private int currentIndex = 0;
     private ImageButton btnPrevEp, btnNextEp;
     private TextView tvEpBadge;
+    private LinearLayout episodeContainer;
+    private View episodeBar;
 
     // ── A/V Sync ──────────────────────────────────────────────────────────────
     private long audioOffsetUs = 0L; // current offset in microseconds
