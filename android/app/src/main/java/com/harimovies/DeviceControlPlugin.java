@@ -17,8 +17,10 @@ import com.getcapacitor.annotation.PermissionCallback;
 
 import com.getcapacitor.PermissionState;
 import com.harimovies.app.MainActivity;
+import androidx.media3.common.util.UnstableApi;
 import com.harimovies.app.PlayerActivity;
 
+@UnstableApi
 @CapacitorPlugin(name = "DeviceControl", permissions = {
     @Permission(strings = {Manifest.permission.RECORD_AUDIO}, alias = "microphone"),
     @Permission(strings = {Manifest.permission.MODIFY_AUDIO_SETTINGS}, alias = "audio")
@@ -96,19 +98,30 @@ public class DeviceControlPlugin extends Plugin {
     @PluginMethod
     public void openExoPlayer(PluginCall call) {
 
-        String url = call.getString("url");
+        String url   = call.getString("url");
+        String title = call.getString("title");
 
         if (url == null || url.isEmpty()) {
             call.reject("URL is missing");
             return;
         }
 
+        // Fallback to filename if title is missing to ensure "each card" has a unique key
+        if (title == null || title.isEmpty()) {
+            try {
+                Uri uri = Uri.parse(url);
+                title = uri.getLastPathSegment();
+            } catch (Exception ignored) {}
+        }
+        if (title == null) title = "";
+
         Intent intent = new Intent(
                 getActivity(),
                 PlayerActivity.class
         );
 
-        intent.putExtra("url", url);
+        intent.putExtra("url",   url);
+        intent.putExtra("title", title);
 
         getActivity().startActivity(intent);
 

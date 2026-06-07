@@ -1,6 +1,8 @@
 package com.harimovies.app;
 
-import android.app.Activity;
+import androidx.activity.OnBackPressedCallback;
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.media3.common.util.UnstableApi;
 import android.content.Intent;
 import android.graphics.Color;
 import android.os.Bundle;
@@ -18,7 +20,8 @@ import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
 import android.widget.ProgressBar;
 
-public class WebPlayerActivity extends Activity {
+@UnstableApi
+public class WebPlayerActivity extends AppCompatActivity {
     private WebView webView;
     private volatile boolean launchedExo = false;
     private String videoTitle = "";
@@ -64,6 +67,17 @@ spinner.getIndeterminateDrawable().setColorFilter(
         ));
 
         setContentView(root);
+
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                if (webView != null && webView.canGoBack()) {
+                    webView.goBack();
+                } else {
+                    finish();
+                }
+            }
+        });
 
         String url = getIntent().getStringExtra("url");
         videoTitle = getIntent().getStringExtra("title");
@@ -197,11 +211,6 @@ spinner.getIndeterminateDrawable().setColorFilter(
                url.contains("/playlist");
     }
 
-    @Override
-    public void onBackPressed() {
-        if (webView != null && webView.canGoBack()) webView.goBack();
-        else finish();
-    }
 
     @Override
     protected void onDestroy() {

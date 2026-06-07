@@ -2,20 +2,13 @@ import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react
 import { Routes, Route, useLocation, useNavigate } from "react-router-dom";
 import BannerManager from "./components/Bannermanager";
 import Sidebar from "./components/Sidebar";
-import { FaBars, FaSearch, FaUserCircle } from "react-icons/fa";
 import avatar11 from "./assets/avatars/11.png";
+import musicLogo from "./assets/music.png";
 import avatar12 from "./assets/avatars/12.png";
 import avatar13 from "./assets/avatars/13.png";
-//import avatar14 from "./assets/avatars/14.png";
-//import avatar15 from "./assets/avatars/15.png";
 import avatar16 from "./assets/avatars/16.png";
-//import avatar17 from "./assets/avatars/17.png";
 import avatar18 from "./assets/avatars/18.png";
 import avatar19 from "./assets/avatars/19.png";
-//import avatar20 from "./assets/avatars/20.png";
-//import avatar21 from "./assets/avatars/21.png";
-//import avatar22 from "./assets/avatars/22.png";
-//import avatar23 from "./assets/avatars/23.png";
 import { App as CapacitorApp } from "@capacitor/app";
 import Banner from "./pages/Banner";
 import Home from "./pages/Home";
@@ -31,13 +24,24 @@ import "./App.css";
 
 const CATEGORY_PATHS = new Set(["/", "/movies", "/series", "/anime"]);
 
-const avatars = [
-  avatar13, avatar16,
-  avatar18, avatar19, avatar11, avatar12,
-];
+const avatars = [avatar13, avatar16, avatar18, avatar19, avatar11, avatar12];
+
+// ── Detect pointer type: touch = no focus ring, mouse/TV remote = show ring ──
+// We set a data attribute on <html> so CSS can react globally.
+function setupPointerMode() {
+  const setMode = (mode) => document.documentElement.setAttribute("data-input", mode);
+  window.addEventListener("touchstart", () => setMode("touch"), { passive: true, once: false });
+  window.addEventListener("mousemove", () => setMode("mouse"), { passive: true, once: false });
+  window.addEventListener("keydown", (e) => {
+    if (["ArrowUp","ArrowDown","ArrowLeft","ArrowRight","Enter"," "].includes(e.key))
+      setMode("key");
+  }, { passive: true });
+  setMode("mouse");
+}
+setupPointerMode();
 
 // ─────────────────────────────────────────────────────────
-// AvatarImg — handles skeleton for BOTH local & remote imgs.
+// AvatarImg — shimmer skeleton for local & remote images
 // ─────────────────────────────────────────────────────────
 function AvatarImg({ src, alt, imgClassName, wrapClassName, minDelay = 500 }) {
   const [show, setShow] = useState(false);
@@ -48,24 +52,16 @@ function AvatarImg({ src, alt, imgClassName, wrapClassName, minDelay = 500 }) {
     setShow(false);
     loadedRef.current = false;
     clearTimeout(timerRef.current);
-
     timerRef.current = setTimeout(() => {
-      if (loadedRef.current) {
-        setShow(true);
-      } else {
-        loadedRef.current = "timer-done";
-      }
+      if (loadedRef.current) setShow(true);
+      else loadedRef.current = "timer-done";
     }, minDelay);
-
     return () => clearTimeout(timerRef.current);
   }, [src, minDelay]);
 
   const handleLoad = useCallback(() => {
-    if (loadedRef.current === "timer-done") {
-      setShow(true);
-    } else {
-      loadedRef.current = true;
-    }
+    if (loadedRef.current === "timer-done") setShow(true);
+    else loadedRef.current = true;
   }, []);
 
   return (
@@ -81,6 +77,32 @@ function AvatarImg({ src, alt, imgClassName, wrapClassName, minDelay = 500 }) {
   );
 }
 
+// ─────────────────────────────────────────────────────────
+// SearchIcon — custom SVG magnifier (cooler than FaSearch)
+// ─────────────────────────────────────────────────────────
+function SearchIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="search-icon-svg" aria-hidden="true">
+      <circle cx="10.5" cy="10.5" r="6.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+      <path d="M15.5 15.5L20 20" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/>
+    </svg>
+  );
+}
+
+// ─────────────────────────────────────────────────────────
+// HamburgerIcon — clean 3-line icon
+// ─────────────────────────────────────────────────────────
+function HamburgerIcon({ open }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="menu-icon-svg" aria-hidden="true">
+      <path d={open ? "M5 5L19 19M5 19L19 5" : "M3 6h18M3 12h18M3 18h18"}
+        stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+        style={{ transition: "d 0.3s ease" }}
+      />
+    </svg>
+  );
+}
+
 function App() {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -92,21 +114,39 @@ function App() {
   const [showProfile, setShowProfile] = useState(false);
   const [showAvatarPicker, setShowAvatarPicker] = useState(false);
   const [avatarKey, setAvatarKey] = useState(0);
-  const [isOnline, setIsOnline] = useState(navigator.onLine); // ✅ network state
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  // showMusicLogo: true = music logo, false = main logo
+  const [showMusicLogo, setShowMusicLogo] = useState(false);
+  // logoFlipping: true during the flip transition
+  const [logoFlipping, setLogoFlipping] = useState(false);
 
   const location = useLocation();
   const navigate = useNavigate();
 
   // ── Network listener ──
   useEffect(() => {
-    const goOnline  = () => setIsOnline(true);
+    const goOnline = () => setIsOnline(true);
     const goOffline = () => setIsOnline(false);
-    window.addEventListener("online",  goOnline);
+    window.addEventListener("online", goOnline);
     window.addEventListener("offline", goOffline);
     return () => {
-      window.removeEventListener("online",  goOnline);
+      window.removeEventListener("online", goOnline);
       window.removeEventListener("offline", goOffline);
     };
+  }, []);
+
+  // ── Logo flip every 2s ──
+  // Phase 1: flip out (0–300ms) → swap src → flip in (300–600ms)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setLogoFlipping(true);
+      setTimeout(() => {
+        setShowMusicLogo((prev) => !prev);
+        // flip-in class applied after src swap
+        setTimeout(() => setLogoFlipping(false), 350);
+      }, 300);
+    }, 4000);
+    return () => clearInterval(interval);
   }, []);
 
   // ── Close profile popup on outside click ──
@@ -151,7 +191,6 @@ function App() {
   useEffect(() => {
     const setupDeepLink = async () => {
       await CapacitorApp.addListener("appUrlOpen", (event) => {
-        console.log("Deep Link Opened:", event.url);
         if (event.url) navigate("/");
       });
     };
@@ -173,6 +212,7 @@ function App() {
 
   const active = getActive();
   const isPlayerPage = location.pathname.startsWith("/player");
+
   const focusFirstSidebarItem = useCallback(() => {
     requestAnimationFrame(() => {
       document.querySelector(".sidebar.open [data-sidebar-item]")?.focus({ preventScroll: true });
@@ -186,13 +226,11 @@ function App() {
       focusFirstSidebarItem();
       return;
     }
-
     if (e.key === "ArrowRight") {
       e.preventDefault();
       document.querySelector(".search-btn")?.focus({ preventScroll: true });
       return;
     }
-
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
       setOpen((nextOpen) => {
@@ -211,14 +249,13 @@ function App() {
   // ── Scroll to top on category switch ──
   useLayoutEffect(() => {
     const previousPath = previousPathRef.current;
-    const currentPath  = location.pathname;
+    const currentPath = location.pathname;
     const isCategorySwitch =
       CATEGORY_PATHS.has(currentPath) &&
       CATEGORY_PATHS.has(previousPath) &&
       previousPath !== currentPath;
     const isInitialCategoryLoad =
       previousPath === null && CATEGORY_PATHS.has(currentPath);
-
     if ((isInitialCategoryLoad || isCategorySwitch) && contentRef.current) {
       contentRef.current.scrollTo({ top: 0, left: 0, behavior: "auto" });
       window.scrollTo(0, 0);
@@ -240,10 +277,9 @@ function App() {
     }
   };
 
-  // ── Early returns — ORDER MATTERS ──
   if (loading)            return <Loader />;
   if (user === undefined) return <Loader />;
-  if (!isOnline)          return <Offline />; // ✅ correct position — before main render
+  if (!isOnline)          return <Offline />;
   if (!user)              return <Login />;
 
   const handleLogout = () => {
@@ -252,6 +288,13 @@ function App() {
   };
 
   const avatarSrc = user?.avatar || user?.photoURL;
+
+  // logo class: flip-out → src swap → flip-in
+  const logoClass = [
+    "logo-img",
+    logoFlipping ? "logo-flip-out" : "logo-flip-in",
+    showMusicLogo ? "music-logo" : "",
+  ].filter(Boolean).join(" ");
 
   return (
     <div className="app">
@@ -274,12 +317,16 @@ function App() {
               }}
               onKeyDown={handleMenuKeyDown}
             >
-              <FaBars />
+              <HamburgerIcon open={open} />
             </button>
           </div>
 
           <div className="topbar-center">
-            <img src={logo} className="logo-img" alt="logo" />
+            <img
+              src={showMusicLogo ? musicLogo : logo}
+              className={logoClass}
+              alt="logo"
+            />
           </div>
 
           <div className="topbar-right">
@@ -306,7 +353,7 @@ function App() {
                 }
               }}
             >
-              <FaSearch />
+              <SearchIcon />
             </button>
 
             <div
@@ -332,7 +379,10 @@ function App() {
                     minDelay={500}
                   />
                 ) : (
-                  <FaUserCircle />
+                  <svg viewBox="0 0 24 24" fill="none" className="profile-icon-svg" aria-hidden="true">
+                    <circle cx="12" cy="8" r="4" stroke="currentColor" strokeWidth="2"/>
+                    <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                  </svg>
                 )}
               </button>
 

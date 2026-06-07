@@ -8,6 +8,8 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayDeque;
 
+import androidx.media3.common.util.UnstableApi;
+
 /**
  * An AudioProcessor that delays audio output by a configurable number of microseconds.
  *
@@ -20,6 +22,7 @@ import java.util.ArrayDeque;
  * Usage: pass an instance to ExoPlayer.Builder via DefaultRenderersFactory, then call
  * setDelayUs() to update at runtime — the change takes effect on the next audio flush.
  */
+@UnstableApi
 public final class DelayAudioProcessor implements AudioProcessor {
 
     private static final int SILENCE_CHUNK_US = 10_000; // 10 ms chunks of silence

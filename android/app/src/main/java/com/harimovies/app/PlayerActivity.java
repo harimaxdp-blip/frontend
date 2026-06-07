@@ -1,6 +1,8 @@
 package com.harimovies.app;
 
-import android.app.Activity;
+import androidx.activity.OnBackPressedCallback;
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.media3.common.util.UnstableApi;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -38,6 +40,7 @@ import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
 import androidx.media3.datasource.DefaultHttpDataSource;
 import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.exoplayer.SeekParameters;
 import androidx.media3.exoplayer.source.MediaSource;
 import androidx.media3.exoplayer.source.ProgressiveMediaSource;
 import androidx.media3.ui.AspectRatioFrameLayout;
@@ -48,7 +51,8 @@ import androidx.media3.ui.TimeBar;
 import java.util.HashMap;
 import java.util.Map;
 
-public class PlayerActivity extends Activity {
+@UnstableApi
+public class PlayerActivity extends AppCompatActivity {
 
     public static final String EXTRA_URL   = "url";
     public static final String EXTRA_TITLE = "title";
@@ -109,6 +113,12 @@ public class PlayerActivity extends Activity {
     private int  lastTapSide = 0;
     private static final long DOUBLE_TAP_MS = 300L;
 
+    // ── Touch Hold ──────────────────────────────────────────────────────────
+    private int touchHoldSide = 0;
+    private int touchHoldCount = 0;
+    private Runnable touchHoldRunnable;
+    private Runnable startTouchHoldRunnable;
+
     // ── Audio ─────────────────────────────────────────────────────────────────
     private AudioManager audioManager;
     private int          maxVolume;
@@ -134,6 +144,7 @@ public class PlayerActivity extends Activity {
     private Button btnResume, btnStartOver;
     private TextView tvResumeTime;
     private long forcedResumePos = 0;
+    private long currentSavedPos = 0;
 
     // ── Preview ──────────────────────────────────────────────────────────────
     private View         previewContainer;
@@ -159,6 +170,19 @@ public class PlayerActivity extends Activity {
         hideSystemUI();
         setContentView(R.layout.activity_player);
 
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                if (resumeShowing) {
+                    performBackAction();
+                } else if (controlsVisible) {
+                    hideControls();
+                } else {
+                    performBackAction();
+                }
+            }
+        });
+
         audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
         maxVolume    = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
 
@@ -170,6 +194,7 @@ public class PlayerActivity extends Activity {
         if (videoTitle == null) videoTitle = "";
 
         player = new ExoPlayer.Builder(this).build();
+        player.setSeekParameters(SeekParameters.EXACT);
         playerView.setPlayer(player);
         playerView.setControllerShowTimeoutMs(-1);
         playerView.setControllerAutoShow(false);
@@ -236,9 +261,13 @@ public class PlayerActivity extends Activity {
     // ══════════════════════════════════════════════════════════════════════════
     //  Resume position storage
     // ══════════════════════════════════════════════════════════════════════════
-private String posKey() {
-    return "pos_" + videoUrl.hashCode();
-}
+    private String posKey() {
+        // Use title if available as it's more stable than dynamic URLs
+        if (videoTitle != null && !videoTitle.isEmpty()) {
+            return "pos_" + videoTitle.hashCode();
+        }
+        return "pos_" + videoUrl.hashCode();
+    }
 
     private void saveCurrentPosition() {
         if (player == null || resumeShowing) return;
@@ -376,15 +405,16 @@ private String posKey() {
     }
 
     private void showResumeOverlay(long savedMs) {
+        this.currentSavedPos = savedMs;
         resumeShowing  = true;
         resumeFocusCol = 0;
+        resumeOverlay.setVisibility(View.VISIBLE);
         btnResume.setFocusable(true);
         btnResume.setFocusableInTouchMode(true);
         btnStartOver.setFocusable(true);
         btnStartOver.setFocusableInTouchMode(true);
         btnResume.requestFocus();
         if (tvResumeTime != null) tvResumeTime.setText("Paused at " + fmt(savedMs / 1000));
-        resumeOverlay.setVisibility(View.VISIBLE);
         updateResumeHighlight();
     }
 
@@ -406,17 +436,22 @@ private String posKey() {
     }
 
     private void doResume() {
-        long saved = forcedResumePos > 0 ? forcedResumePos : getSavedPosition();
         hideResumeOverlay();
-        if (player != null) { player.seekTo(saved); player.play(); }
-        forcedResumePos = 0;
+        if (player != null) {
+            player.seekTo(currentSavedPos);
+            player.play();
+        }
+        showControls();
     }
 
     private void doStartOver() {
-        forcedResumePos = 0;
         clearSavedPosition();
         hideResumeOverlay();
-        if (player != null) { player.seekTo(0); player.play(); }
+        if (player != null) {
+            player.seekTo(0);
+            player.play();
+        }
+        showControls();
     }
 
     // ══════════════════════════════════════════════════════════════════════════
@@ -612,6 +647,32 @@ private String posKey() {
     }
 
     private void setupPreviewRetriever() {
+        touchHoldRunnable = new Runnable() {
+            @Override
+            public void run() {
+                if (touchHoldSide != 0) {
+                    touchHoldCount++;
+                    long delta = 200L; 
+                    if (touchHoldCount > 20) delta = 500L;
+                    if (touchHoldCount > 50) delta = 2000L;
+                    fastSeek(touchHoldSide * delta);
+                    autoHideHandler.postDelayed(this, 100);
+                }
+            }
+        };
+        startTouchHoldRunnable = () -> {
+            if (!dirLocked && !isLocked && !resumeShowing) {
+                if (downInLeft) touchHoldSide = -1;
+                else if (downInRight) touchHoldSide = 1;
+                if (touchHoldSide != 0) {
+                    touchHoldCount = 0;
+                    showControls();
+                    if (previewContainer != null) previewContainer.setVisibility(View.VISIBLE);
+                    autoHideHandler.post(touchHoldRunnable);
+                }
+            }
+        };
+
         previewThread = new HandlerThread("PreviewFrameThread");
         previewThread.start();
         previewHandler = new Handler(previewThread.getLooper());
@@ -681,10 +742,10 @@ private String posKey() {
                 Bitmap bmp;
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
                     // Fetching a scaled frame is MUCH faster and saves memory
-                    // 120dp wide -> ~240-360px. Requesting 240px width.
-                    bmp = retriever.getScaledFrameAtTime(posUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC, 240, 135);
+                    // OPTION_CLOSEST gives real frame-by-frame accuracy
+                    bmp = retriever.getScaledFrameAtTime(posUs, MediaMetadataRetriever.OPTION_CLOSEST, 240, 135);
                 } else {
-                    bmp = retriever.getFrameAtTime(posUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC);
+                    bmp = retriever.getFrameAtTime(posUs, MediaMetadataRetriever.OPTION_CLOSEST);
                 }
 
                 if (bmp != null) {
@@ -805,7 +866,7 @@ private String posKey() {
         if (onProgressBar) return;
         if (focusRow == 0) {
             switch (focusCol) {
-                case 0: onBackPressed(); break;
+                case 0: performBackAction(); break;
                 case 1: if (btnMute      != null) btnMute.performClick();      break;
                 case 2: if (btnAspect    != null) btnAspect.performClick();    break;
                 case 3: if (btnSync      != null) btnSync.performClick();      break;
@@ -813,13 +874,13 @@ private String posKey() {
             }
         } else {
             switch (focusCol) {
-                case 0: seekBy(-10_000); showSeekIndicatorTimed(-10_000); break;
+                case 0: fastSeek(-10_000); break;
                 case 1:
                     if (player != null) {
                         if (player.isPlaying()) player.pause(); else player.play();
                     }
                     animatePlayPause(); break;
-                case 2: seekBy(10_000); showSeekIndicatorTimed(10_000); break;
+                case 2: fastSeek(10_000); break;
             }
         }
         scheduleHide();
@@ -839,18 +900,6 @@ private String posKey() {
         if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
             audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC,
                     AudioManager.ADJUST_LOWER, AudioManager.FLAG_SHOW_UI); return true;
-        }
-        if (keyCode == KeyEvent.KEYCODE_BACK) {
-            if (resumeShowing) {
-                doStartOver(); // or just finish
-                return true;
-            }
-            if (controlsVisible) {
-                hideControls();
-                return true;
-            }
-            onBackPressed();
-            return true;
         }
 
         // ── Resume overlay is showing ─────────────────────────────────────────
@@ -873,10 +922,10 @@ private String posKey() {
             animatePlayPause(); return true;
         }
         if (keyCode == KeyEvent.KEYCODE_MEDIA_REWIND) {
-            seekBy(-10_000); showSeekIndicatorTimed(-10_000); return true;
+            fastSeek(-10_000); return true;
         }
         if (keyCode == KeyEvent.KEYCODE_MEDIA_FAST_FORWARD) {
-            seekBy(30_000); showSeekIndicatorTimed(30_000); return true;
+            fastSeek(30_000); return true;
         }
 
         if (isLocked) return super.onKeyDown(keyCode, event);
@@ -892,14 +941,14 @@ private String posKey() {
                     showControls();
                     return true;
                 case KeyEvent.KEYCODE_DPAD_LEFT:
-                    seekBy(-10_000); showSeekIndicatorTimed(-10_000);
-                    onProgressBar = true; // Focus the progress bar immediately
+                    onProgressBar = true;
                     showControls();
+                    fastSeek(-10_000);
                     return true;
                 case KeyEvent.KEYCODE_DPAD_RIGHT:
-                    seekBy(10_000); showSeekIndicatorTimed(10_000);
-                    onProgressBar = true; // Focus the progress bar immediately
+                    onProgressBar = true;
                     showControls();
+                    fastSeek(10_000);
                     return true;
                 case KeyEvent.KEYCODE_DPAD_UP:
                 case KeyEvent.KEYCODE_DPAD_DOWN:
@@ -936,8 +985,11 @@ private String posKey() {
 
             case KeyEvent.KEYCODE_DPAD_LEFT:
                 if (onProgressBar) {
-                    seekBy(-10_000); showSeekIndicatorTimed(-10_000);
-                    updatePreviewFrame(player.getCurrentPosition());
+                    int repeat = event.getRepeatCount();
+                    long step = 500; // 0.5s for frame-by-frame feel on D-pad hold
+                    if (repeat > 10) step = 1000;
+                    if (repeat > 30) step = 5000;
+                    fastSeek(-step);
                 } else {
                     if (focusCol > 0) focusCol--;
                     updateFocusHighlight();
@@ -946,8 +998,11 @@ private String posKey() {
 
             case KeyEvent.KEYCODE_DPAD_RIGHT:
                 if (onProgressBar) {
-                    seekBy(10_000); showSeekIndicatorTimed(10_000);
-                    updatePreviewFrame(player.getCurrentPosition());
+                    int repeat = event.getRepeatCount();
+                    long step = 500;
+                    if (repeat > 10) step = 1000;
+                    if (repeat > 30) step = 5000;
+                    fastSeek(step);
                 } else {
                     int max = (focusRow == 0) ? 4 : 2;
                     if (focusCol < max) focusCol++;
@@ -1118,12 +1173,18 @@ private String posKey() {
                 dirLocked = false; isVertical = false; isHorizontal = false;
                 if (downInLeft)  gestureStartValue = getBrightnessPct();
                 if (downInRight) gestureStartValue = getVolumePct();
+
+                autoHideHandler.removeCallbacks(startTouchHoldRunnable);
+                autoHideHandler.removeCallbacks(touchHoldRunnable);
+                touchHoldSide = 0;
+                autoHideHandler.postDelayed(startTouchHoldRunnable, 500);
                 break;
             case MotionEvent.ACTION_MOVE:
                 float dx = rawX - downRawX, dy = rawY - downRawY;
                 if (!dirLocked) {
                     if (Math.abs(dx) > GESTURE_THRESHOLD || Math.abs(dy) > GESTURE_THRESHOLD) {
                         dirLocked = true;
+                        autoHideHandler.removeCallbacks(startTouchHoldRunnable);
                         isVertical = Math.abs(dy) >= Math.abs(dx);
                         isHorizontal = !isVertical;
                         if (!isLocked) {
@@ -1152,10 +1213,27 @@ private String posKey() {
                         if (tvVolumeValue  != null) tvVolumeValue.setText(pct + "%");
                     }
                 }
-                if (isHorizontal) updateSeekIndicator((long)(dx / SEEK_PX_PER_SEC) * 1000L);
+                if (isHorizontal) {
+                    long delta = (long)(dx / SEEK_PX_PER_SEC) * 1000L;
+                    updateSeekIndicator(delta);
+                    if (player != null && previewContainer != null) {
+                        previewContainer.setVisibility(View.VISIBLE);
+                        updatePreviewFrame(player.getCurrentPosition() + delta);
+                    }
+                }
                 break;
             case MotionEvent.ACTION_UP:
             case MotionEvent.ACTION_CANCEL:
+                autoHideHandler.removeCallbacks(startTouchHoldRunnable);
+                autoHideHandler.removeCallbacks(touchHoldRunnable);
+                if (touchHoldSide != 0) {
+                    touchHoldSide = 0;
+                    if (previewContainer != null) previewContainer.setVisibility(View.GONE);
+                    scheduleHide();
+                    // Don't process as a tap if we were holding
+                    dirLocked = false; isVertical = false; isHorizontal = false;
+                    break;
+                }
                 if (isLocked) {
                     if (!dirLocked) { if (lockUiVisible) hideLockUI(); else showLockUI(); }
                     dirLocked = false; isVertical = false; isHorizontal = false; break;
@@ -1164,7 +1242,7 @@ private String posKey() {
                     hideGestureIndicator(downInLeft); scheduleHide();
                 } else if (isHorizontal) {
                     long ms = (long)((rawX - downRawX) / SEEK_PX_PER_SEC) * 1000L;
-                    seekBy(ms); hideSeekIndicator(); scheduleHide();
+                    fastSeek(ms); hideSeekIndicator(); scheduleHide();
                 } else { handleTap(downRawX); }
                 dirLocked = false; isVertical = false; isHorizontal = false;
                 break;
@@ -1176,7 +1254,7 @@ private String posKey() {
         int side = (x < playerView.getWidth() / 2f) ? -1 : 1;
         if (now - lastTapTime < DOUBLE_TAP_MS && side == lastTapSide) {
             long ms = side == -1 ? -10_000L : 10_000L;
-            seekBy(ms); showSeekIndicatorTimed(ms); lastTapTime = 0;
+            fastSeek(ms); lastTapTime = 0;
         } else {
             lastTapTime = now; lastTapSide = side;
             if (controlsVisible) {
@@ -1201,7 +1279,7 @@ private String posKey() {
         btnFfwd       = playerView.findViewById(R.id.exo_ffwd);
         btnPP         = playerView.findViewById(R.id.exo_play_pause);
 
-        if (btnBack != null) btnBack.setOnClickListener(v -> onBackPressed());
+        if (btnBack != null) btnBack.setOnClickListener(v -> performBackAction());
 
         if (btnMute != null) btnMute.setOnClickListener(v -> {
             isMuted = !isMuted;
@@ -1237,8 +1315,8 @@ private String posKey() {
             scheduleHide();
         });
 
-        if (btnRew  != null) btnRew.setOnClickListener(v ->  { seekBy(-10_000); showSeekIndicatorTimed(-10_000); scheduleHide(); });
-        if (btnFfwd != null) btnFfwd.setOnClickListener(v -> { seekBy(30_000);  showSeekIndicatorTimed(30_000);  scheduleHide(); });
+        if (btnRew  != null) btnRew.setOnClickListener(v ->  { fastSeek(-10_000); scheduleHide(); });
+        if (btnFfwd != null) btnFfwd.setOnClickListener(v -> { fastSeek(30_000);  scheduleHide(); });
         if (btnPP   != null) btnPP.setOnClickListener(v ->   {
             if (player != null) { if (player.isPlaying()) player.pause(); else player.play(); }
             animatePlayPause(); scheduleHide();
@@ -1248,9 +1326,12 @@ private String posKey() {
     // ══════════════════════════════════════════════════════════════════════════
     //  Seek / indicators
     // ══════════════════════════════════════════════════════════════════════════
-    private void seekBy(long ms) {
+    private void fastSeek(long delta) {
         if (player == null) return;
-        player.seekTo(Math.max(0, player.getCurrentPosition() + ms));
+        long target = Math.max(0, Math.min(player.getDuration(), player.getCurrentPosition() + delta));
+        player.seekTo(target);
+        updatePreviewFrame(target);
+        showSeekIndicatorTimed(delta);
         animatePlayPause();
     }
 
@@ -1333,12 +1414,13 @@ private String posKey() {
     // ══════════════════════════════════════════════════════════════════════════
     //  Lifecycle
     // ══════════════════════════════════════════════════════════════════════════
-    @Override public void onBackPressed() {
+    private void performBackAction() {
         saveCurrentPosition();
         releasePlayer();
         Intent i = new Intent(this, MainActivity.class);
         i.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-        startActivity(i); finish();
+        startActivity(i);
+        finish();
     }
 
     @Override

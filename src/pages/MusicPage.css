@@ -1,0 +1,481 @@
+/* ============================================
+   MUSIC PAGE
+   Full-screen player that slides up over the
+   app. Uses CSS variables from App.css.
+============================================ */
+
+/* ── Root ── */
+.mp-root {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  z-index: 4000;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* slide-up entrance */
+  opacity: 0;
+  transform: translateY(40px);
+  transition: opacity 0.4s ease, transform 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+  -webkit-overflow-scrolling: touch;
+}
+
+.mp-root.mp-entered {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ── Header ── */
+.mp-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px 8px;
+  flex-shrink: 0;
+}
+
+.mp-back,
+.mp-menu-btn {
+  background: #161616;
+  border: 1px solid #252525;
+  color: #ccc;
+  cursor: pointer;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s, color 0.2s, transform 0.15s;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.mp-back:hover,
+.mp-menu-btn:hover {
+  background: #222;
+  color: #fff;
+}
+
+.mp-back:active,
+.mp-menu-btn:active {
+  transform: scale(0.92);
+}
+
+.mp-header-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #666;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+/* ── Hero — disc ── */
+.mp-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px 20px 10px;
+  gap: 20px;
+  flex-shrink: 0;
+}
+
+.mp-disc-wrap {
+  position: relative;
+  width: 180px;
+  height: 180px;
+}
+
+.mp-disc-outer {
+  width: 180px;
+  height: 180px;
+  border-radius: 50%;
+  background: #111;
+  border: 3px solid #1e1e1e;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+}
+
+/* subtle vinyl groove rings */
+.mp-disc-outer::before,
+.mp-disc-outer::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  border: 1px solid #1a1a1a;
+}
+.mp-disc-outer::before { width: 140px; height: 140px; }
+.mp-disc-outer::after  { width: 100px; height: 100px; }
+
+.mp-disc-inner {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: #000;
+  border: 2px solid #2a2a2a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+}
+
+.mp-disc-emoji {
+  font-size: 24px;
+  line-height: 1;
+}
+
+@keyframes discRotate {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+.mp-disc-spin .mp-disc-outer {
+  animation: discRotate 5s linear infinite;
+}
+
+/* outer glowing ring */
+.mp-disc-ring {
+  position: absolute;
+  inset: -8px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  border-top-color: #1db954;
+  border-right-color: #1db954;
+  pointer-events: none;
+}
+
+.mp-disc-ring.mp-ring-spin {
+  animation: discRotate 2s linear infinite;
+}
+
+.mp-ring2 {
+  inset: -14px;
+  border-top-color: rgba(29, 185, 84, 0.3);
+  border-right-color: transparent;
+  border-bottom-color: rgba(29, 185, 84, 0.15);
+}
+
+.mp-ring2.mp-ring-spin2 {
+  animation: discRotate 3.5s linear infinite reverse;
+}
+
+/* track info */
+.mp-track-info {
+  text-align: center;
+}
+
+.mp-track-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: -0.01em;
+}
+
+.mp-track-artist {
+  font-size: 13px;
+  color: #666;
+  margin-top: 4px;
+}
+
+@keyframes infoPulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.85; }
+}
+
+.mp-info-pulse .mp-track-title {
+  animation: infoPulse 3s ease-in-out infinite;
+}
+
+/* ── Visualizer ── */
+.mp-viz {
+  height: 56px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 3px;
+  padding: 0 20px;
+  flex-shrink: 0;
+}
+
+.mp-bar {
+  width: 5px;
+  border-radius: 3px 3px 0 0;
+  background: #1db954;
+  height: var(--h, 20px);
+  transform-origin: bottom;
+  animation: barBounce var(--dur, 0.7s) ease-in-out infinite alternate;
+}
+
+@keyframes barBounce {
+  0%   { height: 4px; opacity: 0.3; }
+  100% { height: var(--h, 20px); opacity: 1; }
+}
+
+/* ── Progress ── */
+.mp-progress-area {
+  padding: 0 20px 2px;
+  flex-shrink: 0;
+}
+
+.mp-progress-bar {
+  height: 4px;
+  background: #1e1e1e;
+  border-radius: 2px;
+  cursor: pointer;
+  position: relative;
+  /* bigger touch target */
+  padding: 8px 0;
+  margin: -8px 0;
+  box-sizing: content-box;
+}
+
+.mp-progress-fill {
+  height: 4px;
+  background: #1db954;
+  border-radius: 2px;
+  position: relative;
+  transition: width 0.1s linear;
+  top: 0;
+}
+
+.mp-progress-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fff;
+  position: absolute;
+  right: -6px;
+  top: 50%;
+  transform: translateY(-50%);
+  box-shadow: 0 0 0 2px #1db954;
+  transition: transform 0.15s;
+}
+
+.mp-progress-bar:hover .mp-progress-dot {
+  transform: translateY(-50%) scale(1.3);
+}
+
+.mp-time-row {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 10px;
+  font-size: 11px;
+  color: #555;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Like row ── */
+.mp-like-row {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 20px 4px;
+  flex-shrink: 0;
+}
+
+.mp-like-btn {
+  background: none;
+  border: none;
+  color: #444;
+  cursor: pointer;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s, transform 0.2s;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.mp-like-btn:active { transform: scale(0.85); }
+
+.mp-liked {
+  color: #e50914;
+  animation: heartPop 0.3s cubic-bezier(0.36, 0.07, 0.19, 0.97);
+}
+
+@keyframes heartPop {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.35); }
+  70%  { transform: scale(0.9); }
+  100% { transform: scale(1); }
+}
+
+/* ── Controls ── */
+.mp-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 4px 20px 16px;
+  flex-shrink: 0;
+}
+
+.mp-ctrl {
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: #666;
+  transition: color 0.2s, transform 0.15s, background 0.2s;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  flex-shrink: 0;
+}
+
+.mp-ctrl:active { transform: scale(0.88); }
+
+.mp-ctrl-sm {
+  width: 36px;
+  height: 36px;
+}
+
+.mp-ctrl-md {
+  width: 44px;
+  height: 44px;
+  color: #ccc;
+}
+
+.mp-ctrl-md:hover { color: #fff; }
+
+.mp-ctrl-active { color: #1db954 !important; }
+
+.mp-ctrl-play {
+  width: 60px;
+  height: 60px;
+  background: #1db954;
+  color: #000;
+  box-shadow: 0 0 20px rgba(29, 185, 84, 0.35);
+  transition: background 0.2s, transform 0.15s, box-shadow 0.2s;
+}
+
+.mp-ctrl-play:hover {
+  background: #1ed760;
+  box-shadow: 0 0 28px rgba(29, 185, 84, 0.5);
+  color: #000;
+}
+
+.mp-ctrl-play:active { transform: scale(0.92); }
+
+/* ── Queue ── */
+.mp-queue-head {
+  font-size: 11px;
+  font-weight: 700;
+  color: #444;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 8px 20px;
+  flex-shrink: 0;
+  border-top: 1px solid #111;
+}
+
+.mp-queue {
+  flex: 1;
+}
+
+.mp-queue-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 20px;
+  cursor: pointer;
+  transition: background 0.15s;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.mp-queue-row:hover { background: #0d0d0d; }
+.mp-queue-row:active { background: #111; }
+
+.mp-queue-active { background: #061408 !important; }
+
+.mp-queue-thumb {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: #141414;
+  border: 1px solid #1e1e1e;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.mp-queue-active .mp-queue-thumb {
+  border-color: rgba(29, 185, 84, 0.3);
+  background: #0a1f0d;
+}
+
+.mp-queue-info { flex: 1; min-width: 0; }
+
+.mp-queue-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #ccc;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mp-queue-active .mp-queue-name { color: #1db954; }
+
+.mp-queue-artist {
+  font-size: 11px;
+  color: #555;
+  margin-top: 2px;
+}
+
+.mp-queue-dur {
+  font-size: 11px;
+  color: #444;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+/* ── Mini visualizer (current track in queue) ── */
+.mp-mini-viz {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.mp-mini-bar {
+  width: 3px;
+  border-radius: 1.5px;
+  background: #1db954;
+  height: var(--h, 10px);
+  transform-origin: bottom;
+  animation: barBounce var(--dur, 0.7s) ease-in-out infinite alternate;
+}
+
+/* ============================================
+   ANDROID TV — bigger targets, better focus
+============================================ */
+@media (min-width: 960px) {
+  .mp-disc-wrap { width: 220px; height: 220px; }
+  .mp-disc-outer { width: 220px; height: 220px; }
+  .mp-disc-inner { width: 72px; height: 72px; }
+  .mp-disc-emoji { font-size: 30px; }
+  .mp-track-title { font-size: 24px; }
+  .mp-ctrl-play { width: 72px; height: 72px; }
+  .mp-ctrl-md { width: 52px; height: 52px; }
+  .mp-controls { gap: 24px; }
+
+  [data-input="key"] .mp-ctrl:focus-visible,
+  [data-input="key"] .mp-back:focus-visible {
+    outline: 3px solid #1db954;
+    outline-offset: 3px;
+    box-shadow: 0 0 0 5px rgba(29, 185, 84, 0.2);
+  }
+}
