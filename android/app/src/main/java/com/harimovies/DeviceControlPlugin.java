@@ -98,8 +98,8 @@ public class DeviceControlPlugin extends Plugin {
     @PluginMethod
     public void openExoPlayer(PluginCall call) {
 
-        String url   = call.getString("url");
-        String title = call.getString("title");
+        String url = call.getString("url");
+        String movieTitle = call.getString("title");
 
         if (url == null || url.isEmpty()) {
             call.reject("URL is missing");
@@ -107,25 +107,26 @@ public class DeviceControlPlugin extends Plugin {
         }
 
         // Fallback to filename if title is missing to ensure "each card" has a unique key
-        if (title == null || title.isEmpty()) {
+        if (movieTitle == null || movieTitle.isEmpty()) {
             try {
                 Uri uri = Uri.parse(url);
-                title = uri.getLastPathSegment();
+                movieTitle = uri.getLastPathSegment();
             } catch (Exception ignored) {}
         }
-        if (title == null) title = "";
+        if (movieTitle == null) movieTitle = "";
 
         Intent intent = new Intent(
                 getActivity(),
                 PlayerActivity.class
         );
 
-        intent.putExtra("url",   url);
-        intent.putExtra("title", title);
+        intent.putExtra("url", url);
+        intent.putExtra("title", movieTitle);
 
-        // Handle playlist for series
-        if (call.getData().has("playlist")) {
-            intent.putExtra("playlist", call.getArray("playlist").toString());
+        // Handle playlist for series safely
+        com.getcapacitor.JSArray playlist = call.getArray("playlist");
+        if (playlist != null) {
+            intent.putExtra("playlist", playlist.toString());
             intent.putExtra("index", call.getInt("currentIndex", 0));
         }
 
