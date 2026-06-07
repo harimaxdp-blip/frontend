@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════════════
-   HARI MOVIE — OTT UI  ·  Production Edition
-   Fully Responsive: Mobile → Tablet → Desktop → 4K TV → 8K
+   HARI MOVIE — OTT UI  ·  Production Edition v2
+   Platform-Aware: Mobile · Android TV · Smart TV · PC · 4K · 8K
    ═══════════════════════════════════════════════════════════════ */
 
 @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700;800&display=swap');
@@ -41,8 +41,14 @@
   --dur-normal:     220ms;
   --dur-premium:    300ms;
 
-  /* Responsive grid columns — overridden per breakpoint */
+  /* Responsive grid columns */
   --grid-min:       clamp(110px, 14vw, 200px);
+
+  /* ── Platform focus ring colors ── */
+  --focus-ring:        rgba(229, 9, 20, 0.60);
+  --focus-glow:        rgba(229, 9, 20, 0.35);
+  --focus-gold-ring:   rgba(245, 197, 24, 0.52);
+  --focus-gold-glow:   rgba(245, 197, 24, 0.34);
 }
 
 /* ─── Reset & Base ──────────────────────────────────────────── */
@@ -53,8 +59,7 @@
 
 html {
   font-size: 16px;
-  /* IMPORTANT: disable smooth scroll globally — we control it manually */
-  scroll-behavior: auto;
+  scroll-behavior: auto; /* manual scroll control */
 }
 
 body {
@@ -62,7 +67,6 @@ body {
   background: var(--bg-deep);
   color: var(--text-main);
   font-family: var(--font-body);
-  /* FIX: prevent horizontal overflow on all devices */
   overflow-x: hidden;
   max-width: 100vw;
   -webkit-font-smoothing: antialiased;
@@ -82,29 +86,41 @@ body::before {
 }
 
 /* ═══════════════════════════════════════════════════════════════
+   PLATFORM DETECTION CLASSES
+   Added via JS: .tv-mode / .android-mode / .mobile-mode / .pc-mode
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── Android TV base overrides ── */
+.android-mode body { background: #050505; }
+.android-mode :root { --dur-premium: 200ms; }
+
+/* ── SmartTV base overrides ── */
+.tv-mode body { background: #030303; }
+.tv-mode :root {
+  --radius-card: 12px;
+  --radius-ui:   14px;
+}
+
+/* ═══════════════════════════════════════════════════════════════
    HERO BANNER — 16:9 landscape
    ═══════════════════════════════════════════════════════════════ */
 .hero-banner {
   position: relative;
-
   width: calc(100% + 40px);
   max-width: calc(100% + 40px);
   margin: -20px -20px 0;
   left: 0;
   transform: none;
-
   aspect-ratio: 16 / 9;
   max-height: 85vh;
   min-height: 200px;
   overflow: hidden;
-
   background: #000;
-
   touch-action: pan-y;
   user-select: none;
-
   border-radius: 0 0 12px 12px;
 }
+
 
 .hero-bg {
   position: absolute;
@@ -214,9 +230,13 @@ body::before {
   font-weight: 700;
   letter-spacing: 0.05em;
   cursor: pointer;
-  transition: background var(--dur-fast), transform var(--dur-fast) var(--spring), box-shadow var(--dur-fast);
+  transition:
+    background var(--dur-fast),
+    transform var(--dur-fast) var(--spring),
+    box-shadow var(--dur-fast);
   box-shadow: 0 4px 22px rgba(229,9,20,0.45);
   will-change: transform;
+  outline: none;
 }
 
 .hero-play-btn:hover  { background: #c5000b; transform: scale(1.04); box-shadow: 0 6px 30px rgba(229,9,20,0.55); }
@@ -243,6 +263,7 @@ body::before {
   line-height: 1;
   transition: background var(--dur-fast), transform var(--dur-fast);
   will-change: transform;
+  outline: none;
 }
 
 .hero-nav:hover  { background: rgba(229,9,20,0.55); transform: translateY(-50%) scale(1.1); }
@@ -267,6 +288,7 @@ body::before {
   background: rgba(255,255,255,0.30);
   cursor: pointer;
   padding: 0;
+  outline: none;
   transition: background var(--dur-normal), width var(--dur-normal) ease, border-radius var(--dur-normal);
 }
 
@@ -278,9 +300,8 @@ body::before {
 .movies-page {
   width: 100%;
   max-width: 100%;
-  /* FIX: padding uses clamp — no overflow, no fixed values */
   padding: clamp(16px, 3vw, 44px) clamp(10px, 3%, 64px) 120px;
-  transform: translateZ(0); /* GPU layer */
+  transform: translateZ(0);
   animation: pageIn 180ms ease both;
   overflow-x: hidden;
 }
@@ -299,8 +320,8 @@ body::before {
 }
 
 @keyframes premiumEnter {
-  from { opacity: 0.96; transform: translateZ(0); filter: none; }
-  to   { opacity: 1;    transform: translateZ(0); filter: none; }
+  from { opacity: 0.96; transform: translateZ(0); }
+  to   { opacity: 1;    transform: translateZ(0); }
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -326,21 +347,19 @@ body::before {
   box-shadow: 0 0 0 3px var(--primary-low);
 }
 
-.search-bar .search-input {
+.search-input {
   flex: 1;
   background: transparent;
-  border: none;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
   color: #fff;
-  font-size: clamp(0.85rem, 1.2vw, 1rem);
-  font-family: var(--font-body);
-  outline: none;
-  min-width: 0;
-  /* FIX: remove default search input styling on WebKit */
-  -webkit-appearance: none;
-  appearance: none;
 }
-
-/* FIX: remove the X button on search input in Chrome/Safari */
+.search-input:focus {
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
 .search-input::-webkit-search-decoration,
 .search-input::-webkit-search-cancel-button,
 .search-input::-webkit-search-results-button,
@@ -348,100 +367,87 @@ body::before {
 
 .search-input::placeholder { color: var(--text-muted); }
 
+/* ── Mic Button ── */
+.search-voice-group {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .mic-btn {
-  background: transparent;
-  border: none;
+  position: relative;
+  min-width: 48px;
+  min-height: 48px;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.12);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 6px;
-  font-size: 1.3rem;
-  border-radius: 50%;
-  width: 36px; height: 36px;
   flex-shrink: 0;
-  transition: background var(--dur-fast), transform var(--dur-fast);
+  color: var(--text-dim);
+  outline: none;
+  transition: background var(--dur-fast), transform var(--dur-fast), box-shadow var(--dur-fast);
 }
 
-.mic-btn:hover  { background: rgba(255,255,255,0.07); }
- .mic-btn:active { transform: scale(0.92); }
+.mic-btn:hover  { background: rgba(255,255,255,0.13); color: #fff; transform: scale(1.06); }
+.mic-btn:active { transform: scale(0.92); }
 
- .mic-btn {
-   position: relative;
-   min-width: 48px;
-   min-height: 48px;
-   width: 48px;
-   height: 48px;
-   padding: 0;
-   border-radius: 50%;
-   background: rgba(255,255,255,0.08);
-   border: 1px solid rgba(255,255,255,0.12);
- }
+.mic-icon {
+  width: 22px;
+  height: 22px;
+  fill: currentColor;
+  pointer-events: none;
+}
 
- .search-voice-group {
-   display: flex;
-   align-items: center;
-   justify-content: center;
- }
+.mic-btn.listening-active {
+  color: var(--primary);
+  background: rgba(229,9,20,0.10);
+  border-color: rgba(229,9,20,0.40);
+  box-shadow: 0 0 0 6px rgba(229,9,20,0.14), 0 0 0 14px rgba(229,9,20,0.05);
+  animation: micGlow 1.6s infinite ease-in-out;
+}
 
- .mic-icon {
-   width: 22px;
-   height: 22px;
-   fill: currentColor;
- }
+.mic-btn.processing-active {
+  color: #fff;
+  background: rgba(255,255,255,0.10);
+  box-shadow: 0 0 0 4px rgba(255,255,255,0.12);
+}
 
- .mic-btn.listening-active {
-   color: #e50914;
-   box-shadow: 0 0 0 6px rgba(229,9,20,0.14), 0 0 0 14px rgba(229,9,20,0.05);
-   animation: micGlow 1.6s infinite ease-in-out;
- }
+.mic-spinner {
+  position: absolute;
+  inset: 8px;
+  border: 2px solid rgba(255,255,255,0.16);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spinnerRotate 0.85s linear infinite;
+}
 
- .mic-btn.processing-active {
-   color: #fff;
-   box-shadow: 0 0 0 4px rgba(255,255,255,0.12);
- }
+.voice-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 10px auto 20px;
+  justify-content: center;
+  max-width: 700px;
+  min-height: 24px;
+}
 
- .mic-spinner {
-   position: absolute;
-   inset: 8px;
-   border: 2px solid rgba(255,255,255,0.16);
-   border-top-color: #e50914;
-   border-radius: 50%;
-   animation: spinnerRotate 0.85s linear infinite;
- }
+.voice-hint  { font-size: 0.92rem; color: #fff; letter-spacing: 0.01em; }
+.voice-error { font-size: 0.92rem; color: var(--primary); letter-spacing: 0.01em; }
 
- .voice-status-row {
-   display: flex;
-   flex-wrap: wrap;
-   gap: 10px;
-   margin: 10px auto 20px;
-   justify-content: center;
-   max-width: 700px;
- }
+@keyframes micGlow {
+  0%, 100% { box-shadow: 0 0 0 6px rgba(229,9,20,0.14); transform: scale(1); }
+  50%       { box-shadow: 0 0 0 10px rgba(229,9,20,0.12); transform: scale(1.05); }
+}
 
- .voice-hint,
- .voice-error {
-   font-size: 0.92rem;
-   letter-spacing: 0.01em;
- }
-
- .voice-hint {
-   color: #fff;
- }
-
- .voice-error {
-   color: #e50914;
- }
-
- @keyframes micGlow {
-   0%, 100% { box-shadow: 0 0 0 6px rgba(229,9,20,0.14); transform: scale(1); }
-   50%      { box-shadow: 0 0 0 10px rgba(229,9,20,0.12); transform: scale(1.05); }
- }
-
- @keyframes spinnerRotate {
-   0% { transform: rotate(0deg); }
-   100% { transform: rotate(360deg); }
- }
+@keyframes spinnerRotate {
+  to { transform: rotate(360deg); }
+}
 
 /* ═══════════════════════════════════════════════════════════════
    FILTER BAR
@@ -470,14 +476,17 @@ body::before {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23666' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 11px center;
-  transition: border-color var(--dur-fast), background-color var(--dur-fast);
+  transition: border-color var(--dur-fast), background-color var(--dur-fast), box-shadow var(--dur-fast);
   letter-spacing: 0.02em;
-  /* FIX: prevent shrinking on small screens */
   flex-shrink: 0;
 }
 
 .filter-bar select:hover,
-.filter-bar select:focus { border-color: var(--glass-hover); background-color: #181818; }
+.filter-bar select:focus {
+  border-color: var(--glass-hover);
+  background-color: #181818;
+}
+
 .filter-bar select option { background: #111; color: #fff; }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -495,7 +504,6 @@ body::before {
   display: flex;
   align-items: center;
   gap: 12px;
-  /* FIX: prevent overflow on narrow screens */
   overflow: hidden;
 }
 
@@ -519,16 +527,72 @@ body::before {
    ═══════════════════════════════════════════════════════════════ */
 .grid {
   display: grid;
-  /* Default: auto-fill with fluid min size */
   grid-template-columns: repeat(auto-fill, minmax(var(--grid-min), 1fr));
   gap: clamp(8px, 1.4vw, 20px);
   padding: 14px 0;
   align-items: start;
-  /* FIX: prevent grid blowout */
   width: 100%;
 }
 
-/* ─── Card ─── */
+/* ── Poster wrapper & shimmer ── */
+.poster-wrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: var(--card-ratio);
+  overflow: hidden;
+  background: linear-gradient(135deg, #202020, #0c0c0c);
+  flex: 0 0 auto;
+}
+
+.poster-shimmer {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, #161616 25%, #222 50%, #161616 75%);
+  background-size: 800px 100%;
+  animation: shimmer 1.7s infinite linear;
+  z-index: 1;
+}
+
+.poster-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center top;
+  display: block;
+  transition: opacity 0.3s ease, transform 0.5s var(--ease-premium), filter 0.3s ease;
+  will-change: transform;
+  backface-visibility: hidden;
+  max-width: 100%;
+  z-index: 2;
+}
+
+.poster-img--loading { opacity: 0; }
+.poster-img--loaded  { opacity: 1; }
+
+/* ── Quality Badge ── */
+.quality-badge {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.64rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  z-index: 5;
+  line-height: 1.5;
+  backdrop-filter: blur(6px);
+}
+
+.quality-badge--4k  { background: rgba(229,9,20,0.88);  color: #fff; border: 1px solid rgba(255,100,100,0.4); }
+.quality-badge--fhd { background: rgba(30,100,255,0.85); color: #fff; border: 1px solid rgba(80,150,255,0.4); }
+.quality-badge--hd  { background: rgba(20,160,80,0.85);  color: #fff; border: 1px solid rgba(60,200,120,0.4); }
+.quality-badge--sd  { background: rgba(90,90,90,0.85);   color: #ccc; border: 1px solid rgba(140,140,140,0.3); }
+
+/* ── Card ── */
 .card,
 .episode-card {
   background: var(--bg-card);
@@ -539,7 +603,6 @@ body::before {
   flex-direction: column;
   cursor: pointer;
   position: relative;
-  /* GPU compositing — prevents layout thrashing on hover */
   transform: translateZ(0);
   will-change: transform;
   transition:
@@ -549,7 +612,6 @@ body::before {
   animation: cardAppear 160ms ease both;
   animation-delay: calc(var(--i, 0) * 12ms);
   outline: none;
-  /* FIX: cards should never overflow their column */
   width: 100%;
   min-width: 0;
 }
@@ -557,25 +619,6 @@ body::before {
 @keyframes cardAppear {
   from { opacity: 0.96; transform: translateZ(0) scale(0.995); }
   to   { opacity: 1;    transform: translateZ(0) scale(1);     }
-}
-
-.card img,
-.episode-card img {
-  width: 100%;
-  min-height: 0;
-  aspect-ratio: var(--card-ratio);
-  object-fit: cover;
-  object-position: center top;
-  display: block;
-  flex: 0 0 auto;
-  opacity: 1;
-  visibility: visible;
-  transition: transform 0.5s var(--ease-premium), filter 0.3s ease;
-  will-change: transform;
-  backface-visibility: hidden;
-  /* FIX: prevent image from overflowing card */
-  max-width: 100%;
-  background: linear-gradient(135deg, #202020, #0c0c0c);
 }
 
 /* Bottom gradient */
@@ -605,77 +648,10 @@ body::before {
   pointer-events: none;
 }
 
-/* ─── HOVER (non-touch devices only) ─── */
-@media (hover: hover) {
-  .card:hover,
-  .episode-card:hover {
-    transform: translateZ(0) translateY(-8px) scale(1.04);
-    border-color: var(--glass-hover);
-    box-shadow:
-      0 22px 50px rgba(0,0,0,0.80),
-      0  0   30px var(--primary-glow);
-    z-index: 5;
-  }
-
-  .card:hover img,
-  .episode-card:hover img {
-    transform: scale(1.08);
-    filter: brightness(1.07) saturate(1.12);
-  }
-
-  .card:hover::before,
-  .episode-card:hover::before { left: 120%; }
-
-  .card.is-collection:hover {
-    border-color: rgba(245,197,24,0.50);
-    box-shadow:
-      0 22px 50px rgba(0,0,0,0.80),
-      0  0   30px rgba(245,197,24,0.14);
-  }
-}
-
-/* ─── TV / Keyboard FOCUS ─── */
-.card:focus,
-.episode-card:focus {
-  transform: translateZ(0) translateY(-10px) scale(1.06);
-  border-color: var(--primary);
-  box-shadow:
-    0 0  0  3px rgba(229,9,20,0.50),
-    0 0  22px rgba(229,9,20,0.35),
-    0 28px 60px rgba(0,0,0,0.90);
-  z-index: 10;
-}
-
-.card:focus img,
-.episode-card:focus img {
-  transform: scale(1.09);
-  filter: brightness(1.08) saturate(1.15);
-}
-
-.card:focus::before,
-.episode-card:focus::before { left: 120%; }
-
-.card.is-collection:focus {
-  border-color: var(--gold);
-  box-shadow:
-    0 0  0  3px rgba(245,197,24,0.45),
-    0 0  22px rgba(245,197,24,0.28),
-    0 28px 60px rgba(0,0,0,0.90);
-}
-
-/* ─── Active / press ─── */
-.card:active,
-.episode-card:active {
-  transform: translateZ(0) scale(0.96) !important;
-  transition: transform 0.08s ease !important;
-}
-
-/* ─── Card Info ─── */
 .card-info {
   position: relative;
   z-index: 2;
   padding: 8px 10px 10px;
-  /* FIX: prevent text overflow */
   min-width: 0;
   overflow: hidden;
 }
@@ -702,22 +678,7 @@ body::before {
   text-overflow: ellipsis;
 }
 
-/* ─── Ripple ─── */
-.ripple-wave {
-  position: absolute;
-  border-radius: 50%;
-  background: rgba(255,255,255,0.14);
-  transform: scale(0);
-  animation: rippleExpand 0.58s var(--ease-out) forwards;
-  pointer-events: none;
-  z-index: 10;
-}
-
-@keyframes rippleExpand {
-  to { transform: scale(4); opacity: 0; }
-}
-
-/* ─── Collection badge ─── */
+/* ── Collection badge ── */
 .card.is-collection { border-color: rgba(245,197,24,0.25); }
 
 .collection-badge {
@@ -733,7 +694,6 @@ body::before {
   letter-spacing: 0.05em;
   z-index: 5;
   line-height: 1.4;
-  /* FIX: cap badge width so it never overlaps the full card */
   max-width: calc(100% - 16px);
   white-space: nowrap;
   overflow: hidden;
@@ -742,6 +702,292 @@ body::before {
 
 .season-card .card-info h3 { color: var(--gold); }
 .episode-card .card-info p  { color: var(--gold) !important; font-weight: 600; }
+
+/* ── Ripple ── */
+.ripple-wave {
+  position: absolute;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.14);
+  transform: scale(0);
+  animation: rippleExpand 0.58s var(--ease-out) forwards;
+  pointer-events: none;
+  z-index: 10;
+}
+
+@keyframes rippleExpand {
+  to { transform: scale(4); opacity: 0; }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   ██████  PC / DESKTOP — hover effects (mouse device)
+   ═══════════════════════════════════════════════════════════════ */
+@media (hover: hover) and (pointer: fine) {
+  .card:hover,
+  .episode-card:hover {
+    transform: translateZ(0) translateY(-8px) scale(1.04);
+    border-color: var(--glass-hover);
+    box-shadow:
+      0 22px 50px rgba(0,0,0,0.80),
+      0  0   30px var(--primary-glow);
+    z-index: 5;
+  }
+
+  .card:hover .poster-img,
+  .episode-card:hover .poster-img {
+    transform: scale(1.08);
+    filter: brightness(1.07) saturate(1.12);
+  }
+
+  .card:hover::before,
+  .episode-card:hover::before { left: 120%; }
+
+  .card.is-collection:hover {
+    border-color: rgba(245,197,24,0.50);
+    box-shadow:
+      0 22px 50px rgba(0,0,0,0.80),
+      0  0   30px rgba(245,197,24,0.14);
+  }
+
+  /* PC keyboard focus (tab) — subtle, non-intrusive */
+  .card:focus-visible,
+  .episode-card:focus-visible {
+    outline: 2px solid rgba(229,9,20,0.55);
+    outline-offset: 2px;
+    box-shadow:
+      0 0 0 4px rgba(229,9,20,0.20),
+      0 16px 40px rgba(0,0,0,0.70);
+    border-color: rgba(229,9,20,0.35);
+    transform: translateZ(0) translateY(-4px) scale(1.02);
+    z-index: 8;
+  }
+
+  .card.is-collection:focus-visible {
+    outline-color: rgba(245,197,24,0.60);
+    border-color: rgba(245,197,24,0.45);
+    box-shadow:
+      0 0 0 4px rgba(245,197,24,0.18),
+      0 16px 40px rgba(0,0,0,0.70);
+  }
+
+  .hero-play-btn:focus-visible {
+    outline: 2px solid rgba(255,255,255,0.60);
+    outline-offset: 3px;
+  }
+
+  .filter-bar select:focus-visible {
+    border-color: rgba(229,9,20,0.60);
+    box-shadow: 0 0 0 2px rgba(229,9,20,0.20);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   ██████  TV / SMART TV — D-PAD REMOTE FOCUS
+   Class: .tv-mode  (body-level)
+   ═══════════════════════════════════════════════════════════════ */
+.tv-mode .card:focus,
+.tv-mode .card:focus-visible,
+.tv-mode .episode-card:focus,
+.tv-mode .episode-card:focus-visible {
+  outline: none;
+  transform: translateZ(0) translateY(-12px) scale(1.07);
+  border-color: var(--primary);
+  box-shadow:
+    0 0  0  4px var(--focus-ring),
+    0 0  28px var(--focus-glow),
+    0 0  60px rgba(229,9,20,0.20),
+    0 32px 70px rgba(0,0,0,0.95);
+  z-index: 20;
+  transition:
+    transform  180ms var(--ease-premium),
+    box-shadow 180ms var(--ease-premium),
+    border-color 180ms ease;
+}
+
+.tv-mode .card:focus .poster-img,
+.tv-mode .card:focus-visible .poster-img,
+.tv-mode .episode-card:focus .poster-img,
+.tv-mode .episode-card:focus-visible .poster-img {
+  transform: scale(1.10);
+  filter: brightness(1.10) saturate(1.18);
+}
+
+.tv-mode .card:focus::before,
+.tv-mode .episode-card:focus::before { left: 120%; }
+
+.tv-mode .card.is-collection:focus,
+.tv-mode .card.is-collection:focus-visible {
+  border-color: var(--gold);
+  box-shadow:
+    0 0  0  4px var(--focus-gold-ring),
+    0 0  28px var(--focus-gold-glow),
+    0 0  60px rgba(245,197,24,0.18),
+    0 32px 70px rgba(0,0,0,0.95);
+}
+
+/* TV hero & nav button focus */
+.tv-mode .hero-play-btn:focus,
+.tv-mode .hero-nav:focus,
+.tv-mode .back-btn:focus,
+.tv-mode .control-btn:focus {
+  outline: 3px solid var(--primary);
+  outline-offset: 4px;
+  box-shadow: 0 0 0 6px rgba(229,9,20,0.22);
+}
+
+/* TV filter select focus */
+.tv-mode .filter-bar select:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(229,9,20,0.30);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   ██████  ANDROID TV — D-PAD REMOTE FOCUS
+   Class: .android-mode  (body-level)
+   Slightly more aggressive glow for high-contrast AMOLED panels
+   ═══════════════════════════════════════════════════════════════ */
+.android-mode .card:focus,
+.android-mode .card:focus-visible,
+.android-mode .episode-card:focus,
+.android-mode .episode-card:focus-visible {
+  outline: none;
+  transform: translateZ(0) translateY(-10px) scale(1.06);
+  border-color: var(--primary);
+  box-shadow:
+    0 0  0  5px rgba(229,9,20,0.70),
+    0 0  22px rgba(229,9,20,0.50),
+    0 0  44px rgba(229,9,20,0.22),
+    0 24px 55px rgba(0,0,0,0.98);
+  z-index: 20;
+  /* Hardware-accelerated for Android WebView */
+  will-change: transform, box-shadow;
+  transition:
+    transform  120ms var(--ease-premium),
+    box-shadow 120ms ease,
+    border-color 120ms ease;
+}
+
+.android-mode .card:focus .poster-img,
+.android-mode .card:focus-visible .poster-img,
+.android-mode .episode-card:focus .poster-img,
+.android-mode .episode-card:focus-visible .poster-img {
+  transform: scale(1.08);
+  filter: brightness(1.12) saturate(1.20) contrast(1.04);
+}
+
+.android-mode .card:focus::before,
+.android-mode .episode-card:focus::before { left: 120%; }
+
+.android-mode .card.is-collection:focus,
+.android-mode .card.is-collection:focus-visible {
+  border-color: var(--gold);
+  box-shadow:
+    0 0  0  5px rgba(245,197,24,0.68),
+    0 0  22px rgba(245,197,24,0.45),
+    0 24px 55px rgba(0,0,0,0.98);
+}
+
+/* Android TV hero / nav button focus */
+.android-mode .hero-play-btn:focus,
+.android-mode .hero-nav:focus,
+.android-mode .back-btn:focus,
+.android-mode .control-btn:focus {
+  outline: 3px solid var(--primary);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 6px rgba(229,9,20,0.28);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   ██████  MOBILE / TOUCH — no hover, no focus ring
+   Applies to coarse pointer (finger) devices
+   ═══════════════════════════════════════════════════════════════ */
+@media (hover: none), (pointer: coarse) {
+  /* Strip all focus rings for touch — no thumbs see them anyway */
+  .card:focus,
+  .card:focus-visible,
+  .episode-card:focus,
+  .episode-card:focus-visible {
+    outline: none;
+    border-color: var(--glass-border);
+    box-shadow: none;
+    transform: translateZ(0);
+  }
+
+  .card:focus .poster-img,
+  .card:focus-visible .poster-img,
+  .episode-card:focus .poster-img,
+  .episode-card:focus-visible .poster-img {
+    transform: none;
+    filter: none;
+  }
+
+  .card:focus::before,
+  .card:focus-visible::before,
+  .episode-card:focus::before,
+  .episode-card:focus-visible::before { left: -65%; }
+
+  /* Mobile tap — instant ripple feedback */
+  .card:active,
+  .episode-card:active {
+    transform: translateZ(0) scale(0.95) !important;
+    transition: transform 0.08s ease !important;
+    border-color: rgba(229,9,20,0.30);
+  }
+
+  /* Keep TV/Android override above coarse media query ↑↑↑ */
+  /* Re-apply TV mode even on coarse pointer (Android TV uses coarse) */
+  .tv-mode .card:focus,
+  .tv-mode .card:focus-visible,
+  .tv-mode .episode-card:focus,
+  .tv-mode .episode-card:focus-visible {
+    outline: none;
+    transform: translateZ(0) translateY(-12px) scale(1.07);
+    border-color: var(--primary);
+    box-shadow:
+      0 0  0  4px var(--focus-ring),
+      0 0  28px var(--focus-glow),
+      0 32px 70px rgba(0,0,0,0.95);
+    z-index: 20;
+  }
+
+  .android-mode .card:focus,
+  .android-mode .card:focus-visible,
+  .android-mode .episode-card:focus,
+  .android-mode .episode-card:focus-visible {
+    outline: none;
+    transform: translateZ(0) translateY(-10px) scale(1.06);
+    border-color: var(--primary);
+    box-shadow:
+      0 0  0  5px rgba(229,9,20,0.70),
+      0 0  22px rgba(229,9,20,0.50),
+      0 24px 55px rgba(0,0,0,0.98);
+    z-index: 20;
+  }
+
+  .hero-play-btn:focus,
+  .hero-play-btn:focus-visible,
+  .control-btn:focus,
+  .control-btn:focus-visible,
+  .hero-nav:focus,
+  .hero-nav:focus-visible,
+  .back-btn:focus,
+  .back-btn:focus-visible {
+    outline: none;
+    box-shadow: none;
+  }
+
+  .back-btn:hover {
+    background: #1a1a1a;
+    color: #fff;
+    border-color: #2e2e2e;
+  }
+}
+
+/* ── Active / press (all platforms) ── */
+.card:active,
+.episode-card:active {
+  transform: translateZ(0) scale(0.96) !important;
+  transition: transform 0.08s ease !important;
+}
 
 /* ═══════════════════════════════════════════════════════════════
    SERIES SECTIONS
@@ -762,13 +1008,6 @@ body::before {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-/* ═══════════════════════════════════════════════════════════════
-   COLLECTION / SEASON VIEW
-   ═══════════════════════════════════════════════════════════════ */
-.collection-view {
-  animation: premiumEnter var(--dur-premium) var(--ease-premium) both;
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -823,7 +1062,6 @@ body::before {
   background: rgba(6,6,6,0.96);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
-  /* FIX: z-index above everything including sidebar */
   z-index: 99999;
   display: flex;
   flex-direction: column;
@@ -863,76 +1101,8 @@ body::before {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   FIXED CONTROLS (Shuffle + Top)
-   FIX: proper stacking, visibility, z-index, pointer-events
+   NO RESULTS
    ═══════════════════════════════════════════════════════════════ */
-.fixed-controls {
-  position: fixed;
-  bottom: 28px;
-  right: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  /* FIX: must be above all content including modals but below player */
-  z-index: 9000;
-  /* FIX: pointer-events must be enabled */
-  pointer-events: auto;
-}
-
-.control-btn{
-  position:relative;
-  overflow:visible;
-  width:50px;
-  height:50px;
-
-  background:transparent !important;
-  border:none !important;
-  box-shadow:none !important;
-  backdrop-filter:none !important;
-  -webkit-backdrop-filter:none !important;
-
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  cursor:pointer;
-}
-.control-btn img {
-  width: 22px; height: 22px;
-  pointer-events: none;
-  display: block;
-}
-
-/* Up button — hidden by default, fades in after scroll */
-.top-btn {
-  opacity: 0;
-  transform: scale(0.8) translateY(10px);
-  pointer-events: none;
-  transition:
-    opacity    var(--dur-premium) var(--ease-out),
-    transform  var(--dur-premium) var(--spring),
-    background var(--dur-fast),
-    border-color var(--dur-fast);
-}
-
-/* FIX: .top-btn--visible class added by JS when scrollY > 300 */
-.top-btn--visible {
-  opacity: 1;
-  transform: scale(1) translateY(0);
-  pointer-events: auto;
-}
-
-@media (hover: hover) {
-  .control-btn:hover {
-    background: rgba(26,26,26,0.98);
-    border-color: rgba(255,255,255,0.18);
-    transform: scale(1.1);
-  }
-  .top-btn:hover { background: rgba(229,9,20,0.20); border-color: var(--primary); }
-}
-
-.control-btn:active { transform: scale(0.88) !important; }
-
-/* ─── No Results ─── */
 .no-results {
   display: flex;
   flex-direction: column;
@@ -981,11 +1151,168 @@ body::before {
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
   z-index: 6;
+  outline: none;
   transition: background var(--dur-fast), border-color var(--dur-fast), color var(--dur-fast), transform 0.12s;
 }
 
 .back-btn:hover  { background: var(--gold); color: #000; border-color: var(--gold); }
 .back-btn:active { transform: scale(0.96); }
+
+/* ─── Collection view ─── */
+.collection-view {
+  animation: premiumEnter var(--dur-premium) var(--ease-premium) both;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   FIXED CONTROLS (Top scroll button)
+   ═══════════════════════════════════════════════════════════════ */
+.fixed-controls {
+  position: fixed;
+  bottom: 28px;
+  right: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  z-index: 9000;
+  pointer-events: auto;
+}
+
+.control-btn {
+  position: relative;
+  overflow: visible;
+  width: 54px;
+  height: 54px;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border-radius: 50%;
+  outline: none;
+}
+
+/* ── Premium TOP button ── */
+.top-btn {
+  opacity: 0;
+  visibility: hidden;
+  transform: scale(0.8) translateY(10px);
+  pointer-events: none;
+  transition:
+    opacity    0.35s ease,
+    visibility 0.35s ease,
+    transform  0.35s var(--spring);
+}
+
+.top-btn::before {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 0deg,
+    transparent, #e50914, #ff5555, #e50914, transparent
+  );
+  animation: topSpin 2.5s linear infinite;
+}
+
+.top-btn::after {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  border-radius: 50%;
+  background: #101010;
+  box-shadow: inset 0 0 10px rgba(255,255,255,0.05);
+}
+
+.top-btn--visible {
+  opacity: 1;
+  visibility: visible;
+  transform: scale(1) translateY(0);
+  pointer-events: auto;
+}
+
+.top-btn:hover {
+  transform: translateY(-8px) scale(1.08);
+  box-shadow:
+    0 0 20px rgba(229,9,20,0.40),
+    0 0 40px rgba(229,9,20,0.25);
+}
+
+.top-btn:active { transform: scale(0.92); }
+
+.top-arrow {
+  position: relative;
+  z-index: 2;
+  width: 28px;
+  height: 28px;
+  animation: arrowFloat 1.8s ease-in-out infinite;
+  filter: drop-shadow(0 0 8px rgba(255,255,255,0.5));
+}
+
+@keyframes topSpin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@keyframes arrowFloat {
+  0%, 100% { transform: translateY(2px); }
+  50%       { transform: translateY(-4px); }
+}
+
+/* ── Dice Scene (shuffle) ── */
+.dice-scene {
+  width: 32px;
+  height: 32px;
+  perspective: 500px;
+}
+
+.dice {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  transform-style: preserve-3d;
+  animation: diceSpin 10s linear infinite;
+}
+
+.face {
+  position: absolute;
+  width: 32px;
+  height: 32px;
+  background: #fff;
+  border-radius: 4px;
+}
+
+.front  { transform: translateZ(16px); }
+.back   { transform: rotateY(180deg) translateZ(16px); }
+.right  { transform: rotateY(90deg) translateZ(16px); }
+.left   { transform: rotateY(-90deg) translateZ(16px); }
+.top    { transform: rotateX(90deg) translateZ(16px); }
+.bottom { transform: rotateX(-90deg) translateZ(16px); }
+
+.dot {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  background: #e50914;
+  border-radius: 50%;
+}
+
+.center { top: 50%; left: 50%; transform: translate(-50%,-50%); }
+.tl { top: 5px; left: 5px; }
+.tr { top: 5px; right: 5px; }
+.bl { bottom: 5px; left: 5px; }
+.br { bottom: 5px; right: 5px; }
+.ml { top: 50%; left: 5px; transform: translateY(-50%); }
+.mr { top: 50%; right: 5px; transform: translateY(-50%); }
+
+@keyframes diceSpin {
+  0%   { transform: rotateX(0deg)   rotateY(0deg); }
+  100% { transform: rotateX(720deg) rotateY(720deg); }
+}
 
 /* ═══════════════════════════════════════════════════════════════
    SCROLLBAR
@@ -1021,6 +1348,7 @@ body::before {
   letter-spacing: 0.04em;
   transition: background var(--dur-fast), color var(--dur-fast);
   border-bottom: 2px solid transparent;
+  outline: none;
 }
 
 .upload-tab:hover    { background: #181818; color: #ccc; }
@@ -1090,6 +1418,7 @@ select.tv-input {
   letter-spacing: 0.06em;
   cursor: pointer;
   font-family: var(--font-body);
+  outline: none;
   transition: background var(--dur-fast), transform 0.12s, opacity var(--dur-fast);
 }
 
@@ -1098,138 +1427,7 @@ select.tv-input {
 .tv-button:disabled { opacity: 0.55; cursor: not-allowed; }
 
 /* ═══════════════════════════════════════════════════════════════
-   RESPONSIVE BREAKPOINTS
-   ═══════════════════════════════════════════════════════════════ */
-
-/* ── Mobile portrait (≤ 400px) — 2 columns ── */
-@media (max-width: 400px) {
-  :root { --grid-min: calc(50% - 6px); }
-
-  .hero-banner    { max-height: none; min-height: 210px; aspect-ratio: 16 / 10; margin-top: -20px; }
-  .hero-overlay   { background: linear-gradient(to top, rgba(6,6,6,1) 0%, rgba(6,6,6,0.65) 55%, transparent 100%); }
-  .hero-content   { width: 100%; padding: 10px 12px 36px; }
-  .hero-desc      { display: none; }
-  .hero-nav       { display: none; }
-  .hero-dots      { right: 6px; bottom: 6px; }
-  .hero-dot       { width: 5px; height: 5px; }
-  .hero-dot--active { width: 16px; }
-
-  .movies-page    { padding: 12px 8px 100px; }
-  .grid           { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-  .filter-bar     { gap: 6px; }
-  .filter-bar select { padding: 8px 24px 8px 10px; font-size: 0.74rem; }
-  .section-title  { font-size: 1.1rem; }
-  .series-main-title { font-size: 1.1rem; }
-  .fixed-controls { bottom: 80px; right: 10px; gap: 8px; }
-  .control-btn    { width: 44px; height: 44px; border-radius: 12px; }
-  .tv-grid        { grid-template-columns: 1fr 1fr; }
-  .span-2,.span-3 { grid-column: span 2; }
-}
-
-/* ── Mobile landscape / large phone (401px – 600px) — 3 columns ── */
-@media (min-width: 401px) and (max-width: 600px) {
-  :root { --grid-min: calc(50% - 6px); }
-
-  .hero-banner  { max-height: none; min-height: 220px; aspect-ratio: 16 / 10; margin-top: -20px; }
-  .hero-overlay { background: linear-gradient(to top, rgba(6,6,6,1) 0%, rgba(6,6,6,0.66) 58%, rgba(6,6,6,0.08) 100%); }
-  .hero-content { width: 100%; padding: 10px 14px 38px; }
-  .hero-desc    { display: none; }
-  .hero-nav     { display: none; }
-  .movies-page  { padding: 14px 10px 100px; }
-  .grid         { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
-  .filter-bar select { font-size: 0.76rem; }
-  .fixed-controls { bottom: 80px; right: 12px; }
-  .control-btn    { width: 46px; height: 46px; }
-}
-
-/* ── Tablet portrait (601px – 900px) — 4 columns ── */
-@media (min-width: 601px) and (max-width: 900px) {
-  :root { --grid-min: calc(25% - 8px); }
-
-  .hero-banner  { max-height: 68vw; }
-  .hero-content { width: min(480px, 65%); }
-  .movies-page  { padding: 18px 16px 100px; }
-  .grid         { grid-template-columns: repeat(4, 1fr); gap: 10px; }
-  .tv-grid      { grid-template-columns: 1fr 1fr; }
-  .span-2,.span-3 { grid-column: span 2; }
-}
-
-/* ── Small laptop (901px – 1279px) — 5–6 columns ── */
-@media (min-width: 901px) and (max-width: 1279px) {
-  :root { --grid-min: clamp(140px, 18%, 200px); }
-
-  .movies-page { padding: 22px 24px 100px; }
-  .grid        { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 14px; }
-}
-
-/* ── Desktop (1280px – 1919px) — 7–9 columns ── */
-@media (min-width: 1280px) and (max-width: 1919px) {
-  :root { --grid-min: clamp(140px, 12%, 190px); }
-
-  .movies-page { padding: 28px 40px 100px; }
-  .grid        { grid-template-columns: repeat(6, 1fr); gap: 16px; }
-}
-
-/* ── Full HD / TV (1920px – 3839px) — 10–12 columns ── */
-@media (min-width: 1920px) {
-  html { font-size: 18px; }
-
-  .hero-banner  { max-height: 80vh; }
-  .hero-content { width: min(760px, 46%); }
-  .hero-nav     { width: 64px; height: 64px; font-size: 2.2rem; }
-
-  .movies-page { padding: clamp(28px,3vw,56px) clamp(40px,6vw,80px) 120px; }
-  .grid        { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 22px; }
-
-  /* TV FOCUS — prominent at 10-foot viewing distance */
-  .card:focus,
-  .episode-card:focus {
-    outline: none;
-    border-color: var(--primary);
-    box-shadow:
-      0 0  0  4px rgba(229,9,20,0.60),
-      0 0  36px rgba(229,9,20,0.45),
-      0 32px 72px rgba(0,0,0,0.95);
-    transform: translateZ(0) translateY(-14px) scale(1.08);
-  }
-
-  .card.is-collection:focus {
-    border-color: var(--gold);
-    box-shadow:
-      0 0  0  4px rgba(245,197,24,0.55),
-      0 0  36px rgba(245,197,24,0.35),
-      0 32px 72px rgba(0,0,0,0.95);
-  }
-
-  .hero-play-btn:focus,
-  .control-btn:focus,
-  .hero-nav:focus {
-    outline: 3px solid var(--primary);
-    outline-offset: 4px;
-    box-shadow: 0 0 0 6px rgba(229,9,20,0.22);
-  }
-
-  .section-title     { font-size: 1.9rem; }
-  .series-main-title { font-size: 2.2rem; }
-  .control-btn       { width: 62px; height: 62px; border-radius: 16px; }
-  .control-btn img   { width: 28px; height: 28px; }
-  .upload-wrapper    { max-width: 1100px; }
-  .tv-input          { font-size: 1rem; padding: 13px 16px; }
-  .filter-bar select { font-size: 0.95rem; padding: 12px 38px 12px 18px; }
-}
-
-/* ── 4K (3840px+) — 14–16 columns ── */
-@media (min-width: 3840px) {
-  html { font-size: 22px; }
-
-  .hero-banner  { max-height: 56vw; }
-  .hero-nav     { width: 80px; height: 80px; font-size: 2.8rem; }
-  .movies-page  { padding: 56px 100px 160px; }
-  .grid         { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 32px; }
-}
-
-/* ═══════════════════════════════════════════════════════════════
-   BANNER MANAGER (unchanged from original)
+   BANNER MANAGER
    ═══════════════════════════════════════════════════════════════ */
 .banner-manager .tv-title { margin-bottom: 6px; }
 .banner-subtitle { text-align: center; color: #777; font-size: clamp(0.76rem,1.1vw,0.9rem); margin: 0 0 24px; }
@@ -1250,6 +1448,7 @@ select.tv-input {
   cursor: pointer;
   transition: all 0.18s ease;
   display: flex; align-items: center; justify-content: center;
+  outline: none;
 }
 
 .count-pill:hover { border-color: #555; color: #fff; background: #222; }
@@ -1338,245 +1537,161 @@ select.tv-input {
   letter-spacing: 0.07em;
 }
 
+/* ═══════════════════════════════════════════════════════════════
+   RESPONSIVE BREAKPOINTS
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── Mobile portrait (≤ 400px) — 2 columns ── */
+@media (max-width: 400px) {
+  :root { --grid-min: calc(50% - 6px); }
+
+  .hero-banner    { max-height: none; min-height: 210px; aspect-ratio: 16 / 10; margin-top: -20px; }
+  .hero-overlay   { background: linear-gradient(to top, rgba(6,6,6,1) 0%, rgba(6,6,6,0.65) 55%, transparent 100%); }
+  .hero-content   { width: 100%; padding: 10px 12px 36px; }
+  .hero-desc      { display: none; }
+  .hero-nav       { display: none; }
+  .hero-dots      { right: 6px; bottom: 6px; }
+  .hero-dot       { width: 5px; height: 5px; }
+  .hero-dot--active { width: 16px; }
+  .movies-page    { padding: 12px 8px 100px; }
+  .grid           { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .filter-bar     { gap: 6px; }
+  .filter-bar select { padding: 8px 24px 8px 10px; font-size: 0.74rem; }
+  .section-title  { font-size: 1.1rem; }
+  .series-main-title { font-size: 1.1rem; }
+  .fixed-controls { bottom: 80px; right: 10px; gap: 8px; }
+  .control-btn    { width: 44px; height: 44px; }
+  .top-btn::before { inset: -2px; }
+  .top-btn::after  { inset: 3px; }
+  .top-arrow      { width: 22px; height: 22px; }
+  .tv-grid        { grid-template-columns: 1fr 1fr; }
+  .span-2,.span-3 { grid-column: span 2; }
+}
+
+/* ── Mobile landscape / large phone (401px – 600px) — 2 columns ── */
+@media (min-width: 401px) and (max-width: 600px) {
+  :root { --grid-min: calc(50% - 6px); }
+
+  .hero-banner  { max-height: none; min-height: 220px; aspect-ratio: 16 / 10; margin-top: -20px; }
+  .hero-overlay { background: linear-gradient(to top, rgba(6,6,6,1) 0%, rgba(6,6,6,0.66) 58%, rgba(6,6,6,0.08) 100%); }
+  .hero-content { width: 100%; padding: 10px 14px 38px; }
+  .hero-desc    { display: none; }
+  .hero-nav     { display: none; }
+  .movies-page  { padding: 14px 10px 100px; }
+  .grid         { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+  .filter-bar select { font-size: 0.76rem; }
+  .fixed-controls { bottom: 80px; right: 12px; }
+  .control-btn    { width: 46px; height: 46px; }
+}
+
+/* ── Tablet portrait (601px – 900px) — 4 columns ── */
+@media (min-width: 601px) and (max-width: 900px) {
+  :root { --grid-min: calc(25% - 8px); }
+
+  .hero-banner  { max-height: 68vw; }
+  .hero-content { width: min(480px, 65%); }
+  .movies-page  { padding: 18px 16px 100px; }
+  .grid         { grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .tv-grid      { grid-template-columns: 1fr 1fr; }
+  .span-2,.span-3 { grid-column: span 2; }
+}
+
+/* ── Small laptop (901px – 1279px) — 5–6 columns ── */
+@media (min-width: 901px) and (max-width: 1279px) {
+  :root { --grid-min: clamp(140px, 18%, 200px); }
+
+  .movies-page { padding: 22px 24px 100px; }
+  .grid        { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 14px; }
+}
+
+/* ── Desktop (1280px – 1919px) — 6 columns ── */
+@media (min-width: 1280px) and (max-width: 1919px) {
+  :root { --grid-min: clamp(140px, 12%, 190px); }
+
+  .movies-page { padding: 28px 40px 100px; }
+  .grid        { grid-template-columns: repeat(6, 1fr); gap: 16px; }
+}
+
+/* ── Full HD / TV (1920px – 3839px) ── */
+@media (min-width: 1920px) {
+  html { font-size: 18px; }
+
+  .hero-banner  { max-height: 80vh; }
+  .hero-content { width: min(760px, 46%); }
+  .hero-nav     { width: 64px; height: 64px; font-size: 2.2rem; }
+  .movies-page  { padding: clamp(28px,3vw,56px) clamp(40px,6vw,80px) 120px; }
+  .grid         { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 22px; }
+
+  .section-title     { font-size: 1.9rem; }
+  .series-main-title { font-size: 2.2rem; }
+  .control-btn       { width: 62px; height: 62px; }
+  .upload-wrapper    { max-width: 1100px; }
+  .tv-input          { font-size: 1rem; padding: 13px 16px; }
+  .filter-bar select { font-size: 0.95rem; padding: 12px 38px 12px 18px; }
+}
+
+/* ── 4K (3840px+) ── */
+@media (min-width: 3840px) {
+  html { font-size: 22px; }
+
+  .hero-banner  { max-height: 56vw; }
+  .hero-nav     { width: 80px; height: 80px; font-size: 2.8rem; }
+  .movies-page  { padding: 56px 100px 160px; }
+  .grid         { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 32px; }
+}
+
 /* ── Banner manager responsive ── */
 @media (max-width: 600px) {
   .banner-count-row { flex-direction: column; align-items: flex-start; }
   .banner-slot      { padding: 10px; gap: 9px; flex-wrap: wrap; }
 }
 
-@media (hover: none), (pointer: coarse), (max-width: 900px) {
-  .card,
-  .episode-card,
-  .card:focus,
-  .episode-card:focus,
-  .card:focus-visible,
-  .episode-card:focus-visible,
-  .card.is-collection:focus,
-  .card.is-collection:focus-visible {
-    outline: none;
-    border-color: var(--glass-border);
-    box-shadow: none;
-    transform: translateZ(0);
-  }
-
-  .card:focus img,
-  .episode-card:focus img,
-  .card:focus-visible img,
-  .episode-card:focus-visible img {
-    transform: none;
-    filter: none;
-  }
-
-  .card:focus::before,
-  .episode-card:focus::before,
-  .card:focus-visible::before,
-  .episode-card:focus-visible::before {
-    left: -65%;
-  }
-
-  .hero-play-btn:focus,
-  .hero-play-btn:focus-visible,
-  .control-btn:focus,
-  .control-btn:focus-visible,
-  .hero-nav:focus,
-  .hero-nav:focus-visible,
-  .back-btn:focus,
-  .back-btn:focus-visible {
-    outline: none;
-    box-shadow: none;
-  }
-
-  .back-btn:hover {
-    background: #1a1a1a;
-    color: #fff;
-    border-color: #2e2e2e;
-  }
-}
-
-/* TV remote focus must stay visible even in Android TV/WebView coarse-pointer mode. */
-.card:focus,
-.episode-card:focus,
-.card:focus-visible,
-.episode-card:focus-visible {
-  outline: none;
-  border-color: var(--primary);
-  box-shadow:
-    0 0  0  4px rgba(229,9,20,0.60),
-    0 0  34px rgba(229,9,20,0.45),
-    0 28px 64px rgba(0,0,0,0.92);
-  transform: translateZ(0) translateY(-10px) scale(1.055);
-  z-index: 20;
-}
-
-.card:focus img,
-.episode-card:focus img,
-.card:focus-visible img,
-.episode-card:focus-visible img {
-  transform: scale(1.07);
-  filter: brightness(1.08) saturate(1.12);
-}
-
-.card.is-collection:focus,
-.card.is-collection:focus-visible {
-  border-color: var(--gold);
-  box-shadow:
-    0 0  0  4px rgba(245,197,24,0.52),
-    0 0  34px rgba(245,197,24,0.34),
-    0 28px 64px rgba(0,0,0,0.92);
-}
-.dice-scene{
-  width:32px;
-  height:32px;
-  perspective:500px;
-}
-
-.dice{
-  width:100%;
-  height:100%;
-  position:relative;
-  transform-style:preserve-3d;
-  animation:diceSpin 10s linear infinite;
-}
-
-.face{
-  position:absolute;
-  width:32px;
-  height:32px;
-  background:#fff;
-  border-radius:4px;
-}
-
-.front{transform:translateZ(16px);}
-.back{transform:rotateY(180deg) translateZ(16px);}
-.right{transform:rotateY(90deg) translateZ(16px);}
-.left{transform:rotateY(-90deg) translateZ(16px);}
-.top{transform:rotateX(90deg) translateZ(16px);}
-.bottom{transform:rotateX(-90deg) translateZ(16px);}
-
-.dot{
-  position:absolute;
-  width:4px;
-  height:4px;
-  background:#e50914;
-  border-radius:50%;
-}
-
-.center{top:50%;left:50%;transform:translate(-50%,-50%);}
-.tl{top:5px;left:5px;}
-.tr{top:5px;right:5px;}
-.bl{bottom:5px;left:5px;}
-.br{bottom:5px;right:5px;}
-.ml{top:50%;left:5px;transform:translateY(-50%);}
-.mr{top:50%;right:5px;transform:translateY(-50%);}
-
-@keyframes diceSpin{
-  0%{
-    transform:rotateX(0deg) rotateY(0deg);
-  }
-  100%{
-    transform:rotateX(720deg) rotateY(720deg);
-  }
-}
-/* PREMIUM TOP BUTTON */
-
-.top-btn{
-    width:54px;
-    height:54px;
-
-    position:relative;
-
-    border:none;
-    cursor:pointer;
-    border-radius:50%;
-
-    background:transparent;
-
-    display:flex;
-    align-items:center;
-    justify-content:center;
-
-    opacity:0;
-    visibility:hidden;
-
-    transition:
-        opacity .35s ease,
-        transform .35s ease;
-}
-.top-btn::before{
-    content:"";
-    position:absolute;
-    inset:-3px;
-
-    border-radius:50%;
-
-    background:conic-gradient(
-        from 0deg,
-        transparent,
-        #e50914,
-        #ff5555,
-        #e50914,
-        transparent
-    );
-
-    animation:topSpin 2.5s linear infinite;
-}
-
-.top-btn::after{
-    content:"";
-    position:absolute;
-    inset:4px;
-
-    border-radius:50%;
-
-    background:#101010;
-
+/* ═══════════════════════════════════════════════════════════════
+   TV / ANDROID LARGE SCREEN OVERRIDES (1920px+)
+   ═══════════════════════════════════════════════════════════════ */
+@media (min-width: 1920px) {
+  .tv-mode .card:focus,
+  .tv-mode .card:focus-visible,
+  .tv-mode .episode-card:focus,
+  .tv-mode .episode-card:focus-visible {
     box-shadow:
-        inset 0 0 10px rgba(255,255,255,.05);
-}
+      0 0  0  5px var(--focus-ring),
+      0 0  36px var(--focus-glow),
+      0 0  70px rgba(229,9,20,0.18),
+      0 36px 80px rgba(0,0,0,0.98);
+  }
 
-.top-btn--visible{
-    opacity:1;
-    visibility:visible;
-}
-
-.top-btn:hover{
-    transform:translateY(-8px) scale(1.08);
-
+  .tv-mode .card.is-collection:focus,
+  .tv-mode .card.is-collection:focus-visible {
     box-shadow:
-        0 0 20px rgba(229,9,20,.4),
-        0 0 40px rgba(229,9,20,.25);
-}
+      0 0  0  5px var(--focus-gold-ring),
+      0 0  36px var(--focus-gold-glow),
+      0 36px 80px rgba(0,0,0,0.98);
+  }
 
-.top-btn:active{
-    transform:scale(.92);
-}
+  .android-mode .card:focus,
+  .android-mode .card:focus-visible,
+  .android-mode .episode-card:focus,
+  .android-mode .episode-card:focus-visible {
+    box-shadow:
+      0 0  0  6px rgba(229,9,20,0.75),
+      0 0  28px rgba(229,9,20,0.55),
+      0 0  56px rgba(229,9,20,0.25),
+      0 32px 64px rgba(0,0,0,1.0);
+  }
 
-.top-arrow{
-    position:relative;
-    z-index:2;
+  .tv-mode .hero-play-btn:focus,
+  .android-mode .hero-play-btn:focus,
+  .tv-mode .hero-nav:focus,
+  .android-mode .hero-nav:focus {
+    outline: 4px solid var(--primary);
+    outline-offset: 5px;
+    box-shadow: 0 0 0 8px rgba(229,9,20,0.22);
+  }
 
-    width:28px;
-    height:28px;
-
-    animation:arrowFloat 1.8s ease-in-out infinite;
-
-    filter:drop-shadow(0 0 8px rgba(255,255,255,.5));
-}
-
-@keyframes topSpin{
-    from{
-        transform:rotate(0deg);
-    }
-    to{
-        transform:rotate(360deg);
-    }
-}
-
-@keyframes arrowFloat{
-    0%,100%{
-        transform:translateY(2px);
-    }
-    50%{
-        transform:translateY(-4px);
-    }
+  .tv-mode .filter-bar select:focus,
+  .android-mode .filter-bar select:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 4px rgba(229,9,20,0.35);
+  }
 }

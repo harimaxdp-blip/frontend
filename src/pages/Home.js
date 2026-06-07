@@ -11,9 +11,6 @@ import { db } from "../firebase";
 import { collection, onSnapshot } from "firebase/firestore";
 import DeviceControl from "../plugins/deviceControl";
 import "./Movies.css";
-/*import banner1 from "../assets/banner1.png";
-import banner2 from "../assets/banner2.png";
-import banner3 from "../assets/banner3.png";*/
 import noResultsAll    from "../assets/no-results-all.png";
 import noResultsMovie  from "../assets/no-results-movie.png";
 import noResultsSeries from "../assets/no-results-series.png";
@@ -97,6 +94,59 @@ function triggerRipple(e, el) {
   setTimeout(() => span.remove(), 650);
 }
 
+// ─── Get createdAt as sortable ms number ─────────────────────────────────────
+function getCreatedAt(item) {
+  if (!item.createdAt) return 0;
+  if (typeof item.createdAt.toMillis === "function") return item.createdAt.toMillis();
+  if (item.createdAt instanceof Date) return item.createdAt.getTime();
+  if (typeof item.createdAt === "number") return item.createdAt;
+  if (item.createdAt.seconds != null) return item.createdAt.seconds * 1000;
+  return 0;
+}
+
+// ─── Primary sort: Year DESC → createdAt DESC within same year ───────────────
+function sortByYearThenCreatedAt(a, b) {
+  const yearA = parseInt(a.year) || 0;
+  const yearB = parseInt(b.year) || 0;
+  if (yearB !== yearA) return yearB - yearA;
+  return getCreatedAt(b) - getCreatedAt(a);
+}
+
+function groupSortKey(items) {
+  return {
+    year:      Math.max(...items.map((m) => parseInt(m.year) || 0)),
+    createdAt: Math.max(...items.map(getCreatedAt)),
+  };
+}
+
+function sortGroups(a, b) {
+  const ka = groupSortKey(a[1]);
+  const kb = groupSortKey(b[1]);
+  if (kb.year !== ka.year) return kb.year - ka.year;
+  return kb.createdAt - ka.createdAt;
+}
+
+// ─── Poster image with loading shimmer ───────────────────────────────────────
+const PosterImg = React.memo(function PosterImg({ src, alt, ...props }) {
+  const [loaded, setLoaded] = useState(false);
+  const [error,  setError]  = useState(false);
+  const finalSrc = error || !src ? POSTER_FALLBACK : src;
+
+  return (
+    <div className="poster-wrap">
+      {!loaded && <div className="poster-shimmer" aria-hidden="true" />}
+      <img
+        src={finalSrc}
+        alt={alt}
+        className={`poster-img ${loaded ? "poster-img--loaded" : "poster-img--loading"}`}
+        onLoad={() => setLoaded(true)}
+        onError={() => { setError(true); setLoaded(true); }}
+        {...props}
+      />
+    </div>
+  );
+});
+
 // ─── Sub-components ───────────────────────────────────────────────────────────
 const SkeletonCard = React.memo(function SkeletonCard() {
   return (
@@ -127,41 +177,6 @@ const NoResults = React.memo(function NoResults({ img }) {
     </div>
   );
 });
-
-// ─── Advertisement Banner Component ──────────────────────────────────────────
-/*const AdBanner = React.memo(function AdBanner({ ad }) {
-  if (!ad || !ad.imageUrl || ad.active === false) return null;
-
-  const handleClick = () => {
-    if (ad.linkUrl?.trim()) {
-      window.open(ad.linkUrl.trim(), "_blank", "noopener,noreferrer");
-    }
-  };
-
-  return (
-    <div
-      className={`ad-banner-display ${ad.linkUrl?.trim() ? "ad-banner-display--clickable" : ""}`}
-      onClick={ad.linkUrl?.trim() ? handleClick : undefined}
-      role={ad.linkUrl?.trim() ? "link" : "img"}
-      aria-label={ad.label || "Advertisement"}
-      tabIndex={ad.linkUrl?.trim() ? 0 : -1}
-      onKeyDown={(e) => {
-        if (ad.linkUrl?.trim() && (e.key === "Enter" || e.key === " ")) {
-          e.preventDefault(); handleClick();
-        }
-      }}
-    >
-      <img src={ad.imageUrl} alt={ad.label || "Advertisement"} className="ad-banner-img"
-        onError={(e) => { e.currentTarget.closest(".ad-banner-display").style.display = "none"; }} />
-      <div className="ad-banner-label">AD</div>
-      {ad.linkUrl?.trim() && (
-        <div className="ad-banner-overlay">
-          <span className="ad-banner-cta">Visit →</span>
-        </div>
-      )}
-    </div>
-  );
-});*/
 
 // ─── Hero Banner ──────────────────────────────────────────────────────────────
 const HeroBanner = React.memo(function HeroBanner({ banners, onPlay }) {
@@ -234,9 +249,16 @@ const HeroBanner = React.memo(function HeroBanner({ banners, onPlay }) {
     if (e.key === "ArrowRight") { next(); resetTimer(); }
   }, [prev, next, resetTimer]);
 
+  // Reset to first slide whenever the banners list changes (tab switch)
+  useEffect(() => {
+    setCurrent(0);
+  }, [banners]);
+
   if (!banners || banners.length === 0) return null;
   const banner = banners?.[current];
   if (!banner) return null;
+
+  const isAd = banner.description === "For Adevertiment Call";
 
   return (
     <div
@@ -253,15 +275,15 @@ const HeroBanner = React.memo(function HeroBanner({ banners, onPlay }) {
         className={`hero-bg ${isTransitioning ? "hero-bg--out" : "hero-bg--in"}`}
         style={{ backgroundImage: `url(${banner.image || banner.imageUrl})` }}
       />
-     {banner.description !== "For Adevertiment Call" && (
-  <div className="hero-overlay" />
-)}
+
+      {!isAd && <div className="hero-overlay" />}
+
       <div className={`hero-content ${isTransitioning ? "hero-content--out" : "hero-content--in"}`}>
         {banner.logo
           ? <img src={banner.logo} alt={banner.title} className="hero-logo" />
           : <h1 className="hero-title">{banner.title}</h1>
         }
-        {banner.description && <p className="hero-desc">{banner.description}</p>}
+        {banner.description && !isAd && <p className="hero-desc">{banner.description}</p>}
         <div className="hero-meta">
           {banner.year     && <span className="hero-tag">{banner.year}</span>}
           {banner.language && <span className="hero-tag">{banner.language.toUpperCase()}</span>}
@@ -317,8 +339,7 @@ const FocusCard = React.forwardRef(function FocusCard(
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function Home({ type = "all" }) {
   const [movies, setMovies]             = useState([]);
-  const [banners, setBanners]           = useState([]);
-//  const [ads, setAds]                   = useState([]);       // ← NEW
+  const [allBanners, setAllBanners]     = useState([]); // ← store ALL banners once
   const [isDataLoaded, setIsDataLoaded] = useState(false);
   const handleGridKeyDown = useSpatialNav();
 
@@ -331,8 +352,8 @@ export default function Home({ type = "all" }) {
   const [voiceHint, setVoiceHint]           = useState("");
   const [voiceError, setVoiceError]         = useState("");
 
-  const [showUpBtn, setShowUpBtn]   = useState(false);
-  const [viewStack, setViewStack]   = useState([{ kind: "home" }]);
+  const [showUpBtn, setShowUpBtn]         = useState(false);
+  const [viewStack, setViewStack]         = useState([{ kind: "home" }]);
   const [playerLoading, setPlayerLoading] = useState(null);
   const navigate         = useNavigate();
   const savedScrollMap   = useRef({});
@@ -364,6 +385,16 @@ export default function Home({ type = "all" }) {
     (a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }), []
   );
 
+  useEffect(() => {
+    const ua = navigator.userAgent;
+    const isTV      = /tv|android tv|googletv|smarttv/i.test(ua);
+    const isAndroid = /android tv|googletv/i.test(ua) ||
+                      (/android/i.test(ua) && /tv/i.test(ua));
+    document.body.classList.remove("tv-mode", "android-mode");
+    if (isAndroid) { document.body.classList.add("android-mode", "tv-mode"); }
+    else if (isTV) { document.body.classList.add("tv-mode"); }
+  }, []);
+
   // ─── Firestore ───────────────────────────────────────────────────────────────
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "movies"), (snap) => {
@@ -373,17 +404,16 @@ export default function Home({ type = "all" }) {
     return () => unsub();
   }, []);
 
-  // ── NEW: Load ads ────────────────────────────────────────────────────────────
- /* useEffect(() => {
-    const unsub = onSnapshot(collection(db, "ads"), (snap) => {
-      const data = snap.docs
-        .map((d) => ({ id: d.id, ...d.data() }))
-        .filter((a) => a.active !== false && a.imageUrl?.trim())
-        .sort((a, b) => (a.order || 0) - (b.order || 0));
-      setAds(data);
+  // ─── Fetch ALL banners once, filter client-side per tab ──────────────────────
+  // FIX: Previously a new Firestore listener was created per tab change.
+  // Now we fetch once and derive filtered banners via useMemo → banners always
+  // update instantly when `type` changes, no extra listener needed.
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, "banners"), (snap) => {
+      setAllBanners(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
     });
     return () => unsub();
-  }, []);*/
+  }, []); // ← runs only once
 
   // ─── Type helpers ────────────────────────────────────────────────────────────
   const isMovieType  = useCallback((t) => ["movie", "movies"].includes(normalize(t)), [normalize]);
@@ -391,146 +421,133 @@ export default function Home({ type = "all" }) {
   const isAnimeType  = useCallback((t) => normalize(t) === "anime", [normalize]);
   const isAnimeGenre = useCallback((item) => normalize(item?.genre) === "anime", [normalize]);
 
-  const bannerMatchesTab = useCallback((banner) => {
-    if (banner.active === false) return false;
-    if (!banner.image && !banner.imageUrl) return false;
-    const description = normalize(banner.description);
-    const title = normalize(banner.title);
-    if (description.includes("advertisement") || description.includes("adevertiment") || title === "ad") return false;
+  // ─── Derive filtered banners from allBanners + current type (pure memo) ──────
+  const banners = useMemo(() => {
+    return allBanners
+      .filter((banner) => {
+        if (banner.active === false) return false;
+        if (!banner.image && !banner.imageUrl) return false;
 
-    const bannerType = normalize(banner.bannerType);
-    const movieRef = banner.movieRef || {};
+        const descNorm  = normalize(banner.description || "");
+        const titleNorm = normalize(banner.title || "");
+        if (
+          descNorm.includes("advertisement") ||
+          descNorm.includes("adevertiment")  ||
+          titleNorm === "ad"
+        ) return false;
 
-    if (type === "movie") {
-      if (bannerType) return bannerType === "movie";
-      return isMovieType(movieRef.type) && !isAnimeGenre(movieRef);
-    }
+        const bannerType = normalize(banner.bannerType || "");
+        const movieRef   = banner.movieRef || {};
 
-    if (type === "series") {
-      if (bannerType) return ["series", "tv", "show"].includes(bannerType);
-      return isSeriesType(movieRef.type) && !isAnimeGenre(movieRef);
-    }
-
-    if (type === "anime") {
-      if (bannerType) return bannerType === "anime";
-      return isAnimeType(movieRef.type) || isAnimeGenre(movieRef) || normalize(banner.genre) === "anime";
-    }
-
-    return true;
-  }, [isAnimeGenre, isAnimeType, isMovieType, isSeriesType, normalize, type]);
-
-  useEffect(() => {
-    const unsub = onSnapshot(collection(db, "banners"), (snap) => {
-      const data = snap.docs
-        .map((d) => ({ id: d.id, ...d.data() }))
-        .filter(bannerMatchesTab)
-        .sort((a, b) => (a.order || 0) - (b.order || 0));
-      setBanners(data);
-    });
-    return () => unsub();
-  }, [bannerMatchesTab]);
+        if (type === "movie") {
+          if (bannerType) return bannerType === "movie" && bannerType !== "anime";
+          return isMovieType(movieRef.type) && !isAnimeGenre(movieRef) && !isAnimeType(movieRef.type);
+        }
+        if (type === "series") {
+          if (bannerType) return ["series", "tv", "show"].includes(bannerType) && bannerType !== "anime";
+          return isSeriesType(movieRef.type) && !isAnimeGenre(movieRef);
+        }
+        if (type === "anime") {
+          if (bannerType) return bannerType === "anime";
+          return (
+            isAnimeType(movieRef.type) ||
+            isAnimeGenre(movieRef)     ||
+            normalize(banner.genre) === "anime"
+          );
+        }
+        // "all" → everything
+        return true;
+      })
+      .sort((a, b) => (a.order || 0) - (b.order || 0));
+  }, [allBanners, type, normalize, isMovieType, isSeriesType, isAnimeType, isAnimeGenre]);
 
   const matchesTab = useCallback((item) => {
     const clean = normalize(item.type);
     if (type === "all")    return true;
-    if (type === "movie")  return ["movie", "movies"].includes(clean);
-    if (type === "series") return ["series", "tv", "show"].includes(clean);
+    if (type === "movie")  return ["movie", "movies"].includes(clean) && !isAnimeGenre(item);
+    if (type === "series") return ["series", "tv", "show"].includes(clean) && !isAnimeGenre(item);
     if (type === "anime")  return clean === "anime" || isAnimeGenre(item);
     return true;
   }, [type, normalize, isAnimeGenre]);
-const isSimilar = (title, query) => {
-  title = String(title || "").toLowerCase();
-  query = String(query || "").toLowerCase();
 
-  let matches = 0;
+  const isSimilar = (title, query) => {
+    title = String(title || "").toLowerCase();
+    query = String(query || "").toLowerCase();
+    let matches = 0;
+    for (const char of query) { if (title.includes(char)) matches++; }
+    return matches / query.length > 0.7;
+  };
 
-  for (const char of query) {
-    if (title.includes(char)) matches++;
-  }
-
-  return matches / query.length > 0.7;
-};
   const passesFilters = useCallback((item, titleField = "title") => {
     const matchLang   = languageFilter === "all" || normalize(item.language) === normalize(languageFilter);
     const matchGen    = genreFilter    === "all" || normalize(item.genre)    === normalize(genreFilter);
     const matchYear   = yearFilter     === "all" || String(item.year)        === String(yearFilter);
-const query = normalize(search);
-const title = normalize(item[titleField] || item.title);
-
-const matchSearch =
-  !query ||
-  title.includes(query) ||
-  isSimilar(title, query);
+    const query       = normalize(search);
+    const title       = normalize(item[titleField] || item.title);
+    const matchSearch = !query || title.includes(query) || isSimilar(title, query);
     return matchLang && matchGen && matchYear && matchSearch;
   }, [languageFilter, genreFilter, yearFilter, search, normalize]);
 
-const searchScore = useCallback((title, query) => {
-  const t = normalize(title);
-  const q = normalize(query);
+  const searchScore = useCallback((title, query) => {
+    const t = normalize(title);
+    const q = normalize(query);
+    if (!q) return 0;
+    if (t === q)                                      return 10000;
+    if (t.startsWith(q))                              return 9000;
+    if (t.split(" ").some(w => w.startsWith(q)))      return 8000;
+    if (t.includes(q))                                return 7000;
+    let score = 0;
+    for (const char of q) { if (t.includes(char)) score++; }
+    return score;
+  }, [normalize]);
 
-  if (!q) return 0;
-
-  // exact title
-  if (t === q) return 10000;
-
-  // starts with search
-  if (t.startsWith(q)) return 9000;
-
-  // any word starts with search
-  if (t.split(" ").some(word => word.startsWith(q))) return 8000;
-
-  // contains search
-  if (t.includes(q)) return 7000;
-
-  // fuzzy match
-  let score = 0;
-  for (const char of q) {
-    if (t.includes(char)) score++;
-  }
-
-  return score;
-}, [normalize]);
-
-  // ─── Data groups ──────────────────────────────────────────────────────────────
+  // ─── Movie groups ─────────────────────────────────────────────────────────────
   const movieGroups = useMemo(() => {
     const filtered = movies.filter(
       (item) => isMovieType(item.type) && !isAnimeGenre(item) && matchesTab(item) && passesFilters(item)
     );
     const groups = {};
     filtered.forEach((m) => {
-      const base = m.collectionTitle?.trim() || m.title.split(/\s*[-–—]\s*\d|\d+/)[0].trim() || m.title;
+      const base = m.collectionTitle?.trim() ||
+        m.title.split(/\s*[-–—]\s*\d|\d+/)[0].trim() || m.title;
       if (!groups[base]) groups[base] = [];
       groups[base].push(m);
     });
     return Object.entries(groups)
       .sort((a, b) => {
-        const sa = searchScore(a[0], search), sb = searchScore(b[0], search);
-        if (sb !== sa) return sb - sa;
-        const la = Math.max(...a[1].map((m) => parseInt(m.year) || 0));
-        const lb = Math.max(...b[1].map((m) => parseInt(m.year) || 0));
-        if (lb !== la) return lb - la;
-        return a[0].localeCompare(b[0], undefined, { sensitivity: "base" });
+        if (search) {
+          const sa = searchScore(a[0], search), sb = searchScore(b[0], search);
+          if (sb !== sa) return sb - sa;
+        }
+        return sortGroups(a, b);
       })
-      .map(([name, items]) => [name, [...items].sort((a, b) => naturalSort(a.title, b.title))]);
-  }, [movies, isMovieType, isAnimeGenre, matchesTab, passesFilters, naturalSort, search, searchScore]);
+      .map(([name, items]) => [name, [...items].sort(sortByYearThenCreatedAt)]);
+  }, [movies, isMovieType, isAnimeGenre, matchesTab, passesFilters, search, searchScore]);
 
+  // ─── Series groups ────────────────────────────────────────────────────────────
   const seriesGroups = useMemo(() => {
     const filtered = movies.filter(
-      (item) => isSeriesType(item.type) && matchesTab(item) && passesFilters(item, "seriesTitle")
+      (item) => isSeriesType(item.type) && !isAnimeGenre(item) && matchesTab(item) && passesFilters(item, "seriesTitle")
     );
     const groups = {};
     filtered.forEach((item) => {
       const title  = item.seriesTitle || item.title || "Unknown Series";
       const season = item.season || "1";
-      if (!groups[title]) groups[title] = { seasons: {}, latestYear: 0 };
+      if (!groups[title]) groups[title] = { seasons: {}, maxYear: 0, maxCreatedAt: 0 };
       const yr = parseInt(item.year) || 0;
-      if (yr > groups[title].latestYear) groups[title].latestYear = yr;
+      const ca = getCreatedAt(item);
+      if (yr > groups[title].maxYear) groups[title].maxYear = yr;
+      if (ca > groups[title].maxCreatedAt) groups[title].maxCreatedAt = ca;
       if (!groups[title].seasons[season]) groups[title].seasons[season] = [];
       groups[title].seasons[season].push(item);
     });
-    return Object.entries(groups).sort((a, b) => b[1].latestYear - a[1].latestYear);
-  }, [movies, isSeriesType, matchesTab, passesFilters]);
+    return Object.entries(groups).sort((a, b) => {
+      if (b[1].maxYear !== a[1].maxYear) return b[1].maxYear - a[1].maxYear;
+      return b[1].maxCreatedAt - a[1].maxCreatedAt;
+    });
+  }, [movies, isSeriesType, isAnimeGenre, matchesTab, passesFilters]);
 
+  // ─── Anime movie groups ───────────────────────────────────────────────────────
   const animeMovieGroups = useMemo(() => {
     const hasNoEpisode = (ep) => ep === undefined || ep === null || ep === "" || ep === 0 || ep === "0";
     const filtered = movies.filter(
@@ -538,22 +555,23 @@ const searchScore = useCallback((title, query) => {
     );
     const groups = {};
     filtered.forEach((m) => {
-      const base = m.collectionTitle?.trim() || m.title.split(/\s*[-–—]\s*\d|\d+/)[0].trim() || m.title;
+      const base = m.collectionTitle?.trim() ||
+        m.title.split(/\s*[-–—]\s*\d|\d+/)[0].trim() || m.title;
       if (!groups[base]) groups[base] = [];
       groups[base].push(m);
     });
     return Object.entries(groups)
       .sort((a, b) => {
-        const sa = searchScore(a[0], search), sb = searchScore(b[0], search);
-        if (sb !== sa) return sb - sa;
-        const la = Math.max(...a[1].map((m) => parseInt(m.year) || 0));
-        const lb = Math.max(...b[1].map((m) => parseInt(m.year) || 0));
-        if (lb !== la) return lb - la;
-        return a[0].localeCompare(b[0], undefined, { sensitivity: "base" });
+        if (search) {
+          const sa = searchScore(a[0], search), sb = searchScore(b[0], search);
+          if (sb !== sa) return sb - sa;
+        }
+        return sortGroups(a, b);
       })
-      .map(([name, items]) => [name, [...items].sort((a, b) => naturalSort(a.title, b.title))]);
-  }, [movies, isAnimeType, isAnimeGenre, passesFilters, naturalSort, search, searchScore]);
+      .map(([name, items]) => [name, [...items].sort(sortByYearThenCreatedAt)]);
+  }, [movies, isAnimeType, isAnimeGenre, passesFilters, search, searchScore]);
 
+  // ─── Anime series groups ──────────────────────────────────────────────────────
   const animeSeriesGroups = useMemo(() => {
     const hasEpisode = (ep) => ep !== undefined && ep !== null && ep !== "" && ep !== 0 && ep !== "0";
     const filtered = movies.filter(
@@ -563,16 +581,21 @@ const searchScore = useCallback((title, query) => {
     filtered.forEach((item) => {
       const title  = item.seriesTitle || item.title || "Unknown Series";
       const season = item.season || "1";
-      if (!groups[title]) groups[title] = { seasons: {}, latestYear: 0 };
+      if (!groups[title]) groups[title] = { seasons: {}, maxYear: 0, maxCreatedAt: 0 };
       const yr = parseInt(item.year) || 0;
-      if (yr > groups[title].latestYear) groups[title].latestYear = yr;
+      const ca = getCreatedAt(item);
+      if (yr > groups[title].maxYear) groups[title].maxYear = yr;
+      if (ca > groups[title].maxCreatedAt) groups[title].maxCreatedAt = ca;
       if (!groups[title].seasons[season]) groups[title].seasons[season] = [];
       groups[title].seasons[season].push(item);
     });
-    return Object.entries(groups).sort((a, b) => b[1].latestYear - a[1].latestYear);
+    return Object.entries(groups).sort((a, b) => {
+      if (b[1].maxYear !== a[1].maxYear) return b[1].maxYear - a[1].maxYear;
+      return b[1].maxCreatedAt - a[1].maxCreatedAt;
+    });
   }, [movies, isAnimeType, isAnimeGenre, passesFilters]);
 
-  // ─── Navigation system ───────────────────────────────────────────────────────
+  // ─── Navigation system ────────────────────────────────────────────────────────
   const saveCurrentState = useCallback(() => {
     const id = navIdRef.current;
     savedScrollMap.current[id] = getPageScrollY();
@@ -598,8 +621,8 @@ const searchScore = useCallback((title, query) => {
   useLayoutEffect(() => {
     if (!isNavigatingBack.current) return;
     isNavigatingBack.current = false;
-    const state   = window.history.state;
-    const id      = state?.id ?? 0;
+    const state  = window.history.state;
+    const id     = state?.id ?? 0;
     navIdRef.current = id;
     const targetY = savedScrollMap.current[id] ?? 0;
     const focusId = ss.get(`focus_${id}`);
@@ -631,7 +654,8 @@ const searchScore = useCallback((title, query) => {
     const savedState = ss.getJSON("ott_nav_state");
     if (!savedState) return;
     ss.del("ott_nav_state");
-    const { kind, collectionName, seriesTitle, seasonNum, scrollY, focusId, parentScrollY, parentFocusId, filters } = savedState;
+    const { kind, collectionName, seriesTitle, seasonNum, scrollY, focusId,
+            parentScrollY, parentFocusId, filters } = savedState;
     if (filters) {
       try {
         if (filters.language !== undefined) setLanguageFilter(filters.language);
@@ -641,7 +665,8 @@ const searchScore = useCallback((title, query) => {
       } catch {}
     }
     if (kind === "collection" && collectionName) {
-      const group = movieGroups.find(([n]) => n === collectionName) || animeMovieGroups.find(([n]) => n === collectionName);
+      const group = movieGroups.find(([n]) => n === collectionName) ||
+                    animeMovieGroups.find(([n]) => n === collectionName);
       if (group) {
         const id = nextNavId();
         navIdRef.current = id;
@@ -684,6 +709,8 @@ const searchScore = useCallback((title, query) => {
   useEffect(() => {
     if (!isDataLoaded) return;
     requestAnimationFrame(() => {
+      const isTV = document.body.classList.contains("tv-mode");
+      if (!isTV) return;
       if (document.activeElement !== document.body) return;
       const firstCard = document.querySelector("[data-card-id]");
       if (firstCard) firstCard.focus({ preventScroll: true });
@@ -700,20 +727,28 @@ const searchScore = useCallback((title, query) => {
 
   // ─── Actions ──────────────────────────────────────────────────────────────────
   const handleOpenCollection = useCallback((name, items) => {
-    pushView({ kind: "collection", data: { name, items, parentScrollY: getPageScrollY(), parentFocusId: document.activeElement?.dataset?.cardId || null } });
+    pushView({ kind: "collection", data: {
+      name, items,
+      parentScrollY:  getPageScrollY(),
+      parentFocusId:  document.activeElement?.dataset?.cardId || null,
+    }});
   }, [pushView]);
 
   const handleOpenSeason = useCallback((seriesTitle, seasonNum, episodes) => {
-    pushView({ kind: "season", data: { seriesTitle, seasonNum, episodes, parentScrollY: getPageScrollY(), parentFocusId: document.activeElement?.dataset?.cardId || null } });
+    pushView({ kind: "season", data: {
+      seriesTitle, seasonNum, episodes,
+      parentScrollY:  getPageScrollY(),
+      parentFocusId:  document.activeElement?.dataset?.cardId || null,
+    }});
   }, [pushView]);
 
   const playMovie = useCallback((movie, playlist = null, currentIndex = 0) => {
     setPlayerLoading(movie.title);
     const navState = {
       kind:           currentView.kind,
-      collectionName: currentView.kind === "collection" ? currentView.data?.name        : null,
-      seriesTitle:    currentView.kind === "season"     ? currentView.data?.seriesTitle  : null,
-      seasonNum:      currentView.kind === "season"     ? currentView.data?.seasonNum    : null,
+      collectionName: currentView.kind === "collection" ? currentView.data?.name       : null,
+      seriesTitle:    currentView.kind === "season"     ? currentView.data?.seriesTitle : null,
+      seasonNum:      currentView.kind === "season"     ? currentView.data?.seasonNum   : null,
       parentScrollY:  currentView.data?.parentScrollY ?? null,
       parentFocusId:  currentView.data?.parentFocusId ?? null,
       scrollY:        getPageScrollY(),
@@ -722,182 +757,88 @@ const searchScore = useCallback((title, query) => {
     };
     ss.setJSON("ott_nav_state", navState);
     setTimeout(() => {
-  navigate("/player", {
-    state: { movie, playlist, currentIndex }
-  });
-}, 700);
+      navigate("/player", { state: { movie, playlist, currentIndex } });
+    }, 700);
   }, [navigate, currentView, languageFilter, genreFilter, yearFilter, search]);
 
+  // ─── Voice search ─────────────────────────────────────────────────────────────
   const requestMicrophonePermission = useCallback(async () => {
     setVoiceError("");
-
-    // First, try native Capacitor permission if available (Android inside WebView)
-    if (typeof DeviceControl?.requestMicrophonePermissionNative === 'function') {
+    if (typeof DeviceControl?.requestMicrophonePermissionNative === "function") {
       try {
         const nativeGranted = await DeviceControl.requestMicrophonePermissionNative();
         if (nativeGranted) return true;
-      } catch (nativeErr) {
-        console.warn("Native microphone permission request failed", nativeErr);
-      }
+      } catch {}
     }
-
-    // Fallback to browser-based permission request
-    if (!navigator.mediaDevices?.getUserMedia) {
-      return true;
-    }
-
+    if (!navigator.mediaDevices?.getUserMedia) return true;
     const queryPermission = async () => {
-      try {
-        const status = await navigator.permissions.query({ name: "microphone" });
-        return status.state;
-      } catch (err) {
-        return null;
-      }
+      try { const s = await navigator.permissions.query({ name: "microphone" }); return s.state; }
+      catch { return null; }
     };
-
     const currentState = await queryPermission();
-    if (currentState === "granted") {
-      return true;
-    }
-    if (currentState === "denied") {
-      return false;
-    }
-
+    if (currentState === "granted") return true;
+    if (currentState === "denied")  return false;
     let stream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
       return true;
-    } catch (err) {
-      console.warn("MediaDevices mic permission denied", err);
-      return false;
-    } finally {
-      if (stream) {
-        stream.getTracks().forEach((track) => track.stop());
-      }
-    }
+    } catch { return false; }
+    finally { if (stream) stream.getTracks().forEach((t) => t.stop()); }
   }, []);
 
   const stopVoiceRecognition = useCallback(() => {
     const rec = recognitionRef.current;
     if (rec) {
-      try {
-        rec.onresult = null;
-        rec.onend = null;
-        rec.onerror = null;
-        rec.stop();
-      } catch (err) {
-        console.warn("Error stopping recognition", err);
-      }
+      try { rec.onresult = null; rec.onend = null; rec.onerror = null; rec.stop(); } catch {}
       recognitionRef.current = null;
     }
-
-    if (silenceTimerRef.current) {
-      clearTimeout(silenceTimerRef.current);
-      silenceTimerRef.current = null;
-    }
-
-    setIsListening(false);
-    setIsProcessing(false);
-    setVoiceHint("");
+    if (silenceTimerRef.current) { clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null; }
+    setIsListening(false); setIsProcessing(false); setVoiceHint("");
   }, []);
 
   const scheduleSilenceStop = useCallback(() => {
-    if (silenceTimerRef.current) {
-      clearTimeout(silenceTimerRef.current);
-    }
-    silenceTimerRef.current = window.setTimeout(() => {
-      stopVoiceRecognition();
-    }, 1600);
+    if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+    silenceTimerRef.current = window.setTimeout(() => stopVoiceRecognition(), 1600);
   }, [stopVoiceRecognition]);
 
   const startVoiceSearch = useCallback(async () => {
     const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRec) {
-      setVoiceError("Voice search isn't supported in this browser.");
-      return;
-    }
-
-    if (recognitionRef.current) {
-      stopVoiceRecognition();
-      return;
-    }
-
+    if (!SpeechRec) { setVoiceError("Voice search isn't supported in this browser."); return; }
+    if (recognitionRef.current) { stopVoiceRecognition(); return; }
     const granted = await requestMicrophonePermission();
-    if (!granted) {
-      setVoiceError("Microphone access is required for voice search.");
-      return;
-    }
-
+    if (!granted) { setVoiceError("Microphone access is required for voice search."); return; }
     const rec = new SpeechRec();
     recognitionRef.current = rec;
-    rec.continuous = false;
-    rec.interimResults = true;
+    rec.continuous = false; rec.interimResults = true;
     const browserLang = navigator.language || "en-US";
     rec.lang = browserLang.startsWith("ta") ? "ta-IN" : browserLang.startsWith("en") ? browserLang : "en-US";
-
-    rec.onstart = () => {
-      setIsListening(true);
-      setIsProcessing(false);
-      setVoiceHint("Listening...");
-      setVoiceError("");
-    };
-
+    rec.onstart  = () => { setIsListening(true); setIsProcessing(false); setVoiceHint("Listening..."); setVoiceError(""); };
     rec.onresult = (event) => {
-      let interimTranscript = "";
-      let finalTranscript = "";
-
-      for (let i = event.resultIndex; i < event.results.length; i += 1) {
-        const transcript = event.results[i][0]?.transcript || "";
-        if (event.results[i].isFinal) {
-          finalTranscript += transcript;
-        } else {
-          interimTranscript += transcript;
-        }
+      let interim = "", final = "";
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const t = event.results[i][0]?.transcript || "";
+        if (event.results[i].isFinal) final += t; else interim += t;
       }
-
-      const nextText = (finalTranscript || interimTranscript).trim();
-      if (nextText) {
-        setSearch(nextText);
-      }
-
-      if (finalTranscript) {
-        setIsProcessing(true);
-        setVoiceHint("Processing...");
-      } else {
-        setIsProcessing(false);
-        setVoiceHint("Listening...");
-      }
-
+      const text = (final || interim).trim();
+      if (text) setSearch(text);
+      if (final) { setIsProcessing(true); setVoiceHint("Processing..."); }
+      else        { setIsProcessing(false); setVoiceHint("Listening..."); }
       scheduleSilenceStop();
     };
-
     rec.onerror = (event) => {
-      const message = event.error === "not-allowed" || event.error === "service-not-allowed"
-        ? "Microphone permission denied. Please enable microphone access."
-        : "Voice recognition failed. Please try again.";
-      setVoiceError(message);
+      setVoiceError(
+        event.error === "not-allowed" || event.error === "service-not-allowed"
+          ? "Microphone permission denied. Please enable microphone access."
+          : "Voice recognition failed. Please try again."
+      );
       stopVoiceRecognition();
     };
-
-    rec.onend = () => {
-      setIsListening(false);
-      setIsProcessing(false);
-      setVoiceHint("");
-      recognitionRef.current = null;
-    };
-
-    try {
-      rec.start();
-    } catch (err) {
-      console.warn("Unable to start voice recognition", err);
-      setVoiceError("Unable to start voice recognition. Please try again.");
-      stopVoiceRecognition();
-    }
+    rec.onend = () => { setIsListening(false); setIsProcessing(false); setVoiceHint(""); recognitionRef.current = null; };
+    try { rec.start(); }
+    catch { setVoiceError("Unable to start voice recognition. Please try again."); stopVoiceRecognition(); }
   }, [requestMicrophonePermission, scheduleSilenceStop, stopVoiceRecognition]);
 
-  useEffect(() => {
-    return () => stopVoiceRecognition();
-  }, [stopVoiceRecognition]);
+  useEffect(() => () => stopVoiceRecognition(), [stopVoiceRecognition]);
 
   const handleClick = (e, action) => {
     restoreScrollToken += 1;
@@ -930,7 +871,7 @@ const searchScore = useCallback((title, query) => {
 
   const cardId = (prefix, id) => `${prefix}_${id}`;
 
-  // ─── Render: movie/anime-movie grid ───────────────────────────────────────────
+  // ─── Render: movie / anime-movie grid ────────────────────────────────────────
   const renderMovieGrid = (groups, prefix = "m") =>
     groups.map(([name, items], i) => {
       const cid = cardId(prefix, items[0].id);
@@ -946,8 +887,7 @@ const searchScore = useCallback((title, query) => {
             )
           }
         >
-          <img src={items[0].img || POSTER_FALLBACK} alt={name}
-            loading="eager" fetchPriority="high" decoding="sync" />
+          <PosterImg src={items[0].img} alt={name} loading="eager" fetchPriority="high" />
           {items.length > 1 && <div className="collection-badge">{items.length} Parts</div>}
           <div className="card-info">
             <h3>{items.length > 1 ? `${name} (Collection)` : items[0].title}</h3>
@@ -970,9 +910,9 @@ const searchScore = useCallback((title, query) => {
             const cid      = cardId(`s_${seriesTitle}`, sNum);
             return (
               <FocusCard key={sNum} className="card is-collection season-card" style={{ "--i": i }}
-                data-card-id={cid} onClick={(e) => handleClick(e, () => handleOpenSeason(seriesTitle, sNum, eps))}>
-                <img src={coverImg} alt={`Season ${sNum}`} loading="eager" decoding="async"
-                  onError={(e) => { e.currentTarget.src = POSTER_FALLBACK; }} />
+                data-card-id={cid}
+                onClick={(e) => handleClick(e, () => handleOpenSeason(seriesTitle, sNum, eps))}>
+                <PosterImg src={coverImg} alt={`Season ${sNum}`} />
                 <div className="collection-badge">{total} Ep{total !== 1 ? "s" : ""}</div>
                 <div className="card-info">
                   <h3>Season {sNum}</h3>
@@ -1005,7 +945,7 @@ const searchScore = useCallback((title, query) => {
         </button>
       </div>
 
-      {/* Hero banner */}
+      {/* Hero banner — shown on home view for ALL tabs as long as banners exist */}
       {currentView.kind === "home" && banners.length > 0 && (
         <HeroBanner banners={banners} onPlay={playMovie} />
       )}
@@ -1018,17 +958,12 @@ const searchScore = useCallback((title, query) => {
             className="search-input"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.target.blur(); // closes Android keyboard
-              }
-            }}
+            onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); }}
             placeholder={isListening ? "Listening…" : "Search movies, series, anime…"}
             aria-label="Search content"
             type="search"
             enterKeyHint="search"
           />
-
           <div className="search-voice-group">
             <button
               className={`mic-btn ${isListening ? "listening-active" : isProcessing ? "processing-active" : ""}`}
@@ -1067,7 +1002,7 @@ const searchScore = useCallback((title, query) => {
           </select>
         </div>
 
-        {/* ── Loading ── */}
+        {/* Loading skeletons */}
         {!isDataLoaded ? (
           <section className="content-section" aria-busy="true" aria-label="Loading content">
             <h2 className="section-title">Loading…</h2>
@@ -1077,9 +1012,8 @@ const searchScore = useCallback((title, query) => {
           </section>
 
         ) : selectedSeason ? (
-          /* ── Episode list ── */
+          /* Episode list */
           <section key="episode-list" className="collection-view slide-in-premium">
-            <button type="button" className="back-btn" onClick={() => window.history.back()} aria-label="Go back">← Back</button>
             <h2 className="section-title">{selectedSeason.seriesTitle} — Season {selectedSeason.seasonNum}</h2>
             <div className="grid" onKeyDown={handleGridKeyDown}>
               {(() => {
@@ -1090,9 +1024,9 @@ const searchScore = useCallback((title, query) => {
                   const cid = cardId("ep", ep.id);
                   return (
                     <FocusCard key={ep.id} className="card episode-card" style={{ "--i": i }}
-                      data-card-id={cid} onClick={(e) => handleClick(e, () => playMovie(ep, sortedEps, i))}>
-                      <img src={ep.img || POSTER_FALLBACK} alt={ep.title} loading="eager" decoding="async"
-                        onError={(e) => { e.currentTarget.src = POSTER_FALLBACK; }} />
+                      data-card-id={cid}
+                      onClick={(e) => handleClick(e, () => playMovie(ep, sortedEps, i))}>
+                      <PosterImg src={ep.img} alt={ep.title} loading="eager" />
                       <div className="card-info">
                         <h3>{ep.title}</h3>
                         <p>Episode {ep.episode || "Special"}</p>
@@ -1105,18 +1039,18 @@ const searchScore = useCallback((title, query) => {
           </section>
 
         ) : selectedCollection ? (
-          /* ── Movie collection ── */
+          /* Movie collection */
           <section key="collection-view" className="collection-view slide-in-premium">
-            <button type="button" className="back-btn" onClick={() => window.history.back()} aria-label="Go back">← Back</button>
+            <button type="button" className="back-btn" onClick={() => window.history.back()}>← Back</button>
             <h2 className="section-title">{selectedCollection.name} Collection</h2>
             <div className="grid" onKeyDown={handleGridKeyDown}>
               {selectedCollection.items.map((m, i) => {
                 const cid = cardId("col", m.id);
                 return (
                   <FocusCard key={m.id} className="card" style={{ "--i": i }}
-                    data-card-id={cid} onClick={(e) => handleClick(e, () => playMovie(m))}>
-                    <img src={m.img || POSTER_FALLBACK} alt={m.title} loading="eager" decoding="async"
-                      onError={(e) => { e.currentTarget.src = POSTER_FALLBACK; }} />
+                    data-card-id={cid}
+                    onClick={(e) => handleClick(e, () => playMovie(m))}>
+                    <PosterImg src={m.img} alt={m.title} loading="eager" />
                     <div className="card-info">
                       <h3>{m.title}</h3>
                       <p>{m.year}</p>
@@ -1128,7 +1062,7 @@ const searchScore = useCallback((title, query) => {
           </section>
 
         ) : (
-          /* ── Home browse ── */
+          /* Home browse */
           <div key="home-browse">
             {(type === "all" || type === "movie") && movieGroups.length > 0 && (
               <section className="content-section">
@@ -1139,9 +1073,6 @@ const searchScore = useCallback((title, query) => {
               </section>
             )}
 
-            {/* ── AD SLOT 1 — after Movies ── */}
-            {/* {ads[0] && <AdBanner ad={ads[0]} />} */}
-
             {(type === "all" || type === "series") && seriesGroups.length > 0 && (
               <section className="content-section">
                 <h2 className="section-title">
@@ -1151,9 +1082,6 @@ const searchScore = useCallback((title, query) => {
               </section>
             )}
 
-            {/* ── AD SLOT 2 — after Series ── */}
-            {/* {ads[1] && <AdBanner ad={ads[1]} />} */}
-
             {(type === "all" || type === "anime") && animeMovieGroups.length > 0 && (
               <section className="content-section">
                 <h2 className="section-title">
@@ -1162,9 +1090,6 @@ const searchScore = useCallback((title, query) => {
                 <div className="grid" onKeyDown={handleGridKeyDown}>{renderMovieGrid(animeMovieGroups, "amg")}</div>
               </section>
             )}
-
-            {/* ── AD SLOT 3 — after Anime Movies ── */}
-            {/* {ads[2] && <AdBanner ad={ads[2]} />} */}
 
             {(type === "all" || type === "anime") && animeSeriesGroups.length > 0 && (
               <section className="content-section">
