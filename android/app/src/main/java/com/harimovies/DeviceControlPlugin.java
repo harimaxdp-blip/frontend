@@ -124,7 +124,7 @@ public class DeviceControlPlugin extends Plugin {
         intent.putExtra("title", title);
 
         // Handle playlist for series
-        if (call.hasOption("playlist")) {
+        if (call.getData().has("playlist")) {
             intent.putExtra("playlist", call.getArray("playlist").toString());
             intent.putExtra("index", call.getInt("currentIndex", 0));
         }
