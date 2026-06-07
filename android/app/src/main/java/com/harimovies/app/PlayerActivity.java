@@ -225,30 +225,6 @@ public class PlayerActivity extends AppCompatActivity {
         playerView.setControllerAutoShow(false);
         playerView.setUseController(true);
 
-        findControllerViews();
-        updateSeriesUI();
-        buildResumeOverlay();
-        wireButtons();
-        setupGestures();
-        setupLockButton();
-        setupPreviewRetriever();
-
-        hideControls();
-
-        TextView tvTitle = playerView.findViewById(R.id.tv_title);
-        if (tvTitle != null) tvTitle.setText(videoTitle);
-
-        loadCurrentEpisode();
-    }
-
-    private void loadCurrentEpisode() {
-        if (player == null) return;
-        
-        resumeChecked = false;
-        
-        // Remove old listeners if any
-        player.clearVideoSurface();
-        
         player.addListener(new Player.Listener() {
             @Override public void onPlayerError(PlaybackException e) {
                 Log.e("PLAYER", "Error: " + e.getMessage(), e);
@@ -276,6 +252,40 @@ public class PlayerActivity extends AppCompatActivity {
                 }
             }
         });
+
+        findControllerViews();
+        updateSeriesUI();
+        buildResumeOverlay();
+        wireButtons();
+        setupGestures();
+        setupLockButton();
+        setupPreviewRetriever();
+
+        hideControls();
+
+        TextView tvTitle = playerView.findViewById(R.id.tv_title);
+        if (tvTitle != null) tvTitle.setText(videoTitle);
+
+        loadCurrentEpisode();
+    }
+
+    private void loadCurrentEpisode() {
+        if (player == null) return;
+        
+        resumeChecked = false;
+        
+        // Reset preview retriever for the new URL
+        if (previewHandler != null) {
+            previewHandler.post(() -> {
+                try {
+                    if (retriever != null) retriever.release();
+                    retriever = new MediaMetadataRetriever();
+                    retriever.setDataSource(videoUrl, requestHeaders);
+                } catch (Exception e) {
+                    Log.e("PREVIEW", "Retriever update error: " + e.getMessage());
+                }
+            });
+        }
         
         DefaultHttpDataSource.Factory dsFactory =
                 new DefaultHttpDataSource.Factory()

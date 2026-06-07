@@ -15,53 +15,25 @@ import {
 } from "react-icons/fa";
 
 // ─── Format helpers ───────────────────────────────────────────────────────────
-const FORMAT_HLS_RE  = /\.m3u8($|\?)/i;
-const FORMAT_MKV_RE  = /\.mkv($|\?)/i;
-const FORMAT_FLV_RE  = /\.flv($|\?)/i;
-const FORMAT_TS_RE   = /\.(ts|mts)($|\?)/i;
-const FORMAT_DASH_RE = /\.mpd($|\?)/i;
-
-// Stream URLs (e.g. dubshare ?stream=1) → treat as direct video, NOT ExoPlayer
-const FORMAT_STREAM_RE = /[?&]stream=1/i;
-
-// All extensions we can play natively in <video>
-const FORMAT_DIRECT_EXTS_RE = /\.(mp4|webm|avi|mov|ogv|3gp|wmv)($|\?)/i;
+const FORMAT_DIRECT_RE = /\.(mp4|m3u8|webm|mkv|avi|mov|ts|flv|ogv|3gp|wmv)($|\?)/i;
+const FORMAT_HLS_RE    = /\.m3u8($|\?)/i;
+const FORMAT_MKV_RE    = /\.mkv($|\?)/i;
+const FORMAT_FLV_RE    = /\.flv($|\?)/i;
+const FORMAT_TS_RE     = /\.(ts|mts)($|\?)/i;
+const FORMAT_DASH_RE   = /\.mpd($|\?)/i;
 
 function getExtension(url) {
   return (url.split("?")[0].split(".").pop() ?? "").toLowerCase();
 }
-
 function isCrossOrigin(url) {
   try { return new URL(url).origin !== window.location.origin; }
   catch { return false; }
 }
-
-// ─── Detect environments ──────────────────────────────────────────────────────
-/**
- * Returns true only when running inside the Capacitor/Cordova native WebView
- * (i.e. the actual installed APK), NOT a regular Chrome/Firefox on Android.
- */
-function isNativeAndroidApp() {
-  // Capacitor sets window.Capacitor; Cordova sets window.cordova
-  if (window.Capacitor?.isNativePlatform?.()) return true;
-  if (window.cordova) return true;
-  return false;
+function isStreamUrl(url) {
+  return /download\.php.*stream=1/i.test(url);
 }
-
-function isAndroidDevice() {
+function isAndroid() {
   return /android/i.test(navigator.userAgent);
-}
-
-function detectMobile() {
-  return (
-    /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
-    window.matchMedia("(pointer: coarse)").matches
-  );
-}
-
-function detectAndroidTV() {
-  const ua = navigator.userAgent || navigator.vendor || "";
-  return /Android.*TV|GoogleTV|AFT|SHIELD|BRAVIA|SmartTV|Android TV|NetCast|Tizen/i.test(ua);
 }
 
 // ─── Service Worker ───────────────────────────────────────────────────────────
@@ -152,6 +124,18 @@ const DOUBLE_TAP_MS       = 300;
 const HOLD_SEEK_DELAY     = 480;
 const HOLD_SEEK_INTERVAL  = 420;
 
+function detectMobile() {
+  return (
+    /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+    window.matchMedia("(pointer: coarse)").matches
+  );
+}
+
+function detectAndroidTV() {
+  const ua = navigator.userAgent || navigator.vendor || "";
+  return /Android.*TV|GoogleTV|AFT|SHIELD|BRAVIA|SmartTV|Android TV|NetCast|Tizen/i.test(ua);
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 //  MAIN COMPONENT
 // ══════════════════════════════════════════════════════════════════════════════
@@ -189,8 +173,6 @@ export default function MoviePlayer() {
   const progressTrackRef = useRef(null);
   const lastSaveRef      = useRef(0);
   const focusRefs        = useRef({});
-  // Prevent double-init of direct player
-  const engineInitKeyRef = useRef("");
 
   // ─── Mobile / Gesture Refs ───────────────────────────────────────────────
   const isMobileRef            = useRef(false);
@@ -349,7 +331,6 @@ export default function MoviePlayer() {
   const destroyPlayers = useCallback(() => {
     try { hlsRef.current?.destroy(); }    catch {} hlsRef.current    = null;
     try { mpegtsRef.current?.destroy(); } catch {} mpegtsRef.current = null;
-    engineInitKeyRef.current = "";
   }, []);
 
   // ─── Go to episode ────────────────────────────────────────────────────────
@@ -856,13 +837,7 @@ export default function MoviePlayer() {
     if (e.key === "End")        { e.preventDefault(); v.currentTime = dur; }
   }, [showSeekFn]);
 
-  // ══════════════════════════════════════════════════════════════════════════
-  //  SOURCE DISCOVERY — FIXED
-  //  Key changes:
-  //  1. ?stream=1 URLs → always go to direct <video>, never ExoPlayer
-  //  2. ExoPlayer only used inside native app (Capacitor/Cordova)
-  //  3. Web browser on Android phone → use <video> tag normally
-  // ══════════════════════════════════════════════════════════════════════════
+  // ─── Source discovery ─────────────────────────────────────────────────────
   useEffect(() => {
     const src = currentEpisode;
     if (!src?.link) { setError("No source found."); setLoading(false); return; }
@@ -870,11 +845,10 @@ export default function MoviePlayer() {
     let cancelled = false;
     const discover = async () => {
       setLoading(true); setError(""); setShowResumePrompt(false); setResumeTime(0);
-      setMode("loading"); setDirectUrl(""); setIframeUrl(""); setPlayerEngine("");
       const url = src.link;
 
       try {
-        // ── 1. YouTube ──
+        // ── YouTube ──
         const yt = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|v\/|shorts\/))([\w-]{11})/);
         if (yt) {
           if (cancelled) return;
@@ -882,55 +856,30 @@ export default function MoviePlayer() {
           setMode("iframe"); setPlayerEngine("iframe"); setLoading(false); return;
         }
 
-        // ── 2. Stream URLs (e.g. ?stream=1) → always play directly in <video>
-        //    Never send these to ExoPlayer — they work fine in the browser video tag.
-        if (FORMAT_STREAM_RE.test(url)) {
+        // ── Direct video URL ──
+        if (FORMAT_DIRECT_RE.test(url) || FORMAT_DASH_RE.test(url) || isStreamUrl(url)) {
           if (cancelled) return;
-          setDirectUrl(url); setMode("direct");
-          // loading state will clear via onCanPlay
-          return;
-        }
-
-        // ── 3. HLS (.m3u8) → always direct
-        if (FORMAT_HLS_RE.test(url)) {
-          if (cancelled) return;
-          setDirectUrl(url); setMode("direct");
-          return;
-        }
-
-        // ── 4. DASH (.mpd) → always direct
-        if (FORMAT_DASH_RE.test(url)) {
-          if (cancelled) return;
-          setDirectUrl(url); setMode("direct");
-          return;
-        }
-
-        // ── 5. Direct video file extensions
-        if (FORMAT_DIRECT_EXTS_RE.test(url) || FORMAT_MKV_RE.test(url) ||
-            FORMAT_FLV_RE.test(url) || FORMAT_TS_RE.test(url)) {
-          if (cancelled) return;
-          // Only use ExoPlayer inside the actual native APK, not in the browser
-          if (isNativeAndroidApp() && isAndroidDevice()) {
+          // Android: send to ExoPlayer; fall back to in-app video on failure
+          if (isAndroid()) {
             try {
-              await DeviceControl.openExoPlayer({
-                url,
-                title: src.title || "",
-                playlist: isSeries ? playlist : null,
-                currentIndex: isSeries ? currentIndex : 0
-              });
-              if (!cancelled) handleGoBack();
+              await DeviceControl.openExoPlayer({ url, title: src.title || "" });
+              handleGoBack();
             } catch {
-              // ExoPlayer failed → fall back to in-app <video>
-              if (!cancelled) { setDirectUrl(url); setMode("direct"); }
+              setDirectUrl(url); setMode("direct");
             }
             return;
           }
-          // Web browser on any platform → use <video>
-          setDirectUrl(url); setMode("direct");
-          return;
+          setDirectUrl(url); setMode("direct"); return;
         }
 
-        // ── 6. Unknown URL format → try to scrape for embedded stream
+        // ── Android non-direct: open in native web player ──
+        if (isAndroid()) {
+          if (cancelled) return;
+          try { await DeviceControl.openWebPlayer({ url, title: src.title || "" }); } catch {}
+          handleGoBack(); return;
+        }
+
+        // ── Web: try HTML scrape for embedded stream ──
         let scraped = null;
         try {
           const resp = await fetch(url, { signal: AbortSignal.timeout(8000) });
@@ -942,18 +891,13 @@ export default function MoviePlayer() {
               /["'`](https?:\/\/[^"'`\s]+\.mkv[^"'`\s]*?)["'`]/i,
               /["'`](https?:\/\/[^"'`\s]+\.webm[^"'`\s]*?)["'`]/i,
               /["'`](https?:\/\/[^"'`\s]+\.mpd[^"'`\s]*?)["'`]/i,
-              /["'`](https?:\/\/[^"'`\s]+[?&]stream=1[^"'`\s]*)["'`]/i,
             ]) { const m = html.match(re); if (m) { scraped = m[1].replace(/\\/g,""); break; } }
           }
         } catch {}
 
         if (cancelled) return;
-        if (scraped) {
-          setDirectUrl(scraped); setMode("direct");
-        } else {
-          // Last resort: embed in iframe
-          setIframeUrl(url); setMode("iframe"); setPlayerEngine("iframe"); setLoading(false);
-        }
+        if (scraped) { setDirectUrl(scraped); setMode("direct"); }
+        else { setIframeUrl(url); setMode("iframe"); setPlayerEngine("iframe"); setLoading(false); }
       } catch {
         if (!cancelled) { setIframeUrl(src.link); setMode("iframe"); setPlayerEngine("iframe"); setLoading(false); }
       }
@@ -963,36 +907,18 @@ export default function MoviePlayer() {
     return () => { cancelled = true; destroyPlayers(); };
   }, [currentIndex, movie]); // eslint-disable-line
 
-  // ══════════════════════════════════════════════════════════════════════════
-  //  DIRECT PLAYER ENGINE INIT — FIXED
-  //  Key changes:
-  //  1. Guard with engineInitKeyRef to prevent double-init
-  //  2. Don't wait for swStatus when URL is same-origin or a stream URL
-  //  3. Proper cleanup before re-init
-  // ══════════════════════════════════════════════════════════════════════════
+  // ─── Direct player engine init ────────────────────────────────────────────
   useEffect(() => {
     if (mode !== "direct" || !directUrl || !videoRef.current) return;
+    if (isCrossOrigin(directUrl) && swStatus === "loading") return;
 
-    // Don't block on SW for stream URLs or same-origin URLs
-    const needsSW = isCrossOrigin(directUrl) && !FORMAT_STREAM_RE.test(directUrl);
-    if (needsSW && swStatus === "loading") return;
-
-    // Prevent double-init for the same URL
-    const initKey = directUrl;
-    if (engineInitKeyRef.current === initKey) return;
-    engineInitKeyRef.current = initKey;
-
-    // Tear down previous player instance
+    const video = videoRef.current;
     try { hlsRef.current?.destroy(); }    catch {} hlsRef.current    = null;
     try { mpegtsRef.current?.destroy(); } catch {} mpegtsRef.current = null;
 
-    const video = videoRef.current;
-
-    // Check for resume position
     const saved = loadPos(currentEpisode?.title);
     if (saved > 10) { setResumeTime(saved); setShowResumePrompt(true); }
 
-    // ── HLS ──
     if (FORMAT_HLS_RE.test(directUrl)) {
       if (Hls.isSupported()) {
         const hls = new Hls({
@@ -1019,7 +945,6 @@ export default function MoviePlayer() {
       return;
     }
 
-    // ── MPEG-TS / FLV (same-origin only) ──
     if ((FORMAT_FLV_RE.test(directUrl) || FORMAT_TS_RE.test(directUrl)) && !isCrossOrigin(directUrl)) {
       loadMpegts().then(mpegts => {
         if (!mpegts.isSupported()) throw new Error("MSE unsupported");
@@ -1029,33 +954,14 @@ export default function MoviePlayer() {
         p.attachMediaElement(video); p.load(); p.play().catch(() => {});
         p.on(mpegts.Events.ERROR, (_, d) => { setError("Media error: " + (d?.msg ?? "")); setLoading(false); });
         setPlayerEngine("MPEG-TS");
-      }).catch(() => {
-        video.src = directUrl; video.load(); video.play().catch(() => {});
-        setPlayerEngine("Native");
-      });
+      }).catch(() => { video.src = directUrl; video.play().catch(() => {}); setPlayerEngine("Native"); });
       return;
     }
 
-    // ── Stream URLs and all other direct files → Native <video> ──
-    // For cross-origin non-stream URLs, try CORS with SW proxy
-    if (swReadyRef.current && isCrossOrigin(directUrl) && !FORMAT_STREAM_RE.test(directUrl)) {
-      video.crossOrigin = "anonymous";
-    } else {
-      video.removeAttribute("crossOrigin");
-    }
-
-    video.src = directUrl;
-    video.load();
-    video.play().catch(() => {
-      // Autoplay blocked — user must tap play; that's fine
-    });
-
-    let engine = "Native";
-    if (FORMAT_MKV_RE.test(directUrl))    engine = "MKV";
-    else if (FORMAT_STREAM_RE.test(directUrl)) engine = "Stream";
-    else { const ext = getExtension(directUrl); if (ext) engine = ext.toUpperCase(); }
-    setPlayerEngine(engine);
-
+    if (swReadyRef.current && isCrossOrigin(directUrl)) video.crossOrigin = "anonymous";
+    else video.removeAttribute("crossOrigin");
+    video.src = directUrl; video.load(); video.play().catch(() => {});
+    setPlayerEngine(FORMAT_MKV_RE.test(directUrl) ? "MKV" : (getExtension(directUrl).toUpperCase() || "Native"));
   }, [mode, directUrl, swStatus]); // eslint-disable-line
 
   // ─── iframe postMessage ───────────────────────────────────────────────────
@@ -1123,27 +1029,10 @@ export default function MoviePlayer() {
     const onPlay     = () => { setIsPlaying(true); setIsBuffering(false); };
     const onPause    = () => setIsPlaying(false);
     const onWaiting  = () => setIsBuffering(true);
-    const onPlaying  = () => { setIsBuffering(false); setLoading(false); setError(""); };
+    const onPlaying  = () => setIsBuffering(false);
     const onCanPlay  = () => { setLoading(false); setError(""); setIsBuffering(false); };
     const onEnded    = () => { clearPos(currentEpisode?.title); startAutoPlayCountdown(); };
     const onVolume   = () => { setVolume(video.volume); setIsMuted(video.muted); };
-    const onError    = async (e) => {
-      const code = e.target?.error?.code;
-      // Format not supported — only try ExoPlayer inside native app
-      if (code === 4 && directUrl && isNativeAndroidApp() && isAndroidDevice()) {
-        try {
-          await DeviceControl.openExoPlayer({ url: directUrl, title: currentEpisode?.title || "" });
-          handleGoBack(); return;
-        } catch (err) { console.error("[ExoPlayer fallback]", err); }
-      }
-      const msg = {
-        1: "Playback aborted.",
-        2: "Network error — check your connection.",
-        3: "Decoding failed. Try a different quality.",
-        4: "Format not supported in this browser.",
-      }[code] ?? "Playback error.";
-      setError(msg); setLoading(false);
-    };
 
     video.addEventListener("timeupdate",     onTimeUpdate);
     video.addEventListener("durationchange", onDuration);
@@ -1154,7 +1043,6 @@ export default function MoviePlayer() {
     video.addEventListener("canplay",        onCanPlay);
     video.addEventListener("ended",          onEnded);
     video.addEventListener("volumechange",   onVolume);
-    video.addEventListener("error",          onError);
     return () => {
       video.removeEventListener("timeupdate",     onTimeUpdate);
       video.removeEventListener("durationchange", onDuration);
@@ -1165,9 +1053,8 @@ export default function MoviePlayer() {
       video.removeEventListener("canplay",        onCanPlay);
       video.removeEventListener("ended",          onEnded);
       video.removeEventListener("volumechange",   onVolume);
-      video.removeEventListener("error",          onError);
     };
-  }, [mode, currentEpisode, directUrl]); // eslint-disable-line
+  }, [mode, currentEpisode]); // eslint-disable-line
 
   // ─── Derived values ───────────────────────────────────────────────────────
   const episodeLabel = isSeries
@@ -1227,35 +1114,45 @@ export default function MoviePlayer() {
             if (mode === "direct") { togglePlay(); resetControlsTimer(); }
           }}
         >
-          {/* Loader — only show during "loading" mode or when loading flag is true */}
-          {(mode === "loading" || loading) && mode !== "iframe" && (
+          {/* Loader */}
+          {loading && (
             <div className="mp-loader">
               <div className="mp-spinner"><div/><div/><div/><div/></div>
               <p className="mp-loader-text">{playerEngine ? `${playerEngine} · Loading` : "Loading"}</p>
             </div>
           )}
 
-          {/* Buffer ring — only when video is ready but rebuffering */}
+          {/* Buffer ring */}
           {!loading && isBuffering && mode === "direct" && (
             <div className="mp-buffering"><div className="mp-buf-ring"/></div>
           )}
 
-          {/* ── Native video — always rendered in direct mode so events attach ── */}
-          <video
-            ref={videoRef}
-            className="mp-video"
-            autoPlay
-            playsInline
-            preload="auto"
-            webkit-playsinline="true"
-            x5-playsinline="true"
-            x5-video-player-type="h5"
-            x5-video-orientation="landscape"
-            style={{
-              objectFit: isStretched ? "cover" : "contain",
-              display: mode === "direct" ? "block" : "none",
-            }}
-          />
+          {/* ── Native video ── */}
+          {mode === "direct" && (
+            <video
+              ref={videoRef}
+              className="mp-video"
+              autoPlay playsInline preload="auto"
+              webkit-playsinline="true"
+              x5-playsinline="true"
+              x5-video-player-type="h5"
+              x5-video-orientation="landscape"
+              style={{ objectFit: isStretched ? "cover" : "contain" }}
+              onCanPlay={() => { setLoading(false); setError(""); setIsBuffering(false); }}
+              onError={async e => {
+                const code = e.target?.error?.code;
+                // Format not supported on Android → try ExoPlayer
+                if (code === 4 && directUrl) {
+                  try {
+                    await DeviceControl.openExoPlayer({ url: directUrl, title: currentEpisode?.title || "" });
+                    handleGoBack(); return;
+                  } catch (err) { console.error("[ExoPlayer fallback]", err); }
+                }
+                const msg = { 1:"Playback aborted.", 2:"Network error.", 3:"Decoding failed.", 4:"Format not supported." }[code] ?? "Playback error.";
+                setError(msg); setLoading(false);
+              }}
+            />
+          )}
 
           {/* Play/pause flash */}
           {playFlash && !isLocked && (
