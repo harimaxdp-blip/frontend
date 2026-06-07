@@ -116,46 +116,10 @@ body::before {
   transition: opacity 0.4s ease, transform 9s linear;
   will-change: transform, opacity;
 }
-.opening-movie {
-  transform: scale(1.12) !important;
-  transition: transform .3s ease;
-  z-index: 9999;
-}
 
-.player-loading {
-  animation: playerOpen .35s ease forwards;
-}
-
-@keyframes playerOpen {
-  from {
-    opacity: 0;
-    backdrop-filter: blur(0px);
-  }
-  to {
-    opacity: 1;
-    backdrop-filter: blur(12px);
-  }
-}
 .hero-bg--in  { opacity: 1; transform: scale(1.09); }
 .hero-bg--out { opacity: 0; transform: scale(1.04); }
 
-.player-loading::before {
-    left: -50%;
-    animation: leftCurtain .4s forwards;
-}
-
-.player-loading::after {
-    right: -50%;
-    animation: rightCurtain .4s forwards;
-}
-
-@keyframes leftCurtain {
-    to { left: 0; }
-}
-
-@keyframes rightCurtain {
-    to { right: 0; }
-}
 .hero-overlay {
   position: absolute;
   inset: 0;

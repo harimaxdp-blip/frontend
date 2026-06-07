@@ -38,10 +38,10 @@ body {
 
 /* LEFT column — fixed width, hamburger lives here */
 .topbar-left {
-  width: 80px;
+  width: 120px;
   display: flex;
   align-items: center;
-  flex-shrink: 0;
+  gap: 6px;
 }
 
 /* CENTER column — takes remaining space, centers content */
@@ -192,7 +192,25 @@ body {
 .profile-wrapper {
   position: relative;
 }
+.music-btn {
+  font-size: 18px;
+  background: none;
+  border: none;
+  color: #1db954;
+  cursor: pointer;
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  transition: all .2s ease;
+}
 
+.music-btn:hover {
+  background: #1e1e1e;
+  color: #1ed760;
+}
 .profile-btn {
   width: 38px;
   height: 38px;
