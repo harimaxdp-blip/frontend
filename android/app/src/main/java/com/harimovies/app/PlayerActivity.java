@@ -222,11 +222,14 @@ public class PlayerActivity extends AppCompatActivity {
                     }
                     currentIndex = getIntent().getIntExtra("index", 0);
                     
-                    // If it's a series, sync current video info with the index
+                    // CRITICAL: Sync current video info with the index immediately
                     if (currentIndex >= 0 && currentIndex < playlist.size()) {
                         JSONObject ep = playlist.get(currentIndex);
                         videoUrl = ep.optString("link", videoUrl);
-                        videoTitle = ep.optString("title", videoTitle);
+                        // Use a fallback for title if the episode object doesn't have its own
+                        String epTitle = ep.optString("title", "");
+                        if (epTitle.isEmpty()) epTitle = videoTitle; 
+                        videoTitle = epTitle;
                     }
                     Log.d("PLAYER", "Playlist size: " + playlist.size() + ", Index: " + currentIndex);
                 } catch (Exception e) {
@@ -434,14 +437,13 @@ public class PlayerActivity extends AppCompatActivity {
     // ══════════════════════════════════════════════════════════════════════════
     private String posKey() {
         if (!playlist.isEmpty()) {
-            // Use episode specific key for series
             try {
                 JSONObject current = playlist.get(currentIndex);
-                String epId = current.optString("id", String.valueOf(currentIndex));
-                return "pos_ser_" + videoTitle.hashCode() + "_" + epId;
+                // Use a combination of title and episode/id to make it unique per episode
+                String epRef = current.optString("id", current.optString("episode", String.valueOf(currentIndex)));
+                return "pos_" + videoTitle.hashCode() + "_ep_" + epRef;
             } catch (Exception ignored) {}
         }
-        // Use title if available as it's more stable than dynamic URLs
         if (videoTitle != null && !videoTitle.isEmpty()) {
             return "pos_" + videoTitle.hashCode();
         }

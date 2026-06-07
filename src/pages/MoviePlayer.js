@@ -33,10 +33,15 @@ export default function MoviePlayer() {
       /\.mpd($|\?)/i.test(url);
 
     if (isDirectVideo) {
-      DeviceControl.openExoPlayer({ url, title })
-        .then(handleGoBack)
-        .catch(handleGoBack);
-    } else {
+  DeviceControl.openExoPlayer({
+    url,
+    title,
+    playlist: playlist || [],
+    index: startIndex
+  })
+    .then(handleGoBack)
+    .catch(handleGoBack);
+}else {
       DeviceControl.openWebPlayer({ url, title })
         .then(handleGoBack)
         .catch(handleGoBack);
