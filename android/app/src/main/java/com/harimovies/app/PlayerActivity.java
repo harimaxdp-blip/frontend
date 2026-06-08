@@ -153,7 +153,7 @@ package com.harimovies.app;
         private View         topBar, centerControls, bottomBar, scrimTop, scrimBottom;
         private View         exoPlayPause;
         private ImageButton  btnLock;
-        private TextView     tvLockHint;
+        private TextView     tvLockHint, tvTitleSep;
 
         // ── Button refs ───────────────────────────────────────────────────────────
         private ImageButton btnBack, btnMute, btnAspect, btnFullscreen, btnSync, btnEpisodes;
@@ -229,7 +229,7 @@ package com.harimovies.app;
                 videoUrl   = getIntent().getStringExtra(EXTRA_URL);   if (videoUrl == null) videoUrl = "";
                 videoTitle = getIntent().getStringExtra(EXTRA_TITLE);
                 if (videoTitle == null) videoTitle = "";
-                seriesTitle = videoTitle;
+                seriesTitle = cleanSeriesTitle(videoTitle);
 
                 forcedResumePos = getIntent().getLongExtra("resume_pos", 0);
 
@@ -267,8 +267,15 @@ package com.harimovies.app;
                             if (!epTitle.isEmpty()) {
                                 videoTitle = epTitle;
                             } else {
-                                String epNum = ep.optString("episode", String.valueOf(currentIndex + 1));
-                                videoTitle = seriesTitle + " - Episode " + epNum;
+                                String epNum = ep.optString("episode", "");
+                                String seasonNum = ep.optString("season", "");
+                                if (!seasonNum.isEmpty() && !epNum.isEmpty()) {
+                                    videoTitle = seriesTitle + " - Season " + seasonNum + " . Episode " + epNum;
+                                } else if (!epNum.isEmpty()) {
+                                    videoTitle = seriesTitle + " - Episode " + epNum;
+                                } else {
+                                    videoTitle = seriesTitle + " - Episode " + (currentIndex + 1);
+                                }
                             }
                         }
                     } catch (Exception e) {
@@ -390,7 +397,6 @@ package com.harimovies.app;
 
         private void updateSeriesUI() {
             Log.d("EP_DEBUG", "Current episode index = " + currentIndex);
-            if (tvTitle != null) tvTitle.setText(videoTitle);
 
             Log.d("SERIES_DEBUG", "updateSeriesUI: playlist size = " + playlist.size() + ", currentIndex = " + currentIndex);
 
@@ -426,8 +432,11 @@ package com.harimovies.app;
                 if (currentIndex >= 0 && currentIndex < playlist.size()) {
                     JSONObject current = playlist.get(currentIndex);
                     String epNum = current.optString("episode", "");
+                    String seasonNum = current.optString("season", "");
 
-                    if (!epNum.isEmpty()) {
+                    if (!seasonNum.isEmpty() && !epNum.isEmpty()) {
+                        badge = String.format(Locale.US, "Season %s . Episode %s", seasonNum, epNum);
+                    } else if (!epNum.isEmpty()) {
                         try {
                             int num = Integer.parseInt(epNum);
                             badge = String.format(Locale.US, "Episode %02d", num);
@@ -440,14 +449,25 @@ package com.harimovies.app;
                 }
             } catch (Exception ignored) {}
 
+            if (tvTitle != null) {
+                if (!seriesTitle.isEmpty()) {
+                    tvTitle.setText(seriesTitle);
+                    if (tvTitleSep != null) tvTitleSep.setVisibility(!badge.isEmpty() ? View.VISIBLE : View.GONE);
+                } else {
+                    tvTitle.setText(videoTitle);
+                    if (tvTitleSep != null) tvTitleSep.setVisibility(View.GONE);
+                }
+            }
+
             if (!badge.isEmpty()) {
                 if (tvEpBadge != null) {
                     tvEpBadge.setText(badge);
                     tvEpBadge.setVisibility(View.VISIBLE);
+                    // Light effect: semi-transparent white
+                    tvEpBadge.setTextColor(0xAAFFFFFF);
                 }
-                if (tvTitle != null) {
-                    tvTitle.setText(videoTitle + " • " + badge);
-                }
+            } else {
+                if (tvEpBadge != null) tvEpBadge.setVisibility(View.GONE);
             }
         }
 
@@ -519,8 +539,15 @@ package com.harimovies.app;
 
                 // Build episode title fallback
                 if (epTitle.isEmpty()) {
-                    String epNum = ep.optString("episode", String.valueOf(index + 1));
-                    epTitle = seriesTitle + " - Episode " + epNum;
+                    String epNum = ep.optString("episode", "");
+                    String seasonNum = ep.optString("season", "");
+                    if (!seasonNum.isEmpty() && !epNum.isEmpty()) {
+                        epTitle = seriesTitle + " - Season " + seasonNum + " . Episode " + epNum;
+                    } else if (!epNum.isEmpty()) {
+                        epTitle = seriesTitle + " - Episode " + epNum;
+                    } else {
+                        epTitle = seriesTitle + " - Episode " + (index + 1);
+                    }
                 }
 
                 // Serialize full playlist so the next activity can navigate further
@@ -1064,6 +1091,37 @@ package com.harimovies.app;
             return (int)(val * getResources().getDisplayMetrics().density);
         }
 
+        private String cleanSeriesTitle(String title) {
+            if (title == null || title.isEmpty()) return "";
+
+            // 1. Look for common metadata keywords and cut before them
+            String lower = title.toLowerCase();
+            int epIdx = lower.indexOf(" episode");
+            int seaIdx = lower.indexOf(" season");
+
+            int cutIdx = -1;
+            if (epIdx != -1 && seaIdx != -1) cutIdx = Math.min(epIdx, seaIdx);
+            else if (epIdx != -1) cutIdx = epIdx;
+            else if (seaIdx != -1) cutIdx = seaIdx;
+
+            if (cutIdx != -1) {
+                String prefix = title.substring(0, cutIdx);
+                // Clean trailing separators like " · ", " - ", " | " from the prefix
+                return prefix.replaceAll("\\s*[\\u00B7\\u2022\\u2013\\u2014\\-|:]\\s*$", "").trim();
+            }
+
+            // 2. Fallback: split by common separators if they look like metadata dividers
+            String[] separators = {" · ", " - ", " | ", " — ", " – "};
+            for (String sep : separators) {
+                int idx = title.indexOf(sep);
+                if (idx != -1) {
+                    return title.substring(0, idx).trim();
+                }
+            }
+
+            return title;
+        }
+
         // ══════════════════════════════════════════════════════════════════════════
         //  Find views
         // ══════════════════════════════════════════════════════════════════════════
@@ -1093,6 +1151,7 @@ package com.harimovies.app;
             episodeBar          = playerView.findViewById(R.id.episode_bar);
             episodeContainer    = playerView.findViewById(R.id.episode_container);
             tvTitle             = playerView.findViewById(R.id.tv_title);
+            tvTitleSep          = playerView.findViewById(R.id.tv_title_sep);
 
             progressBar         = playerView.findViewById(R.id.exo_progress);
             previewContainer    = playerView.findViewById(R.id.preview_container);
