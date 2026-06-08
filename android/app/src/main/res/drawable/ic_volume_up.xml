@@ -1,10 +1,38 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    ic_volume_up.xml
+    Speaker with sound waves. Used for mute button (normal state).
+    24dp vector, stroke style.
+-->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
+
+    <!-- Speaker body -->
     <path
-        android:fillColor="@android:color/white"
-        android:pathData="M3,9v6h4l5,5V4L7,9H3zm13.5,3c0,-1.77 -1.02,-3.29 -2.5,-4.03v8.05c1.48,-0.73 2.5,-2.25 2.5,-4.02zM14,3.23v2.06c2.89,0.86 5,3.54 5,6.71s-2.11,5.85 -5,6.71v2.06c4.01,-0.91 7,-4.49 7,-8.77s-2.99,-7.86 -7,-8.77z" />
+        android:pathData="M11,5L6,9H2V15H6L11,19V5Z"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000" />
+
+    <!-- Small wave -->
+    <path
+        android:pathData="M15.54,8.46C16.48,9.4 17,10.67 17,12C17,13.33 16.48,14.6 15.54,15.54"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+
+    <!-- Large wave -->
+    <path
+        android:pathData="M19.07,4.93C20.95,6.81 22,9.35 22,12C22,14.65 20.95,17.19 19.07,19.07"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+
 </vector>

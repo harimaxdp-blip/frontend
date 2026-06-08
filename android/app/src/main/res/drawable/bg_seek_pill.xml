@@ -1,10 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- rgba(15,15,20,0.80) + border rgba(255,255,255,0.15), border-radius 20dp — matches .seek-pill -->
-<shape xmlns:android="http://schemas.android.com/apk/res/android"
-    android:shape="rectangle">
-    <solid android:color="#CC0F0F14" />
-    <stroke
-        android:width="1dp"
-        android:color="#26FFFFFF" />
-    <corners android:radius="20dp" />
-</shape>
+<!--
+    bg_seek_pill.xml
+    Background for the centre seek indicator shown on double-tap or scrub.
+    Dark translucent rounded pill with a faint border.
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#CC0A0A14" />
+            <stroke
+                android:width="0.5dp"
+                android:color="#26FFFFFF" />
+            <corners android:radius="24dp" />
+        </shape>
+    </item>
+
+</layer-list>

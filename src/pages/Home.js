@@ -531,13 +531,24 @@ export default function Home({ type = "all" }) {
     );
     const groups = {};
     filtered.forEach((item) => {
-      const title  = item.seriesTitle || item.title || "Unknown Series";
-      const season = item.season || "1";
-      if (!groups[title]) groups[title] = { seasons: {}, maxYear: 0, maxCreatedAt: 0 };
+      // Use seriesTitle for grouping, fallback to title
+      const title  = normalize(item.seriesTitle || item.title || "Unknown Series");
+      const season = String(item.season || "1");
+
+      if (!groups[title]) {
+        groups[title] = {
+          displayName: item.seriesTitle || item.title || "Unknown Series",
+          seasons: {},
+          maxYear: 0,
+          maxCreatedAt: 0
+        };
+      }
+
       const yr = parseInt(item.year) || 0;
       const ca = getCreatedAt(item);
       if (yr > groups[title].maxYear) groups[title].maxYear = yr;
       if (ca > groups[title].maxCreatedAt) groups[title].maxCreatedAt = ca;
+
       if (!groups[title].seasons[season]) groups[title].seasons[season] = [];
       groups[title].seasons[season].push(item);
     });
@@ -545,7 +556,7 @@ export default function Home({ type = "all" }) {
       if (b[1].maxYear !== a[1].maxYear) return b[1].maxYear - a[1].maxYear;
       return b[1].maxCreatedAt - a[1].maxCreatedAt;
     });
-  }, [movies, isSeriesType, isAnimeGenre, matchesTab, passesFilters]);
+  }, [movies, isSeriesType, isAnimeGenre, matchesTab, passesFilters, normalize]);
 
   // ─── Anime movie groups ───────────────────────────────────────────────────────
   const animeMovieGroups = useMemo(() => {
@@ -579,13 +590,23 @@ export default function Home({ type = "all" }) {
     );
     const groups = {};
     filtered.forEach((item) => {
-      const title  = item.seriesTitle || item.title || "Unknown Series";
-      const season = item.season || "1";
-      if (!groups[title]) groups[title] = { seasons: {}, maxYear: 0, maxCreatedAt: 0 };
+      const title  = normalize(item.seriesTitle || item.title || "Unknown Series");
+      const season = String(item.season || "1");
+
+      if (!groups[title]) {
+        groups[title] = {
+          displayName: item.seriesTitle || item.title || "Unknown Series",
+          seasons: {},
+          maxYear: 0,
+          maxCreatedAt: 0
+        };
+      }
+
       const yr = parseInt(item.year) || 0;
       const ca = getCreatedAt(item);
       if (yr > groups[title].maxYear) groups[title].maxYear = yr;
       if (ca > groups[title].maxCreatedAt) groups[title].maxCreatedAt = ca;
+
       if (!groups[title].seasons[season]) groups[title].seasons[season] = [];
       groups[title].seasons[season].push(item);
     });
@@ -593,7 +614,7 @@ export default function Home({ type = "all" }) {
       if (b[1].maxYear !== a[1].maxYear) return b[1].maxYear - a[1].maxYear;
       return b[1].maxCreatedAt - a[1].maxCreatedAt;
     });
-  }, [movies, isAnimeType, isAnimeGenre, passesFilters]);
+  }, [movies, isAnimeType, isAnimeGenre, passesFilters, normalize]);
 
   // ─── Navigation system ────────────────────────────────────────────────────────
   const saveCurrentState = useCallback(() => {
@@ -744,6 +765,23 @@ export default function Home({ type = "all" }) {
 
   const playMovie = useCallback((movie, playlist = null, currentIndex = 0) => {
     setPlayerLoading(movie.title);
+
+    // Ensure we have a valid playlist for series
+    let finalPlaylist = playlist;
+    if (!finalPlaylist && movie.type !== "movie") {
+      // If no playlist provided but it's a series, try to find other episodes in the same season
+      const seriesTitle = normalize(movie.seriesTitle || movie.title);
+      const seasonNum = String(movie.season || "1");
+
+      const allSeries = [...seriesGroups, ...animeSeriesGroups];
+      const entry = allSeries.find(([t]) => t === seriesTitle);
+      if (entry) {
+        finalPlaylist = entry[1].seasons[seasonNum];
+        currentIndex = finalPlaylist ? finalPlaylist.findIndex(ep => ep.id === movie.id) : 0;
+        if (currentIndex === -1) currentIndex = 0;
+      }
+    }
+
     const navState = {
       kind:           currentView.kind,
       collectionName: currentView.kind === "collection" ? currentView.data?.name       : null,
@@ -757,9 +795,9 @@ export default function Home({ type = "all" }) {
     };
     ss.setJSON("ott_nav_state", navState);
     setTimeout(() => {
-      navigate("/player", { state: { movie, playlist, currentIndex } });
+      navigate("/player", { state: { movie, playlist: finalPlaylist, currentIndex } });
     }, 700);
-  }, [navigate, currentView, languageFilter, genreFilter, yearFilter, search]);
+  }, [navigate, currentView, languageFilter, genreFilter, yearFilter, search, seriesGroups, animeSeriesGroups, normalize]);
 
   // ─── Voice search ─────────────────────────────────────────────────────────────
   const requestMicrophonePermission = useCallback(async () => {
@@ -898,16 +936,17 @@ export default function Home({ type = "all" }) {
     });
 
   // ─── Render: series section ───────────────────────────────────────────────────
-  const renderSeriesSection = (seriesTitle, data) => {
+  const renderSeriesSection = (titleKey, data) => {
+    const seriesTitle = data.displayName || titleKey;
     const seasons = Object.entries(data.seasons).sort((a, b) => parseInt(a[0]) - parseInt(b[0]));
     return (
-      <section key={seriesTitle} className="series-section">
+      <section key={titleKey} className="series-section">
         <h2 className="series-main-title">{seriesTitle}</h2>
         <div className="grid" onKeyDown={handleGridKeyDown}>
           {seasons.map(([sNum, eps], i) => {
             const coverImg = randomImg(eps);
             const total    = eps.length;
-            const cid      = cardId(`s_${seriesTitle}`, sNum);
+            const cid      = cardId(`s_${titleKey}`, sNum);
             return (
               <FocusCard key={sNum} className="card is-collection season-card" style={{ "--i": i }}
                 data-card-id={cid}

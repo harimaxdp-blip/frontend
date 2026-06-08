@@ -1,10 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    ic_pause.xml
+    Two vertical bars. Swap with ic_play in code when playing.
+    Tint #000000 for black on white circle.
+    24dp vector, filled style.
+-->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
+
     <path
-        android:fillColor="@android:color/white"
-        android:pathData="M6,19h4V5H6v14zM14,5v14h4V5h-4z" />
+        android:pathData="M6,19H10V5H6V19ZM14,5V19H18V5H14Z"
+        android:fillColor="#FF000000" />
+
 </vector>

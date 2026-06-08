@@ -1,9 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    ic_step_forward.xml
+    Skip to next episode button icon.
+    Right-pointing triangle + vertical bar.
+    24dp vector, filled style.
+-->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
+
     <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M6,18l8.5,-6L6,6V18zM16,6v12h2.5V6H16z" />
+        android:pathData="M6,18V6L15,12L6,18ZM16,6H18V18H16V6Z"
+        android:fillColor="#FFFFFFFF" />
+
 </vector>

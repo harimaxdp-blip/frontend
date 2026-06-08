@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- translucent white oval for double-tap -->
+<!--
+    bg_tap_ripple.xml
+    Background for the double-tap ripple views (left / right side of player).
+    Translucent white circle. Animate alpha 0→1→0 and scale 0.5→1.2 in code.
+-->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="oval">
-    <solid android:color="#2BFFFFFF" />
+    <solid android:color="#26FFFFFF" />
 </shape>

@@ -1,10 +1,46 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    ic_fullscreen.xml
+    Four corner arrows expanding outward — enter fullscreen.
+    24dp vector, stroke style.
+    Swap with ic_fullscreen_exit in code when in fullscreen mode.
+-->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
+
     <path
-        android:fillColor="@android:color/white"
-        android:pathData="M7,14H5v5h5v-2H7v-3zM5,10h2V7h3V5H5v5zM17,17h-3v2h5v-5h-2v3zM14,5v2h3v3h2V5h-5z" />
+        android:pathData="M8,3H5C3.9,3 3,3.9 3,5V8"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000" />
+
+    <path
+        android:pathData="M16,3H19C20.1,3 21,3.9 21,5V8"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000" />
+
+    <path
+        android:pathData="M8,21H5C3.9,21 3,20.1 3,19V16"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000" />
+
+    <path
+        android:pathData="M16,21H19C20.1,21 21,20.1 21,19V16"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000" />
+
 </vector>

@@ -98,60 +98,41 @@ public class DeviceControlPlugin extends Plugin {
 
     @PluginMethod
     public void openExoPlayer(PluginCall call) {
+        // 1. Log Raw Data
+        JSObject data = call.getData();
+        Log.d("SERIES_DEBUG", "Plugin: Raw Call Data: " + data.toString());
 
-        String url = call.getString("url");
-        String movieTitle = call.getString("title");
+        // 2. Extract Values safely
+        String url = data.optString("url");
+        String title = data.optString("title");
+        String playlist = data.optString("playlist", null);
+        int index = data.optInt("index", 0);
 
-        Log.d("SERIES_DEBUG", "Plugin: openExoPlayer called.");
-        Log.d("SERIES_DEBUG", "Plugin Payload: " + call.getData().toString());
+        Log.d("SERIES_DEBUG", "Plugin: Extracted URL: " + url);
+        Log.d("SERIES_DEBUG", "Plugin: Extracted TITLE: " + title);
+        Log.d("SERIES_DEBUG", "Plugin: Extracted PLAYLIST: " + (playlist != null ? "Length " + playlist.length() : "NULL"));
+        Log.d("SERIES_DEBUG", "Plugin: Extracted INDEX: " + index);
 
         if (url == null || url.isEmpty()) {
             call.reject("URL is missing");
             return;
         }
 
-        // Fallback to filename if title is missing to ensure "each card" has a unique key
-        if (movieTitle == null || movieTitle.isEmpty()) {
-            try {
-                Uri uri = Uri.parse(url);
-                movieTitle = uri.getLastPathSegment();
-            } catch (Exception ignored) {}
-        }
-        if (movieTitle == null) movieTitle = "";
-
+        // 3. Prepare Intent
         Intent intent = new Intent(getActivity(), PlayerActivity.class);
         intent.putExtra("url", url);
-        intent.putExtra("title", movieTitle);
-
-        // Try getting playlist as string first (since we JSON.stringify in JS)
-        String playlistStr = call.getString("playlist");
+        intent.putExtra("title", title);
         
-        // If not found, try getting it as a JSArray and converting
-        if (playlistStr == null) {
-            JSArray playlistArr = call.getArray("playlist");
-            if (playlistArr != null) {
-                playlistStr = playlistArr.toString();
-            }
-        }
-
-        // If still null, check the raw data map
-        if (playlistStr == null) {
-            Object rawPlaylist = call.getData().opt("playlist");
-            if (rawPlaylist != null) {
-                playlistStr = rawPlaylist.toString();
-            }
-        }
-
-        int index = call.getInt("index", 0);
-
-        if (playlistStr != null && !playlistStr.isEmpty() && !playlistStr.equals("[]") && !playlistStr.equals("null")) {
-            intent.putExtra("playlist", playlistStr);
+        // Force forward whatever we got for playlist
+        if (playlist != null && !playlist.equals("null") && !playlist.isEmpty()) {
+            intent.putExtra("playlist", playlist);
             intent.putExtra("index", index);
-            Log.d("SERIES_DEBUG", "Plugin: Successfully attached playlist. Length: " + playlistStr.length());
+            Log.d("SERIES_DEBUG", "Plugin: Intent packaged with playlist.");
         } else {
-            Log.d("SERIES_DEBUG", "Plugin: No valid playlist found in call data");
+            Log.d("SERIES_DEBUG", "Plugin: Intent packaged WITHOUT playlist.");
         }
 
+        // 4. Launch
         getActivity().startActivity(intent);
         call.resolve();
     }

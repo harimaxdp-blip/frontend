@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    bg_countdown_track.xml
+    Track background for the countdown bar inside the next episode card.
+    Translucent white, fully rounded.
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#2EFFFFFF" />
+    <corners android:radius="3dp" />
+</shape>

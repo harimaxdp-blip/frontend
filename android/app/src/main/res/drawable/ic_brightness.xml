@@ -1,10 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    ic_brightness.xml
+    Sun / brightness icon for the gesture brightness indicator.
+    24dp vector, stroke style.
+-->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
+
+    <!-- Sun circle -->
     <path
-        android:fillColor="@android:color/white"
-        android:pathData="M20,8.69V4h-4.69L12,0.69 8.69,4H4v4.69L0.69,12 4,15.31V20h4.69L12,23.31 15.31,20H20v-4.69L23.31,12 20,8.69zM12,18c-3.31,0 -6,-2.69 -6,-6s2.69,-6 6,-6 6,2.69 6,6 -2.69,6 -6,6zM12,8c-2.21,0 -4,1.79 -4,4s1.79,4 4,4 4,-1.79 4,-4 -1.79,-4 -4,-4z" />
+        android:pathData="M12,8C9.79,8 8,9.79 8,12C8,14.21 9.79,16 12,16C14.21,16 16,14.21 16,12C16,9.79 14.21,8 12,8Z"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.8"
+        android:fillColor="#00000000" />
+
+    <!-- Rays -->
+    <path android:pathData="M12,2V4" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.8" android:strokeLineCap="round" android:fillColor="#00000000"/>
+    <path android:pathData="M12,20V22" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.8" android:strokeLineCap="round" android:fillColor="#00000000"/>
+    <path android:pathData="M2,12H4" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.8" android:strokeLineCap="round" android:fillColor="#00000000"/>
+    <path android:pathData="M20,12H22" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.8" android:strokeLineCap="round" android:fillColor="#00000000"/>
+    <path android:pathData="M4.93,4.93L6.34,6.34" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.8" android:strokeLineCap="round" android:fillColor="#00000000"/>
+    <path android:pathData="M17.66,17.66L19.07,19.07" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.8" android:strokeLineCap="round" android:fillColor="#00000000"/>
+    <path android:pathData="M4.93,19.07L6.34,17.66" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.8" android:strokeLineCap="round" android:fillColor="#00000000"/>
+    <path android:pathData="M17.66,6.34L19.07,4.93" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.8" android:strokeLineCap="round" android:fillColor="#00000000"/>
+
 </vector>

@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    res/drawable/ic_sync.xml
-    Circular sync/refresh arrow icon for the A/V Sync button.
-    Matches the existing tint="#FFFFFFFF" applied in XML.
+    ic_sync.xml
+    Two circular arrows indicating subtitle/audio sync.
+    24dp vector, stroke style.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
@@ -10,18 +10,36 @@
     android:viewportWidth="24"
     android:viewportHeight="24">
 
-    <!--
-        Standard Material "sync" path:
-        Left arrow  = counter-clockwise arc going up from bottom-left
-        Right arrow = clockwise arc going down from top-right
-    -->
+    <!-- Counter-clockwise arc (left) -->
     <path
-        android:fillColor="#FFFFFFFF"
-        android:pathData="M12,4V1L8,5l4,4V6c3.31,0 6,2.69 6,6
-                          0,1.01-0.25,1.97-0.7,2.8l1.46,1.46
-                          C19.54,15.03 20,13.57 20,12c0-4.42-3.58-8-8-8z
-                          M12,18c-3.31,0-6-2.69-6-6
-                          0-1.01,0.25-1.97,0.7-2.8L5.24,7.74
-                          C4.46,8.97 4,10.43 4,12c0,4.42 3.58,8 8,8v3l4-4-4-4v3z" />
+        android:pathData="M1,4V10H7"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000" />
+
+    <path
+        android:pathData="M3.51,15C4.47,17.82 7.13,20 10.34,20C14.56,20 18,16.42 18,12C18,7.58 14.56,4 10.34,4C7.13,4 4.47,6.18 3.51,9"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+
+    <!-- Clockwise arc pointer -->
+    <path
+        android:pathData="M23,20V14H17"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000" />
+
+    <path
+        android:pathData="M20.49,9C19.53,6.18 16.87,4 13.66,4C9.44,4 6,7.58 6,12C6,16.42 9.44,20 13.66,20C16.87,20 19.53,17.82 20.49,15"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
 
 </vector>

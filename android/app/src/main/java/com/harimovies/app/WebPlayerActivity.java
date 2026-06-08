@@ -10,6 +10,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.view.View;
 import android.view.WindowManager;
+import android.util.Log;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
@@ -29,28 +30,28 @@ public class WebPlayerActivity extends AppCompatActivity {
     private int currentIndex = 0;
     private final Handler handler = new Handler(Looper.getMainLooper());
 
-    private static final String[] VIDEO_EXTS = {
-        ".mp4", ".m3u8", ".mkv", ".webm", ".ts",
-        ".avi", ".mov", ".flv", ".mpd"
+    // These are page/asset extensions — never video
+    private static final String[] SKIP_EXTS = {
+        ".js", ".css", ".html", ".htm", ".php", ".json",
+        ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico",
+        ".woff", ".woff2", ".ttf", ".eot", ".map",
+        ".xml", ".txt"
     };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        
         super.onCreate(savedInstanceState);
 
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
-        // ── Black screen with spinner — user never sees the WebView ──
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(Color.BLACK);
 
-        // Spinner in center
         ProgressBar spinner = new ProgressBar(this);
-spinner.getIndeterminateDrawable().setColorFilter(
-    android.graphics.Color.RED,
-    android.graphics.PorterDuff.Mode.SRC_IN
-);
+        spinner.getIndeterminateDrawable().setColorFilter(
+            android.graphics.Color.RED,
+            android.graphics.PorterDuff.Mode.SRC_IN
+        );
         spinner.setIndeterminate(true);
         FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.WRAP_CONTENT,
@@ -60,9 +61,8 @@ spinner.getIndeterminateDrawable().setColorFilter(
         spinner.setLayoutParams(lp);
         root.addView(spinner);
 
-        // WebView hidden behind black screen
         webView = new WebView(this);
-        webView.setVisibility(View.INVISIBLE); // ← NEVER shown to user
+        webView.setVisibility(View.INVISIBLE);
         root.addView(webView, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
@@ -82,10 +82,21 @@ spinner.getIndeterminateDrawable().setColorFilter(
         });
 
         String url = getIntent().getStringExtra("url");
+        Log.d("WEB_DEBUG", "WEBPLAYER_URL=" + url);
         videoTitle = getIntent().getStringExtra("title");
         playlistJson = getIntent().getStringExtra("playlist");
         currentIndex = getIntent().getIntExtra("index", 0);
         if (videoTitle == null) videoTitle = "";
+
+        // Normalize playlist: treat empty/invalid as null
+        if (playlistJson != null &&
+            (playlistJson.isEmpty() || playlistJson.equals("null") || playlistJson.equals("[]"))) {
+            playlistJson = null;
+        }
+
+        Log.d("WEB_DEBUG", "WEBPLAYER_TITLE=" + videoTitle);
+        Log.d("WEB_DEBUG", "WEBPLAYER_PLAYLIST=" + (playlistJson != null ? "length=" + playlistJson.length() : "NULL"));
+        Log.d("WEB_DEBUG", "WEBPLAYER_INDEX=" + currentIndex);
 
         WebSettings s = webView.getSettings();
         s.setJavaScriptEnabled(true);
@@ -109,33 +120,66 @@ spinner.getIndeterminateDrawable().setColorFilter(
 
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest req) {
-                String reqUrl = req.getUrl().toString();
-                if (isVideoUrl(reqUrl)) {
-                    return false;
-                }
                 return false;
             }
 
             @Override
             public WebResourceResponse shouldInterceptRequest(
                     WebView view, WebResourceRequest request) {
+
                 String reqUrl = request.getUrl().toString();
-                if (isVideoUrl(reqUrl) || isStreamUrl(reqUrl)) {
-    handler.post(() -> launchExo(reqUrl));
-}
+                String method = request.getMethod();
+
+                if (!"GET".equals(method)) return null;
+
+                String lower = reqUrl.toLowerCase();
+
+                for (String skip : SKIP_EXTS) {
+                    if (lower.contains(skip)) return null;
+                }
+
+                if (lower.contains("google") || lower.contains("facebook") ||
+                    lower.contains("analytics") || lower.contains("doubleclick") ||
+                    lower.contains("ads") || lower.contains("tracker")) {
+                    return null;
+                }
+
+                Log.d("WEB_DEBUG", "INTERCEPT=" + reqUrl);
+
+                if (!launchedExo && isStrictVideoUrl(lower)) {
+                    Log.d("WEB_DEBUG", "VIDEO_STREAM_FOUND=" + reqUrl);
+                    handler.post(() -> launchExo(reqUrl));
+                }
+
                 return null;
             }
 
             @Override
             public void onPageFinished(WebView view, String pageUrl) {
                 injectVideoHunter();
+                handler.postDelayed(() -> injectVideoHunter(), 2000);
+                handler.postDelayed(() -> injectVideoHunter(), 5000);
             }
         });
 
         if (url != null) webView.loadUrl(url);
     }
 
+    private boolean isStrictVideoUrl(String lower) {
+        if (lower.contains(".m3u8")) return true;
+        if (lower.contains(".mpd")) return true;
+        if (lower.endsWith(".mp4") || lower.matches(".*\\.mp4[?#].*")) return true;
+        if (lower.endsWith(".mkv") || lower.endsWith(".webm")) return true;
+        if (lower.endsWith(".ts") && (
+            lower.contains("/seg") || lower.contains("/chunk") ||
+            lower.contains("/frag") || lower.contains("/ts/") ||
+            lower.contains("segment"))) return true;
+        if (lower.contains("stream=1") && lower.contains("download.php")) return true;
+        return false;
+    }
+
     private void injectVideoHunter() {
+        if (launchedExo) return;
         String js =
             "(function() {" +
             "  if (window.__hmHunterRunning) return;" +
@@ -168,57 +212,56 @@ spinner.getIndeterminateDrawable().setColorFilter(
             "  }" +
             "  findAndReport();" +
             "  setTimeout(findAndReport, 1500);" +
-            "  setTimeout(findAndReport, 3000);" +
-            "  setTimeout(findAndReport, 6000);" +
+            "  setTimeout(findAndReport, 3500);" +
+            "  setTimeout(findAndReport, 7000);" +
             "  var obs = new MutationObserver(findAndReport);" +
             "  obs.observe(document.body || document.documentElement," +
             "    { childList: true, subtree: true, attributes: true });" +
             "})();";
-
         webView.evaluateJavascript(js, null);
     }
 
     private class JsBridge {
         @JavascriptInterface
         public void onVideoFound(String url) {
+            Log.d("WEB_DEBUG", "JS_VIDEO_FOUND=" + url);
             if (url == null || url.isEmpty() || launchedExo) return;
+            String lower = url.toLowerCase();
+            if (!lower.contains(".m3u8") && !lower.contains(".mp4") &&
+                !lower.contains(".mkv") && !lower.contains(".webm") &&
+                !lower.contains(".mpd") && !lower.endsWith(".ts")) {
+                Log.d("WEB_DEBUG", "JS_FOUND_BUT_NOT_VIDEO=" + url);
+                return;
+            }
             handler.post(() -> launchExo(url));
         }
     }
 
-
+    /**
+     * FIX: Always forward playlist + index so PlayerActivity never loses
+     * series context after WebPlayer resolves the real stream URL.
+     */
     private void launchExo(String url) {
         if (launchedExo) return;
         launchedExo = true;
+
+        Log.d("WEB_DEBUG", "LAUNCHING_EXO_WITH=" + url);
+        Log.d("WEB_DEBUG", "FORWARDING_PLAYLIST=" + (playlistJson != null ? "yes len=" + playlistJson.length() : "none"));
+        Log.d("WEB_DEBUG", "FORWARDING_INDEX=" + currentIndex);
+
         Intent intent = new Intent(this, PlayerActivity.class);
         intent.putExtra(PlayerActivity.EXTRA_URL, url);
         intent.putExtra(PlayerActivity.EXTRA_TITLE, videoTitle);
+
+        // KEY FIX: always pass playlist + index so series nav works
         if (playlistJson != null) {
             intent.putExtra("playlist", playlistJson);
             intent.putExtra("index", currentIndex);
         }
+
         startActivity(intent);
         finish();
     }
-
-    private boolean isVideoUrl(String url) {
-        if (url == null) return false;
-        String lower = url.toLowerCase().split("\\?")[0];
-        for (String ext : VIDEO_EXTS) {
-            if (lower.endsWith(ext)) return true;
-        }
-        return false;
-    }
-
-    private boolean isStreamUrl(String url) {
-        if (url == null) return false;
-        return url.contains("stream=1")  ||
-               url.contains(".m3u8")     ||
-               url.contains(".mpd")      ||
-               url.contains("/manifest") ||
-               url.contains("/playlist");
-    }
-
 
     @Override
     protected void onDestroy() {

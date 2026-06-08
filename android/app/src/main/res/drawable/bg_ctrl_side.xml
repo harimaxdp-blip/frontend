@@ -1,19 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
-<selector xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:state_pressed="true">
+<!--
+    bg_ctrl_side.xml
+    Background for the 52dp rewind and forward buttons.
+    Translucent circle with ripple feedback.
+-->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="#33FFFFFF">
+
+    <item android:id="@android:id/mask">
         <shape android:shape="oval">
-            <solid android:color="#4DFFFFFF" />
+            <solid android:color="#FFFFFFFF" />
         </shape>
     </item>
-    <item android:state_focused="true">
-        <shape android:shape="oval">
-            <solid android:color="#3DFFFFFF" />
-            <stroke android:width="2dp" android:color="#B3FFFFFF" />
-        </shape>
-    </item>
+
     <item>
         <shape android:shape="oval">
-            <solid android:color="#26FFFFFF" />
+            <solid android:color="#1FFFFFFF" />
         </shape>
     </item>
-</selector>
+
+</ripple>
