@@ -102,7 +102,8 @@ public class DeviceControlPlugin extends Plugin {
         String url = call.getString("url");
         String movieTitle = call.getString("title");
 
-        Log.d("SERIES_DEBUG", "Plugin: openExoPlayer called. URL: " + url + ", Title: " + movieTitle);
+        Log.d("SERIES_DEBUG", "Plugin: openExoPlayer called.");
+        Log.d("SERIES_DEBUG", "Plugin Payload: " + call.getData().toString());
 
         if (url == null || url.isEmpty()) {
             call.reject("URL is missing");
@@ -122,27 +123,33 @@ public class DeviceControlPlugin extends Plugin {
         intent.putExtra("url", url);
         intent.putExtra("title", movieTitle);
 
-        // More robust playlist extraction
-        if (call.hasOption("playlist")) {
-            Object playlistObj = call.getData().opt("playlist");
-            int index = call.getInt("index", 0);
-            
-            if (playlistObj != null) {
-                Log.d("SERIES_DEBUG", "Plugin: Playlist object type: " + playlistObj.getClass().getSimpleName());
-                String playlistStr = playlistObj.toString();
-                
-                if (!playlistStr.isEmpty()) {
-                    intent.putExtra("playlist", playlistStr);
-                    intent.putExtra("index", index);
-                    Log.d("SERIES_DEBUG", "Plugin: Attached playlist. Length: " + playlistStr.length() + ", Index: " + index);
-                } else {
-                    Log.d("SERIES_DEBUG", "Plugin: Playlist string is empty");
-                }
-            } else {
-                Log.e("SERIES_DEBUG", "Plugin: Playlist option exists but is null in data");
+        // Try getting playlist as string first (since we JSON.stringify in JS)
+        String playlistStr = call.getString("playlist");
+        
+        // If not found, try getting it as a JSArray and converting
+        if (playlistStr == null) {
+            JSArray playlistArr = call.getArray("playlist");
+            if (playlistArr != null) {
+                playlistStr = playlistArr.toString();
             }
+        }
+
+        // If still null, check the raw data map
+        if (playlistStr == null) {
+            Object rawPlaylist = call.getData().opt("playlist");
+            if (rawPlaylist != null) {
+                playlistStr = rawPlaylist.toString();
+            }
+        }
+
+        int index = call.getInt("index", 0);
+
+        if (playlistStr != null && !playlistStr.isEmpty() && !playlistStr.equals("[]") && !playlistStr.equals("null")) {
+            intent.putExtra("playlist", playlistStr);
+            intent.putExtra("index", index);
+            Log.d("SERIES_DEBUG", "Plugin: Successfully attached playlist. Length: " + playlistStr.length());
         } else {
-            Log.d("SERIES_DEBUG", "Plugin: No playlist option found");
+            Log.d("SERIES_DEBUG", "Plugin: No valid playlist found in call data");
         }
 
         getActivity().startActivity(intent);
@@ -162,6 +169,18 @@ public void openWebPlayer(PluginCall call) {
     Intent intent = new Intent(getActivity(), WebPlayerActivity.class);
     intent.putExtra("url",   url);
     intent.putExtra("title", title != null ? title : "");
+    
+    // Pass playlist data so WebPlayerActivity can hand it over to PlayerActivity
+    String playlistStr = call.getString("playlist");
+    if (playlistStr == null) {
+        com.getcapacitor.JSArray playlistArr = call.getArray("playlist");
+        if (playlistArr != null) playlistStr = playlistArr.toString();
+    }
+    if (playlistStr != null) {
+        intent.putExtra("playlist", playlistStr);
+        intent.putExtra("index", call.getInt("index", 0));
+    }
+
     getActivity().startActivity(intent);
     call.resolve();
 }

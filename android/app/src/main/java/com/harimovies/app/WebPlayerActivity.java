@@ -25,6 +25,8 @@ public class WebPlayerActivity extends AppCompatActivity {
     private WebView webView;
     private volatile boolean launchedExo = false;
     private String videoTitle = "";
+    private String playlistJson = null;
+    private int currentIndex = 0;
     private final Handler handler = new Handler(Looper.getMainLooper());
 
     private static final String[] VIDEO_EXTS = {
@@ -81,6 +83,8 @@ spinner.getIndeterminateDrawable().setColorFilter(
 
         String url = getIntent().getStringExtra("url");
         videoTitle = getIntent().getStringExtra("title");
+        playlistJson = getIntent().getStringExtra("playlist");
+        currentIndex = getIntent().getIntExtra("index", 0);
         if (videoTitle == null) videoTitle = "";
 
         WebSettings s = webView.getSettings();
@@ -189,6 +193,10 @@ spinner.getIndeterminateDrawable().setColorFilter(
         Intent intent = new Intent(this, PlayerActivity.class);
         intent.putExtra(PlayerActivity.EXTRA_URL, url);
         intent.putExtra(PlayerActivity.EXTRA_TITLE, videoTitle);
+        if (playlistJson != null) {
+            intent.putExtra("playlist", playlistJson);
+            intent.putExtra("index", currentIndex);
+        }
         startActivity(intent);
         finish();
     }
