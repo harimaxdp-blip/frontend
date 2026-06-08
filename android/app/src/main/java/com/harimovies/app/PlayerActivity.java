@@ -70,6 +70,7 @@ public class PlayerActivity extends AppCompatActivity {
     private PlayerView playerView;
 
     private String  videoTitle   = "";
+    private String  seriesTitle  = ""; // Keep track of series title for unique resume keys
     private String  videoUrl     = "";
     private boolean isMuted      = false;
     private boolean isFullscreen = false;
@@ -206,15 +207,28 @@ public class PlayerActivity extends AppCompatActivity {
 
             videoUrl   = getIntent().getStringExtra(EXTRA_URL);   if (videoUrl == null) videoUrl = "";
             videoTitle = getIntent().getStringExtra(EXTRA_TITLE);
-            forcedResumePos = getIntent().getLongExtra("resume_pos", 0);
             if (videoTitle == null) videoTitle = "";
+            seriesTitle = videoTitle; 
+            
+            forcedResumePos = getIntent().getLongExtra("resume_pos", 0);
 
-            Log.d("PLAYER", "Initial URL: " + videoUrl);
+            Log.d("SERIES_DEBUG", "Activity: Initial URL: " + videoUrl);
+            Log.d("SERIES_DEBUG", "Activity: Initial Title: " + videoTitle);
+
+            // Log all extras to debug missing playlist
+            Bundle extras = getIntent().getExtras();
+            if (extras != null) {
+                for (String key : extras.keySet()) {
+                    Object val = extras.get(key);
+                    Log.d("SERIES_DEBUG", "Activity Extra: " + key + " (type: " + (val != null ? val.getClass().getSimpleName() : "null") + ")");
+                }
+            }
 
             // Parse playlist if available
             String playlistJson = getIntent().getStringExtra("playlist");
-            Log.e("SERIES_DEBUG", "playlistJson = " + playlistJson);
-            if (playlistJson != null) {
+            Log.d("SERIES_DEBUG", "Activity: playlistJson extra: " + (playlistJson != null ? "Length " + playlistJson.length() : "NULL"));
+
+            if (playlistJson != null && !playlistJson.isEmpty()) {
                 try {
                     JSONArray array = new JSONArray(playlistJson);
                     playlist.clear();
@@ -223,16 +237,22 @@ public class PlayerActivity extends AppCompatActivity {
                     }
                     currentIndex = getIntent().getIntExtra("index", 0);
                     
-                    // CRITICAL: Sync current video info with the index immediately
+                    Log.d("PLAYER", "Playlist size: " + playlist.size() + ", Start Index: " + currentIndex);
+
+                    // Sync current video info with the index
                     if (currentIndex >= 0 && currentIndex < playlist.size()) {
                         JSONObject ep = playlist.get(currentIndex);
                         videoUrl = ep.optString("link", videoUrl);
-                        // Use a fallback for title if the episode object doesn't have its own
+                        
                         String epTitle = ep.optString("title", "");
-                        if (epTitle.isEmpty()) epTitle = videoTitle; 
-                        videoTitle = epTitle;
+                        if (!epTitle.isEmpty()) {
+                            videoTitle = epTitle;
+                        } else {
+                            // Fallback display title
+                            String epNum = ep.optString("episode", String.valueOf(currentIndex + 1));
+                            videoTitle = seriesTitle + " - Episode " + epNum;
+                        }
                     }
-                    Log.d("PLAYER", "Playlist size: " + playlist.size() + ", Index: " + currentIndex);
                 } catch (Exception e) {
                     Log.e("PLAYER", "Playlist parse error", e);
                 }
@@ -437,18 +457,24 @@ Log.e("SERIES_DEBUG", "playlist size = " + playlist.size());
     //  Resume position storage
     // ══════════════════════════════════════════════════════════════════════════
     private String posKey() {
-        if (!playlist.isEmpty()) {
+        // Use seriesTitle as the base to ensure per-show storage
+        String base = (seriesTitle != null && !seriesTitle.isEmpty()) ? seriesTitle : videoUrl;
+        
+        if (!playlist.isEmpty() && currentIndex >= 0 && currentIndex < playlist.size()) {
             try {
                 JSONObject current = playlist.get(currentIndex);
-                // Use a combination of title and episode/id to make it unique per episode
-                String epRef = current.optString("id", current.optString("episode", String.valueOf(currentIndex)));
-                return "pos_" + videoTitle.hashCode() + "_ep_" + epRef;
+                // Use a unique reference: id > link > episode number
+                String epRef = current.optString("id", 
+                               current.optString("link", 
+                               current.optString("episode", String.valueOf(currentIndex))));
+                
+                // Construct a unique key: pos_HASHCODE_ep_REF
+                return "pos_" + Math.abs(base.hashCode()) + "_ep_" + epRef;
             } catch (Exception ignored) {}
         }
-        if (videoTitle != null && !videoTitle.isEmpty()) {
-            return "pos_" + videoTitle.hashCode();
-        }
-        return "pos_" + videoUrl.hashCode();
+        
+        // Fallback for single movies
+        return "pos_" + Math.abs(base.hashCode());
     }
 
     private void saveCurrentPosition() {

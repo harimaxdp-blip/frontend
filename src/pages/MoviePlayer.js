@@ -33,16 +33,25 @@ export default function MoviePlayer() {
       /\.mpd($|\?)/i.test(url);
 
     if (isDirectVideo) {
-      alert("PLAYLIST LENGTH = " + (playlist ? playlist.length : 0));
-  DeviceControl.openExoPlayer({
-    url,
-    title,
-    playlist: playlist || [],
-    index: startIndex
-  })
-    .then(handleGoBack)
-    .catch(handleGoBack);
-}else {
+      // Clean and stringify the playlist to ensure it passes the bridge safely.
+      // Firestore objects (like Timestamps) can cause serialization errors in Capacitor.
+      const cleanedPlaylist = (playlist || []).map(ep => ({
+        link: ep.link || "",
+        title: ep.title || "",
+        episode: ep.episode || "",
+        season: ep.season || "1",
+        id: ep.id || ""
+      }));
+
+      DeviceControl.openExoPlayer({
+        url,
+        title,
+        playlist: JSON.stringify(cleanedPlaylist),
+        index: startIndex
+      })
+        .then(handleGoBack)
+        .catch(handleGoBack);
+    } else {
       DeviceControl.openWebPlayer({ url, title })
         .then(handleGoBack)
         .catch(handleGoBack);

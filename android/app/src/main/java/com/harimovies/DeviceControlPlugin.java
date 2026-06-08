@@ -7,6 +7,7 @@ import android.util.Log;
 
 import androidx.browser.customtabs.CustomTabsIntent;
 import com.harimovies.app.WebPlayerActivity;
+import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
@@ -101,6 +102,8 @@ public class DeviceControlPlugin extends Plugin {
         String url = call.getString("url");
         String movieTitle = call.getString("title");
 
+        Log.d("SERIES_DEBUG", "Plugin: openExoPlayer called. URL: " + url + ", Title: " + movieTitle);
+
         if (url == null || url.isEmpty()) {
             call.reject("URL is missing");
             return;
@@ -115,36 +118,34 @@ public class DeviceControlPlugin extends Plugin {
         }
         if (movieTitle == null) movieTitle = "";
 
-        Intent intent = new Intent(
-                getActivity(),
-                PlayerActivity.class
-        );
-
+        Intent intent = new Intent(getActivity(), PlayerActivity.class);
         intent.putExtra("url", url);
         intent.putExtra("title", movieTitle);
 
-        // Handle playlist for series safely
+        // More robust playlist extraction
         if (call.hasOption("playlist")) {
-            com.getcapacitor.JSArray playlist = call.getArray("playlist");
-            if (playlist != null) {
-                intent.putExtra("playlist", playlist.toString());
-                intent.putExtra("index", call.getInt("index", 0));
+            Object playlistObj = call.getData().opt("playlist");
+            int index = call.getInt("index", 0);
+            
+            if (playlistObj != null) {
+                Log.d("SERIES_DEBUG", "Plugin: Playlist object type: " + playlistObj.getClass().getSimpleName());
+                String playlistStr = playlistObj.toString();
+                
+                if (!playlistStr.isEmpty()) {
+                    intent.putExtra("playlist", playlistStr);
+                    intent.putExtra("index", index);
+                    Log.d("SERIES_DEBUG", "Plugin: Attached playlist. Length: " + playlistStr.length() + ", Index: " + index);
+                } else {
+                    Log.d("SERIES_DEBUG", "Plugin: Playlist string is empty");
                 }
+            } else {
+                Log.e("SERIES_DEBUG", "Plugin: Playlist option exists but is null in data");
+            }
+        } else {
+            Log.d("SERIES_DEBUG", "Plugin: No playlist option found");
         }
-        if (call.hasOption("playlist")) {
-    com.getcapacitor.JSArray playlist = call.getArray("playlist");
 
-    Log.d("SERIES", "Playlist = " + playlist);
-    Log.d("SERIES", "Index = " + call.getInt("index", 0));
-
-    if (playlist != null) {
-        intent.putExtra("playlist", playlist.toString());
-        intent.putExtra("index", call.getInt("index", 0));
-    }
-}
-Log.d("SERIES", "Sending playlist = " + intent.getStringExtra("playlist"));
         getActivity().startActivity(intent);
-
         call.resolve();
     }
     
