@@ -33,6 +33,7 @@ export default function MoviePlayer() {
       /\.mpd($|\?)/i.test(url);
 
     if (isDirectVideo) {
+      alert("PLAYLIST LENGTH = " + (playlist ? playlist.length : 0));
   DeviceControl.openExoPlayer({
     url,
     title,

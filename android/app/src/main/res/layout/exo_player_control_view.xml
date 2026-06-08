@@ -249,7 +249,7 @@
             android:nextFocusUp="@id/btn_mute"
             android:nextFocusDown="@id/exo_progress" />
 
-        <!-- Forward 30s -->
+        <!-- Forward 10s -->
         <ImageButton
             android:id="@+id/exo_ffwd"
             android:layout_width="52dp"
@@ -257,7 +257,7 @@
             android:background="@drawable/bg_ctrl_side"
             android:src="@drawable/ic_forward_30"
             android:tint="#FFFFFFFF"
-            android:contentDescription="Forward 30 seconds"
+            android:contentDescription="Forward 10 seconds"
             android:padding="12dp"
             android:focusable="true"
             android:elevation="0dp"

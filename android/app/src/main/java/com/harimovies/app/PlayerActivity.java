@@ -213,6 +213,7 @@ public class PlayerActivity extends AppCompatActivity {
 
             // Parse playlist if available
             String playlistJson = getIntent().getStringExtra("playlist");
+            Log.e("SERIES_DEBUG", "playlistJson = " + playlistJson);
             if (playlistJson != null) {
                 try {
                     JSONArray array = new JSONArray(playlistJson);
@@ -340,7 +341,7 @@ public class PlayerActivity extends AppCompatActivity {
 
     private void updateSeriesUI() {
         if (tvTitle != null) tvTitle.setText(videoTitle);
-
+Log.e("SERIES_DEBUG", "playlist size = " + playlist.size());
         if (playlist.isEmpty()) {
             if (btnPrevEp != null) btnPrevEp.setVisibility(View.GONE);
             if (btnNextEp != null) btnNextEp.setVisibility(View.GONE);
@@ -1113,7 +1114,7 @@ public class PlayerActivity extends AppCompatActivity {
             fastSeek(-10_000); return true;
         }
         if (keyCode == KeyEvent.KEYCODE_MEDIA_FAST_FORWARD) {
-            fastSeek(30_000); return true;
+            fastSeek(10_000); return true;
         }
 
         if (isLocked) return super.onKeyDown(keyCode, event);
@@ -1504,7 +1505,7 @@ public class PlayerActivity extends AppCompatActivity {
         });
 
         if (btnRew  != null) btnRew.setOnClickListener(v ->  { fastSeek(-10_000); scheduleHide(); });
-        if (btnFfwd != null) btnFfwd.setOnClickListener(v -> { fastSeek(30_000);  scheduleHide(); });
+        if (btnFfwd != null) btnFfwd.setOnClickListener(v -> { fastSeek(10_000);  scheduleHide(); });
         if (btnPP   != null) btnPP.setOnClickListener(v ->   {
             if (player != null) { if (player.isPlaying()) player.pause(); else player.play(); }
             animatePlayPause(); scheduleHide();

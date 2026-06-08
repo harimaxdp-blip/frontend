@@ -128,14 +128,26 @@ public class DeviceControlPlugin extends Plugin {
             com.getcapacitor.JSArray playlist = call.getArray("playlist");
             if (playlist != null) {
                 intent.putExtra("playlist", playlist.toString());
-                intent.putExtra("index", call.getInt("currentIndex", 0));
-            }
+                intent.putExtra("index", call.getInt("index", 0));
+                }
         }
+        if (call.hasOption("playlist")) {
+    com.getcapacitor.JSArray playlist = call.getArray("playlist");
 
+    Log.d("SERIES", "Playlist = " + playlist);
+    Log.d("SERIES", "Index = " + call.getInt("index", 0));
+
+    if (playlist != null) {
+        intent.putExtra("playlist", playlist.toString());
+        intent.putExtra("index", call.getInt("index", 0));
+    }
+}
+Log.d("SERIES", "Sending playlist = " + intent.getStringExtra("playlist"));
         getActivity().startActivity(intent);
 
         call.resolve();
     }
+    
 @PluginMethod
 public void openWebPlayer(PluginCall call) {
     String url   = call.getString("url", "");
