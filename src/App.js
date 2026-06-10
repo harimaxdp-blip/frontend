@@ -3,7 +3,6 @@ import { Routes, Route, useLocation, useNavigate } from "react-router-dom";
 import BannerManager from "./components/Bannermanager";
 import Sidebar from "./components/Sidebar";
 import avatar11 from "./assets/avatars/11.png";
-import musicLogo from "./assets/music.png";
 import avatar12 from "./assets/avatars/12.png";
 import avatar13 from "./assets/avatars/13.png";
 import avatar16 from "./assets/avatars/16.png";
@@ -20,18 +19,28 @@ import Loader from "./components/Loader";
 import Login from "./pages/Login";
 import Offline from "./pages/Offline";
 import logo from "./assets/logo1.png";
+
+// ── swap these two imports to whatever images you want in the gear popup ──
+import gearLink1Img from "./assets/gear-link1.png"; // YOUR IMAGE 1
+import gearLink2Img from "./assets/gear-link2.png"; // YOUR IMAGE 2
+
 import "./App.css";
 
 const CATEGORY_PATHS = new Set(["/", "/movies", "/series", "/anime"]);
 
 const avatars = [avatar13, avatar16, avatar18, avatar19, avatar11, avatar12];
 
-// ── Detect pointer type: touch = no focus ring, mouse/TV remote = show ring ──
-// We set a data attribute on <html> so CSS can react globally.
+// ── Gear popup link config — swap href and label to whatever pages you need ──
+const GEAR_LINKS = [
+  { img: gearLink1Img, label: "HM", desc: "Movies For You",    href: "/" },
+  { img: gearLink2Img, label: "HM",   desc: "Music For You", href: "/"   },
+];
+
+// ── Detect pointer type ──
 function setupPointerMode() {
   const setMode = (mode) => document.documentElement.setAttribute("data-input", mode);
   window.addEventListener("touchstart", () => setMode("touch"), { passive: true, once: false });
-  window.addEventListener("mousemove", () => setMode("mouse"), { passive: true, once: false });
+  window.addEventListener("mousemove",  () => setMode("mouse"), { passive: true, once: false });
   window.addEventListener("keydown", (e) => {
     if (["ArrowUp","ArrowDown","ArrowLeft","ArrowRight","Enter"," "].includes(e.key))
       setMode("key");
@@ -45,7 +54,7 @@ setupPointerMode();
 // ─────────────────────────────────────────────────────────
 function AvatarImg({ src, alt, imgClassName, wrapClassName, minDelay = 500 }) {
   const [show, setShow] = useState(false);
-  const timerRef = useRef(null);
+  const timerRef  = useRef(null);
   const loadedRef = useRef(false);
 
   useEffect(() => {
@@ -78,11 +87,11 @@ function AvatarImg({ src, alt, imgClassName, wrapClassName, minDelay = 500 }) {
 }
 
 // ─────────────────────────────────────────────────────────
-// SearchIcon — custom SVG magnifier (cooler than FaSearch)
+// SearchIcon
 // ─────────────────────────────────────────────────────────
 function SearchIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="search-icon-svg" aria-hidden="true">
+    <svg viewBox="0 0 24 24" fill="none" className="search-icon-svg" aria-hidden="true">
       <circle cx="10.5" cy="10.5" r="6.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
       <path d="M15.5 15.5L20 20" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/>
     </svg>
@@ -90,12 +99,13 @@ function SearchIcon() {
 }
 
 // ─────────────────────────────────────────────────────────
-// HamburgerIcon — clean 3-line icon
+// HamburgerIcon
 // ─────────────────────────────────────────────────────────
 function HamburgerIcon({ open }) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="menu-icon-svg" aria-hidden="true">
-      <path d={open ? "M5 5L19 19M5 19L19 5" : "M3 6h18M3 12h18M3 18h18"}
+    <svg viewBox="0 0 24 24" fill="none" className="menu-icon-svg" aria-hidden="true">
+      <path
+        d={open ? "M5 5L19 19M5 19L19 5" : "M3 6h18M3 12h18M3 18h18"}
         stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
         style={{ transition: "d 0.3s ease" }}
       />
@@ -103,85 +113,132 @@ function HamburgerIcon({ open }) {
   );
 }
 
+// ─────────────────────────────────────────────────────────
+// GearIcon
+// ─────────────────────────────────────────────────────────
+function GearIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className="gear-icon-svg" aria-hidden="true">
+      <path d="M12 15a3 3 0 100-6 3 3 0 000 6z" stroke="currentColor" strokeWidth="2"/>
+      <path
+        d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33
+           1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06
+           a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09
+           A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68
+           a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06
+           a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09
+           a1.65 1.65 0 00-1.51 1z"
+        stroke="currentColor" strokeWidth="2"
+      />
+    </svg>
+  );
+}
+
+// ─────────────────────────────────────────────────────────
+// GearPopup — two image+link cards
+// ─────────────────────────────────────────────────────────
+function GearPopup({ onClose, onNavigate }) {
+  return (
+    <div className="gear-popup" role="dialog" aria-label="Quick links">
+      <p className="gear-popup-title">Quick links</p>
+      {GEAR_LINKS.map(({ img, label, desc, href }) => (
+        <button
+          key={href}
+          className="gear-link"
+          onClick={() => { onNavigate(href); onClose(); }}
+        >
+          <img src={img} alt="" className="gear-link-img" />
+          <span className="gear-link-info">
+            <span className="gear-link-name">{label}</span>
+            <span className="gear-link-desc">{desc}</span>
+          </span>
+          <svg className="gear-link-arrow" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M9 18l6-6-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+          </svg>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────
+// App
+// ─────────────────────────────────────────────────────────
 function App() {
-  const [open, setOpen] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const contentRef = useRef(null);
-  const profileRef = useRef(null);
+  const [open,            setOpen]            = useState(false);
+  const [loading,         setLoading]         = useState(true);
+  const [user,            setUser]            = useState(null);
+  const [showProfile,     setShowProfile]     = useState(false);
+  const [showAvatarPicker,setShowAvatarPicker]= useState(false);
+  const [showGear,        setShowGear]        = useState(false);
+  const [avatarKey,       setAvatarKey]       = useState(0);
+  const [isOnline,        setIsOnline]        = useState(navigator.onLine);
+
+  const contentRef    = useRef(null);
+  const profileRef    = useRef(null);
   const menuButtonRef = useRef(null);
+  const gearRef       = useRef(null);
   const previousPathRef = useRef(null);
-  const [user, setUser] = useState(null);
-  const [showProfile, setShowProfile] = useState(false);
-  const [showAvatarPicker, setShowAvatarPicker] = useState(false);
-  const [avatarKey, setAvatarKey] = useState(0);
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
-  // showMusicLogo: true = music logo, false = main logo
-  const [showMusicLogo, setShowMusicLogo] = useState(false);
-  // logoFlipping: true during the flip transition
-  const [logoFlipping, setLogoFlipping] = useState(false);
 
   const location = useLocation();
   const navigate = useNavigate();
 
-  // ── Network listener ──
+  // ── Network ──
   useEffect(() => {
-    const goOnline = () => setIsOnline(true);
-    const goOffline = () => setIsOnline(false);
-    window.addEventListener("online", goOnline);
-    window.addEventListener("offline", goOffline);
-    return () => {
-      window.removeEventListener("online", goOnline);
-      window.removeEventListener("offline", goOffline);
-    };
-  }, []);
-
-  // ── Logo flip every 2s ──
-  // Phase 1: flip out (0–300ms) → swap src → flip in (300–600ms)
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setLogoFlipping(true);
-      setTimeout(() => {
-        setShowMusicLogo((prev) => !prev);
-        // flip-in class applied after src swap
-        setTimeout(() => setLogoFlipping(false), 350);
-      }, 300);
-    }, 4000);
-    return () => clearInterval(interval);
+    const on  = () => setIsOnline(true);
+    const off = () => setIsOnline(false);
+    window.addEventListener("online",  on);
+    window.addEventListener("offline", off);
+    return () => { window.removeEventListener("online", on); window.removeEventListener("offline", off); };
   }, []);
 
   // ── Close profile popup on outside click ──
   useEffect(() => {
     if (!showProfile) return;
-    const handleOutsideClick = (e) => {
+    const handler = (e) => {
       if (profileRef.current && !profileRef.current.contains(e.target)) {
         setShowProfile(false);
         setShowAvatarPicker(false);
       }
     };
-    document.addEventListener("touchstart", handleOutsideClick);
-    document.addEventListener("mousedown", handleOutsideClick);
+    document.addEventListener("touchstart", handler);
+    document.addEventListener("mousedown",  handler);
     return () => {
-      document.removeEventListener("touchstart", handleOutsideClick);
-      document.removeEventListener("mousedown", handleOutsideClick);
+      document.removeEventListener("touchstart", handler);
+      document.removeEventListener("mousedown",  handler);
     };
   }, [showProfile]);
 
+  // ── Close gear popup on outside click ──
+  useEffect(() => {
+    if (!showGear) return;
+    const handler = (e) => {
+      if (gearRef.current && !gearRef.current.contains(e.target)) setShowGear(false);
+    };
+    document.addEventListener("touchstart", handler);
+    document.addEventListener("mousedown",  handler);
+    return () => {
+      document.removeEventListener("touchstart", handler);
+      document.removeEventListener("mousedown",  handler);
+    };
+  }, [showGear]);
+
   // ── Loader ──
   useEffect(() => {
-    const timer = setTimeout(() => setLoading(false), 2000);
-    return () => clearTimeout(timer);
+    const t = setTimeout(() => setLoading(false), 2000);
+    return () => clearTimeout(t);
   }, []);
 
-  // ── Restore user from localStorage ──
+  // ── Restore user ──
   useEffect(() => {
-    const savedUser = localStorage.getItem("user");
-    if (savedUser) {
-      const parsedUser = JSON.parse(savedUser);
-      if (!parsedUser.avatar) {
-        parsedUser.avatar = avatars[Math.floor(Math.random() * avatars.length)];
-        localStorage.setItem("user", JSON.stringify(parsedUser));
+    const saved = localStorage.getItem("user");
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (!parsed.avatar) {
+        parsed.avatar = avatars[Math.floor(Math.random() * avatars.length)];
+        localStorage.setItem("user", JSON.stringify(parsed));
       }
-      setUser(parsedUser);
+      setUser(parsed);
     } else {
       setUser(false);
     }
@@ -189,28 +246,23 @@ function App() {
 
   // ── Capacitor deep link ──
   useEffect(() => {
-    const setupDeepLink = async () => {
-      await CapacitorApp.addListener("appUrlOpen", (event) => {
-        if (event.url) navigate("/");
-      });
-    };
-    setupDeepLink();
+    CapacitorApp.addListener("appUrlOpen", () => navigate("/"));
     return () => { CapacitorApp.removeAllListeners(); };
   }, [navigate]);
 
-  // ── Active page detection ──
+  // ── Active page ──
   const getActive = () => {
-    const path = location.pathname;
-    if (path.startsWith("/movies")) return "MOVIES";
-    if (path.startsWith("/series")) return "SERIES";
-    if (path.startsWith("/anime"))  return "ANIME";
-    if (path.startsWith("/upload")) return "UPLOAD";
-    if (path.startsWith("/edit"))   return "EDIT";
-    if (path.startsWith("/player")) return "PLAYER";
+    const p = location.pathname;
+    if (p.startsWith("/movies")) return "MOVIES";
+    if (p.startsWith("/series")) return "SERIES";
+    if (p.startsWith("/anime"))  return "ANIME";
+    if (p.startsWith("/upload")) return "UPLOAD";
+    if (p.startsWith("/edit"))   return "EDIT";
+    if (p.startsWith("/player")) return "PLAYER";
     return "ALL";
   };
 
-  const active = getActive();
+  const active       = getActive();
   const isPlayerPage = location.pathname.startsWith("/player");
 
   const focusFirstSidebarItem = useCallback(() => {
@@ -220,24 +272,11 @@ function App() {
   }, []);
 
   const handleMenuKeyDown = useCallback((e) => {
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      setOpen(true);
-      focusFirstSidebarItem();
-      return;
-    }
-    if (e.key === "ArrowRight") {
-      e.preventDefault();
-      document.querySelector(".search-btn")?.focus({ preventScroll: true });
-      return;
-    }
+    if (e.key === "ArrowDown") { e.preventDefault(); setOpen(true); focusFirstSidebarItem(); return; }
+    if (e.key === "ArrowRight") { e.preventDefault(); document.querySelector(".gear-btn")?.focus({ preventScroll: true }); return; }
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
-      setOpen((nextOpen) => {
-        const shouldOpen = !nextOpen;
-        if (shouldOpen) focusFirstSidebarItem();
-        return shouldOpen;
-      });
+      setOpen((next) => { if (!next) focusFirstSidebarItem(); return !next; });
     }
   }, [focusFirstSidebarItem]);
 
@@ -248,59 +287,39 @@ function App() {
 
   // ── Scroll to top on category switch ──
   useLayoutEffect(() => {
-    const previousPath = previousPathRef.current;
-    const currentPath = location.pathname;
-    const isCategorySwitch =
-      CATEGORY_PATHS.has(currentPath) &&
-      CATEGORY_PATHS.has(previousPath) &&
-      previousPath !== currentPath;
-    const isInitialCategoryLoad =
-      previousPath === null && CATEGORY_PATHS.has(currentPath);
-    if ((isInitialCategoryLoad || isCategorySwitch) && contentRef.current) {
+    const prev = previousPathRef.current;
+    const curr = location.pathname;
+    const isCategorySwitch = CATEGORY_PATHS.has(curr) && CATEGORY_PATHS.has(prev) && prev !== curr;
+    const isInitialLoad    = prev === null && CATEGORY_PATHS.has(curr);
+    if ((isInitialLoad || isCategorySwitch) && contentRef.current) {
       contentRef.current.scrollTo({ top: 0, left: 0, behavior: "auto" });
       window.scrollTo(0, 0);
     }
-    previousPathRef.current = currentPath;
+    previousPathRef.current = curr;
   }, [location.pathname]);
 
-  // ── Navigation handler ──
+  // ── Navigation ──
   const handleSetActive = (page) => {
     setOpen(false);
-    switch (page) {
-      case "MOVIES":  navigate("/movies"); break;
-      case "SERIES":  navigate("/series"); break;
-      case "ANIME":   navigate("/anime");  break;
-      case "UPLOAD":  navigate("/upload"); break;
-      case "EDIT":    navigate("/edit");   break;
-      case "PLAYER":  navigate("/player"); break;
-      default:        navigate("/");
-    }
+    const map = { MOVIES:"/movies", SERIES:"/series", ANIME:"/anime", UPLOAD:"/upload", EDIT:"/edit", PLAYER:"/player" };
+    navigate(map[page] ?? "/");
   };
 
-  if (loading)            return <Loader />;
-  if (user === undefined) return <Loader />;
-  if (!isOnline)          return <Offline />;
-  if (!user)              return <Login />;
+  if (loading || user === undefined) return <Loader />;
+  if (!isOnline)                      return <Offline />;
+  if (!user)                          return <Login />;
 
-  const handleLogout = () => {
-    localStorage.removeItem("user");
-    window.location.reload();
-  };
-
-  const avatarSrc = user?.avatar || user?.photoURL;
-
-  // logo class: flip-out → src swap → flip-in
-  const logoClass = [
-    "logo-img",
-    logoFlipping ? "logo-flip-out" : "logo-flip-in",
-    showMusicLogo ? "music-logo" : "",
-  ].filter(Boolean).join(" ");
+  const handleLogout = () => { localStorage.removeItem("user"); window.location.reload(); };
+  const avatarSrc    = user?.avatar || user?.photoURL;
 
   return (
     <div className="app">
+
       {/* ========================= TOPBAR ========================= */}
       {!isPlayerPage && (
         <div className="topbar">
+
+          {/* LEFT: hamburger + gear */}
           <div className="topbar-left">
             <button
               ref={menuButtonRef}
@@ -308,27 +327,43 @@ function App() {
               data-menu-button
               aria-label="Open navigation menu"
               aria-expanded={open}
-              onClick={() => {
-                setOpen((nextOpen) => {
-                  const shouldOpen = !nextOpen;
-                  if (shouldOpen) focusFirstSidebarItem();
-                  return shouldOpen;
-                });
-              }}
+              onClick={() => setOpen((next) => { if (!next) focusFirstSidebarItem(); return !next; })}
               onKeyDown={handleMenuKeyDown}
             >
               <HamburgerIcon open={open} />
             </button>
+
+            {/* ── Gear button ── */}
+            <div className="gear-wrapper" ref={gearRef}>
+              <button
+                className="gear-btn"
+                aria-label="Quick links"
+                aria-expanded={showGear}
+                onClick={() => setShowGear((s) => !s)}
+                onKeyDown={(e) => {
+                  if (e.key === "ArrowLeft") { e.preventDefault(); menuButtonRef.current?.focus({ preventScroll: true }); }
+                  if (e.key === "ArrowRight") { e.preventDefault(); document.querySelector(".search-btn")?.focus({ preventScroll: true }); }
+                  if (e.key === "Escape") setShowGear(false);
+                }}
+              >
+                <GearIcon />
+              </button>
+
+              {showGear && (
+                <GearPopup
+                  onClose={() => setShowGear(false)}
+                  onNavigate={(href) => navigate(href)}
+                />
+              )}
+            </div>
           </div>
 
+          {/* CENTER: logo — absolutely centered so it ignores left/right widths */}
           <div className="topbar-center">
-            <img
-              src={showMusicLogo ? musicLogo : logo}
-              className={logoClass}
-              alt="logo"
-            />
+            <img src={logo} className="logo-img" alt="logo" />
           </div>
 
+          {/* RIGHT: search + profile */}
           <div className="topbar-right">
             <button
               className="search-btn"
@@ -337,47 +372,24 @@ function App() {
                 navigate("/");
                 setTimeout(() => {
                   document.getElementById("search-input")?.focus();
-                  document.getElementById("search-section")?.scrollIntoView({
-                    behavior: "smooth",
-                    block: "center",
-                  });
+                  document.getElementById("search-section")?.scrollIntoView({ behavior: "smooth", block: "center" });
                 }, 300);
               }}
               onKeyDown={(e) => {
-                if (e.key === "ArrowLeft") {
-                  e.preventDefault();
-                  menuButtonRef.current?.focus({ preventScroll: true });
-                } else if (e.key === "ArrowDown") {
-                  e.preventDefault();
-                  document.querySelector("#search-input, [data-card-id]")?.focus({ preventScroll: false });
-                }
+                if (e.key === "ArrowLeft")  { e.preventDefault(); document.querySelector(".gear-btn")?.focus({ preventScroll: true }); }
+                if (e.key === "ArrowDown")  { e.preventDefault(); document.querySelector("#search-input, [data-card-id]")?.focus({ preventScroll: false }); }
               }}
             >
               <SearchIcon />
             </button>
 
-            <div
-              className="profile-wrapper"
-              ref={profileRef}
-              onClick={(e) => e.stopPropagation()}
-            >
+            <div className="profile-wrapper" ref={profileRef} onClick={(e) => e.stopPropagation()}>
               <button
                 className="profile-btn"
-                onClick={() => {
-                  const next = !showProfile;
-                  setShowProfile(next);
-                  if (!next) setShowAvatarPicker(false);
-                }}
+                onClick={() => { const next = !showProfile; setShowProfile(next); if (!next) setShowAvatarPicker(false); }}
               >
                 {avatarSrc ? (
-                  <AvatarImg
-                    key={`topbar-${avatarKey}`}
-                    src={avatarSrc}
-                    alt="profile"
-                    imgClassName="profile-avatar"
-                    wrapClassName="avatar-img-wrap--sm"
-                    minDelay={500}
-                  />
+                  <AvatarImg key={`topbar-${avatarKey}`} src={avatarSrc} alt="profile" imgClassName="profile-avatar" wrapClassName="avatar-img-wrap--sm" minDelay={500} />
                 ) : (
                   <svg viewBox="0 0 24 24" fill="none" className="profile-icon-svg" aria-hidden="true">
                     <circle cx="12" cy="8" r="4" stroke="currentColor" strokeWidth="2"/>
@@ -389,57 +401,36 @@ function App() {
               {showProfile && (
                 <div className="profile-popup">
                   <div className="profile-header">
-                    <div
-                      className="profile-avatar-wrap"
-                      onClick={() => setShowAvatarPicker(!showAvatarPicker)}
-                    >
+                    <div className="profile-avatar-wrap" onClick={() => setShowAvatarPicker(!showAvatarPicker)}>
                       {avatarSrc && (
-                        <AvatarImg
-                          key={`popup-${avatarKey}`}
-                          src={avatarSrc}
-                          alt="profile"
-                          imgClassName="profile-popup-avatar"
-                          wrapClassName="avatar-img-wrap--lg"
-                          minDelay={500}
-                        />
+                        <AvatarImg key={`popup-${avatarKey}`} src={avatarSrc} alt="profile" imgClassName="profile-popup-avatar" wrapClassName="avatar-img-wrap--lg" minDelay={500} />
                       )}
-                      <span className="avatar-edit-hint">
-                        {showAvatarPicker ? "▲ Hide" : "✎ Change"}
-                      </span>
+                      <span className="avatar-edit-hint">{showAvatarPicker ? "▲ Hide" : "✎ Change"}</span>
                     </div>
                     <div className="profile-email">{user?.email}</div>
                   </div>
 
                   {showAvatarPicker && (
                     <div className="avatar-list">
-                      {avatars.map((avatar, index) => (
+                      {avatars.map((avatar, i) => (
                         <div
-                          key={index}
+                          key={i}
                           className={`avatar-option-wrap ${user?.avatar === avatar ? "avatar-selected" : ""}`}
                           onClick={() => {
-                            const updatedUser = { ...user, avatar };
-                            setUser(updatedUser);
-                            localStorage.setItem("user", JSON.stringify(updatedUser));
+                            const updated = { ...user, avatar };
+                            setUser(updated);
+                            localStorage.setItem("user", JSON.stringify(updated));
                             setShowAvatarPicker(false);
                             setAvatarKey((k) => k + 1);
                           }}
                         >
-                          <AvatarImg
-                            key={`grid-${index}`}
-                            src={avatar}
-                            alt=""
-                            imgClassName="avatar-option-img"
-                            wrapClassName="avatar-img-wrap--grid"
-                            minDelay={400}
-                          />
+                          <AvatarImg key={`grid-${i}`} src={avatar} alt="" imgClassName="avatar-option-img" wrapClassName="avatar-img-wrap--grid" minDelay={400} />
                         </div>
                       ))}
                     </div>
                   )}
 
-                  <button className="logout-btn" onClick={handleLogout}>
-                    Logout
-                  </button>
+                  <button className="logout-btn" onClick={handleLogout}>Logout</button>
                 </div>
               )}
             </div>

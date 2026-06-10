@@ -37,9 +37,11 @@ package com.harimovies.app;
     import android.widget.TextView;
     import android.widget.Toast;
 
+    import androidx.media3.common.C;
     import androidx.media3.common.MediaItem;
     import androidx.media3.common.PlaybackException;
     import androidx.media3.common.Player;
+    import androidx.media3.common.TrackSelectionParameters;
     import androidx.media3.datasource.DefaultHttpDataSource;
     import androidx.media3.exoplayer.ExoPlayer;
     import androidx.media3.exoplayer.SeekParameters;
@@ -156,7 +158,7 @@ package com.harimovies.app;
         private TextView     tvLockHint, tvTitleSep;
 
         // ── Button refs ───────────────────────────────────────────────────────────
-        private ImageButton btnBack, btnMute, btnAspect, btnFullscreen, btnSync, btnEpisodes;
+        private ImageButton btnBack, btnMute, btnAspect, btnFullscreen, btnSync, btnEpisodes, btnTracks;
         private View        btnRew, btnFfwd, btnPP, progressBar;
 
         // ── Resume overlay ────────────────────────────────────────────────────────
@@ -285,6 +287,7 @@ package com.harimovies.app;
 
                 player = new ExoPlayer.Builder(this).build();
                 player.setSeekParameters(SeekParameters.EXACT);
+                applySavedTrackPreferences();
                 playerView.setPlayer(player);
                 playerView.setControllerShowTimeoutMs(-1);
                 playerView.setControllerAutoShow(false);
@@ -292,19 +295,28 @@ package com.harimovies.app;
 
                 player.addListener(new Player.Listener() {
                     @Override
-                    public void onPlayerError(PlaybackException e) {
-                        Log.e("PLAYER_ERROR", "CODE=" + e.errorCode);
-                        Log.e("PLAYER_ERROR", "NAME=" + e.getErrorCodeName());
-                        Log.e("PLAYER_ERROR", "MESSAGE=" + e.getMessage(), e);
-                        if (e.getCause() != null) {
-                            Log.e("PLAYER_ERROR", "CAUSE=" + e.getCause().toString());
-                        }
-                        runOnUiThread(() -> Toast.makeText(
-                                PlayerActivity.this,
-                                "Playback Error: " + e.getErrorCodeName(),
-                                Toast.LENGTH_LONG
-                        ).show());
-                    }
+public void onPlayerError(PlaybackException e) {
+    Log.e("PLAYER_ERROR", "CODE=" + e.errorCode);
+    Log.e("PLAYER_ERROR", "NAME=" + e.getErrorCodeName());
+
+    // ExoPlayer failed → open WebPlayer
+    Intent intent = new Intent(PlayerActivity.this, WebPlayerActivity.class);
+
+    intent.putExtra("url", videoUrl);
+    intent.putExtra("title", videoTitle);
+
+    if (!playlist.isEmpty()) {
+        JSONArray arr = new JSONArray();
+        for (JSONObject item : playlist) {
+            arr.put(item);
+        }
+        intent.putExtra("playlist", arr.toString());
+        intent.putExtra("index", currentIndex);
+    }
+
+    startActivity(intent);
+    finish();
+}
 
                     @Override
                     public void onPlaybackStateChanged(int state) {
@@ -397,14 +409,63 @@ package com.harimovies.app;
 
         private void updateSeriesUI() {
             Log.d("EP_DEBUG", "Current episode index = " + currentIndex);
-
             Log.d("SERIES_DEBUG", "updateSeriesUI: playlist size = " + playlist.size() + ", currentIndex = " + currentIndex);
 
+            // 1. Calculate Badge (only for series)
+            String badge = "";
+            if (!playlist.isEmpty()) {
+                try {
+                    if (currentIndex >= 0 && currentIndex < playlist.size()) {
+                        JSONObject current = playlist.get(currentIndex);
+                        String epNum = current.optString("episode", "");
+                        String seasonNum = current.optString("season", "");
+
+                        if (!seasonNum.isEmpty() && !epNum.isEmpty()) {
+                            badge = String.format(Locale.US, "Season %s . Episode %s", seasonNum, epNum);
+                        } else if (!epNum.isEmpty()) {
+                            try {
+                                int num = Integer.parseInt(epNum);
+                                badge = String.format(Locale.US, "Episode %02d", num);
+                            } catch (Exception e) {
+                                badge = "Episode " + epNum;
+                            }
+                        } else {
+                            badge = String.format(Locale.US, "Episode %02d", currentIndex + 1);
+                        }
+                    }
+                } catch (Exception ignored) {}
+            }
+
+            // 2. Update Title (Common for both)
+            if (tvTitle != null) {
+                // For series, we prefer the "Series Name". For movies, we want the full title.
+                if (!playlist.isEmpty() && !seriesTitle.isEmpty()) {
+                    tvTitle.setText(seriesTitle);
+                } else {
+                    tvTitle.setText(videoTitle);
+                }
+            }
+
+            // 3. Update Separator and Badge visibility
+            if (tvTitleSep != null) {
+                tvTitleSep.setVisibility(!badge.isEmpty() ? View.VISIBLE : View.GONE);
+            }
+
+            if (tvEpBadge != null) {
+                if (!badge.isEmpty()) {
+                    tvEpBadge.setText(badge);
+                    tvEpBadge.setVisibility(View.VISIBLE);
+                    tvEpBadge.setTextColor(0xAAFFFFFF);
+                } else {
+                    tvEpBadge.setVisibility(View.GONE);
+                }
+            }
+
+            // 4. Handle Series-only UI elements
             if (playlist.isEmpty()) {
                 if (btnPrevEp != null) btnPrevEp.setVisibility(View.GONE);
                 if (btnNextEp != null) btnNextEp.setVisibility(View.GONE);
                 if (btnEpisodes != null) btnEpisodes.setVisibility(View.GONE);
-                if (tvEpBadge != null) tvEpBadge.setVisibility(View.GONE);
                 if (episodeBar != null) episodeBar.setVisibility(View.GONE);
                 return;
             }
@@ -426,49 +487,6 @@ package com.harimovies.app;
                 }
             }
             buildEpisodeList();
-
-            String badge = "";
-            try {
-                if (currentIndex >= 0 && currentIndex < playlist.size()) {
-                    JSONObject current = playlist.get(currentIndex);
-                    String epNum = current.optString("episode", "");
-                    String seasonNum = current.optString("season", "");
-
-                    if (!seasonNum.isEmpty() && !epNum.isEmpty()) {
-                        badge = String.format(Locale.US, "Season %s . Episode %s", seasonNum, epNum);
-                    } else if (!epNum.isEmpty()) {
-                        try {
-                            int num = Integer.parseInt(epNum);
-                            badge = String.format(Locale.US, "Episode %02d", num);
-                        } catch (Exception e) {
-                            badge = "Episode " + epNum;
-                        }
-                    } else {
-                        badge = String.format(Locale.US, "Episode %02d", currentIndex + 1);
-                    }
-                }
-            } catch (Exception ignored) {}
-
-            if (tvTitle != null) {
-                if (!seriesTitle.isEmpty()) {
-                    tvTitle.setText(seriesTitle);
-                    if (tvTitleSep != null) tvTitleSep.setVisibility(!badge.isEmpty() ? View.VISIBLE : View.GONE);
-                } else {
-                    tvTitle.setText(videoTitle);
-                    if (tvTitleSep != null) tvTitleSep.setVisibility(View.GONE);
-                }
-            }
-
-            if (!badge.isEmpty()) {
-                if (tvEpBadge != null) {
-                    tvEpBadge.setText(badge);
-                    tvEpBadge.setVisibility(View.VISIBLE);
-                    // Light effect: semi-transparent white
-                    tvEpBadge.setTextColor(0xAAFFFFFF);
-                }
-            } else {
-                if (tvEpBadge != null) tvEpBadge.setVisibility(View.GONE);
-            }
         }
 
         private void buildEpisodeList() {
@@ -571,6 +589,11 @@ package com.harimovies.app;
                     intent = new Intent(this, WebPlayerActivity.class);
                     intent.putExtra("url", epUrl);
                     intent.putExtra("title", epTitle);
+
+                    // YouTube adblock flag
+                    if (epUrl.contains("youtube.com") || epUrl.contains("youtu.be")) {
+                        intent.putExtra("adblock", true);
+                    }
                 }
 
                 // Always pass playlist + index so series navigation survives the round-trip
@@ -945,6 +968,12 @@ package com.harimovies.app;
             card.setOnClickListener(v -> { /* consume */ });
         }
 
+        private void showTrackSelectionDialog() {
+            if (player == null) return;
+            TrackSelectionDialog dialog = TrackSelectionDialog.newInstance(player, null);
+            dialog.show(getSupportFragmentManager(), "TrackSelectionDialog");
+        }
+
         private void applyAudioOffset() {
             if (player == null) return;
             try {
@@ -1052,23 +1081,30 @@ package com.harimovies.app;
             previewHandler.post(() -> {
                 try {
                     Bitmap bmp;
+                    // Use OPTION_CLOSEST_SYNC (2) instead of OPTION_CLOSEST (3) for speed and reliability on remote streams
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-                        bmp = retriever.getScaledFrameAtTime(posUs, MediaMetadataRetriever.OPTION_CLOSEST, 240, 135);
+                        bmp = retriever.getScaledFrameAtTime(posUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC, 240, 135);
                     } else {
-                        bmp = retriever.getFrameAtTime(posUs, MediaMetadataRetriever.OPTION_CLOSEST);
+                        bmp = retriever.getFrameAtTime(posUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC);
                     }
 
                     if (bmp != null) {
                         runOnUiThread(() -> {
-                            if (previewImage != null) previewImage.setImageBitmap(bmp);
+                            if (previewImage != null) {
+                                previewImage.setImageBitmap(bmp);
+                                previewImage.setAlpha(1.0f);
+                            }
                         });
+                    } else {
+                        Log.w("PREVIEW", "Retrieved null frame at " + posUs + " us");
                     }
                 } catch (Exception e) {
-                    Log.e("PREVIEW", "Frame fetch error: " + e.getMessage());
+                    Log.e("PREVIEW", "Frame fetch error at " + posUs + " us: " + e.getMessage());
                 } finally {
                     isPreviewLoading = false;
                     runOnUiThread(() -> {
-                        if (Math.abs(lastPreviewPos * 1000L - posUs) > 500000L) {
+                        // If the scrub position moved significantly while we were fetching, fetch again
+                        if (Math.abs(lastPreviewPos * 1000L - posUs) > 1000000L) {
                             fetchNextPreviewFrame();
                         }
                     });
@@ -1152,6 +1188,7 @@ package com.harimovies.app;
             episodeContainer    = playerView.findViewById(R.id.episode_container);
             tvTitle             = playerView.findViewById(R.id.tv_title);
             tvTitleSep          = playerView.findViewById(R.id.tv_title_sep);
+            btnTracks           = playerView.findViewById(R.id.btn_tracks);
 
             progressBar         = playerView.findViewById(R.id.exo_progress);
             previewContainer    = playerView.findViewById(R.id.preview_container);
@@ -1169,6 +1206,7 @@ package com.harimovies.app;
             clearHighlight(btnAspect); 
             clearHighlight(btnSync); 
             clearHighlight(btnFullscreen);
+            clearHighlight(btnTracks);
             clearHighlight(btnRew); 
             clearHighlight(btnPP); 
             clearHighlight(btnFfwd);
@@ -1234,6 +1272,7 @@ package com.harimovies.app;
                     case 3: applyHighlight(btnAspect);     break;
                     case 4: applyHighlight(btnSync);       break;
                     case 5: applyHighlight(btnFullscreen); break;
+                    case 6: applyHighlight(btnTracks);     break;
                 }
             } else if (focusRow == 2) {
                 switch (focusCol) {
@@ -1267,6 +1306,7 @@ package com.harimovies.app;
                     case 3: if (btnAspect    != null) btnAspect.performClick();    break;
                     case 4: if (btnSync      != null) btnSync.performClick();      break;
                     case 5: if (btnFullscreen!= null) btnFullscreen.performClick();break;
+                    case 6: if (btnTracks    != null) btnTracks.performClick();    break;
                 }
             } else if (focusRow == 1) {
                 playEpisode(episodeFocusIndex);
@@ -1403,7 +1443,7 @@ package com.harimovies.app;
                         }
                         updateFocusHighlight();
                     } else {
-                        int max = (focusRow == 0) ? 5 : (focusRow == 2 ? 4 : 0);
+                        int max = (focusRow == 0) ? 6 : (focusRow == 2 ? 4 : 0);
                         if (focusCol < max) focusCol++;
                         updateFocusHighlight();
                     }
@@ -1456,7 +1496,8 @@ package com.harimovies.app;
             controlsVisible = false; onProgressBar = false;
             playerView.hideController();
             clearHighlight(btnBack); clearHighlight(btnMute);
-            clearHighlight(btnAspect); clearHighlight(btnSync); clearHighlight(btnFullscreen);
+            clearHighlight(btnAspect); clearHighlight(btnSync);
+            clearHighlight(btnFullscreen); clearHighlight(btnTracks);
             clearHighlight(btnRew); clearHighlight(btnPP); clearHighlight(btnFfwd);
             View[] targets = { topBar, centerControls, bottomBar, scrimTop, scrimBottom, episodeBar };
             for (View v : targets) {
@@ -1721,6 +1762,11 @@ package com.harimovies.app;
                 showSyncDialog(); scheduleHide();
             });
 
+            if (btnTracks != null) btnTracks.setOnClickListener(v -> {
+                showTrackSelectionDialog();
+                scheduleHide();
+            });
+
             if (btnFullscreen != null) btnFullscreen.setOnClickListener(v -> {
                 isFullscreen = !isFullscreen;
                 if (isFullscreen) {
@@ -1879,6 +1925,27 @@ package com.harimovies.app;
 
         private void releasePlayer() {
             if (player != null) { player.stop(); player.release(); player = null; }
+        }
+
+        private void applySavedTrackPreferences() {
+            if (player == null) return;
+            SharedPreferences prefs = getSharedPreferences("hm_player_prefs", MODE_PRIVATE);
+            String audioLang = prefs.getString("pref_lang_audio", null);
+            String textLang = prefs.getString("pref_lang_text", null);
+
+            TrackSelectionParameters.Builder builder = player.getTrackSelectionParameters().buildUpon();
+            
+            // Explicitly ensure audio and text tracks are not disabled
+            builder.setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false);
+            builder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false);
+            
+            if (audioLang != null) builder.setPreferredAudioLanguage(audioLang);
+            if (textLang != null) {
+                builder.setPreferredTextLanguage(textLang);
+                builder.setIgnoredTextSelectionFlags(0);
+                builder.setSelectUndeterminedTextLanguage(true);
+            }
+            player.setTrackSelectionParameters(builder.build());
         }
 
         private void hideSystemUI() {

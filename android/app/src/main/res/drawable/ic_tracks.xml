@@ -1,0 +1,22 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Audio waveform lines -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M3,9 L3,15 L5,15 L5,9 Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M7,6 L7,18 L9,18 L9,6 Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M11,3 L11,21 L13,21 L13,3 Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M15,6 L15,18 L17,18 L17,6 Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M19,9 L19,15 L21,15 L21,9 Z" />
+</vector>
