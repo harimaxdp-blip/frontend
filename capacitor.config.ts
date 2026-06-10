@@ -5,7 +5,7 @@ const config: CapacitorConfig = {
   appName: 'HM',
   webDir: 'build',
   server: {
-    url: 'https://frontend-livid-nu-32.vercel.app',
+    url: 'https://hm-tau-eight.vercel.app',
     cleartext: false
   }
 };
