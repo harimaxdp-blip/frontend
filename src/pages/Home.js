@@ -914,7 +914,7 @@ export default function Home({ type = "all" }) {
                 {availableLanguages.map((l) => <option key={l} value={l}>{l.toUpperCase()}</option>)}
               </select>
               <select value={genreFilter} onChange={(e) => setGenreFilter(e.target.value)} aria-label="Filter by genre">
-                <option value="all">All </option>
+                <option value="all">All Genres</option>
                 {availableGenres.map((g) => <option key={g} value={g}>{g.charAt(0).toUpperCase() + g.slice(1)}</option>)}
               </select>
               <select value={yearFilter} onChange={(e) => setYearFilter(e.target.value)} aria-label="Filter by year">
