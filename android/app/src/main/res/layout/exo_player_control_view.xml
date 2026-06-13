@@ -42,7 +42,6 @@
         android:contentDescription="Volume gesture area" />
 
     <!-- TOP BAR -->
-    
     <LinearLayout
         android:id="@+id/top_bar"
         android:layout_width="match_parent"
@@ -114,37 +113,26 @@
             </LinearLayout>
 
             <ImageButton
-                android:id="@+id/btn_episodes"
-                android:layout_width="32dp"
-                android:layout_height="32dp"
-                android:background="@drawable/bg_icon_btn"
-                android:src="@drawable/ic_episodes"
-                android:tint="#FFFFFFFF"
-                android:contentDescription="Episodes"
-                android:padding="8dp"
-                android:focusable="true" />
-
-            <ImageButton
-                android:id="@+id/btn_mute"
-                android:layout_width="32dp"
-                android:layout_height="32dp"
-                android:layout_marginStart="8dp"
-                android:background="@drawable/bg_icon_btn"
-                android:src="@drawable/ic_volume_up"
-                android:tint="#FFFFFFFF"
-                android:contentDescription="Mute"
-                android:padding="8dp"
-                android:focusable="true" />
-
-            <ImageButton
-                android:id="@+id/btn_aspect_ratio"
+                android:id="@+id/btn_picture_mode"
                 android:layout_width="32dp"
                 android:layout_height="32dp"
                 android:layout_marginStart="8dp"
                 android:background="@drawable/bg_icon_btn"
                 android:src="@drawable/ic_aspect_ratio"
                 android:tint="#FFFFFFFF"
-                android:contentDescription="Aspect ratio"
+                android:contentDescription="Picture Mode"
+                android:padding="8dp"
+                android:focusable="true" />
+
+            <ImageButton
+                android:id="@+id/btn_fullscreen"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/bg_icon_btn"
+                android:src="@drawable/ic_equalizer"
+                android:tint="#FFFFFFFF"
+                android:contentDescription="Fullscreen"
                 android:padding="8dp"
                 android:focusable="true" />
 
@@ -156,36 +144,25 @@
                 android:background="@drawable/bg_icon_btn"
                 android:src="@drawable/ic_sync"
                 android:tint="#FFFFFFFF"
-                android:contentDescription="Subtitle sync"
+                android:contentDescription="A/V Sync"
                 android:padding="8dp"
                 android:focusable="true" />
 
             <ImageButton
-                android:id="@+id/btn_fullscreen"
+                android:id="@+id/btn_settings"
                 android:layout_width="32dp"
                 android:layout_height="32dp"
                 android:layout_marginStart="8dp"
                 android:background="@drawable/bg_icon_btn"
-                android:src="@drawable/ic_fullscreen"
+                android:src="@drawable/ic_settings"
                 android:tint="#FFFFFFFF"
-                android:contentDescription="Fullscreen"
-                android:padding="8dp"
-                android:focusable="true" />
-
-            <ImageButton
-                android:id="@+id/btn_tracks"
-                android:layout_width="32dp"
-                android:layout_height="32dp"
-                android:layout_marginStart="8dp"
-                android:background="@drawable/bg_icon_btn"
-                android:src="@drawable/ic_tracks"
-                android:tint="#FFFFFFFF"
-                android:contentDescription="Select audio/subtitle track"
+                android:contentDescription="Quality &amp; Audio"
                 android:padding="8dp"
                 android:focusable="true" />
 
         </LinearLayout>
     </LinearLayout>
+
 
     <!-- CENTER CONTROLS -->
     <LinearLayout
@@ -200,9 +177,9 @@
 
         <ImageButton
             android:id="@+id/btn_prev_ep"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:layout_marginEnd="12dp"
+            android:layout_width="52dp"
+            android:layout_height="52dp"
+            android:layout_marginEnd="16dp"
             android:background="@drawable/bg_ctrl_side"
             android:src="@drawable/ic_step_backward"
             android:tint="#FFFFFFFF"
@@ -218,7 +195,7 @@
             android:background="@drawable/bg_ctrl_side"
             android:src="@drawable/ic_replay_10"
             android:tint="#FFFFFFFF"
-            android:contentDescription="Rewind 10 seconds"
+            android:contentDescription="Rewind"
             android:padding="12dp"
             android:focusable="true" />
 
@@ -226,8 +203,8 @@
             android:id="@+id/exo_play_pause"
             android:layout_width="72dp"
             android:layout_height="72dp"
-            android:layout_marginStart="20dp"
-            android:layout_marginEnd="20dp"
+            android:layout_marginStart="24dp"
+            android:layout_marginEnd="24dp"
             android:background="@drawable/bg_ctrl_play"
             android:src="@drawable/ic_play"
             android:tint="#000000"
@@ -243,15 +220,15 @@
             android:background="@drawable/bg_ctrl_side"
             android:src="@drawable/ic_forward_30"
             android:tint="#FFFFFFFF"
-            android:contentDescription="Forward 30 seconds"
+            android:contentDescription="Forward"
             android:padding="12dp"
             android:focusable="true" />
 
         <ImageButton
             android:id="@+id/btn_next_ep"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:layout_marginStart="12dp"
+            android:layout_width="52dp"
+            android:layout_height="52dp"
+            android:layout_marginStart="16dp"
             android:background="@drawable/bg_ctrl_side"
             android:src="@drawable/ic_step_forward"
             android:tint="#FFFFFFFF"
@@ -363,25 +340,6 @@
         android:paddingEnd="16dp"
         android:paddingBottom="14dp">
 
-        <!-- Episode chips above seekbar -->
-        <HorizontalScrollView
-            android:id="@+id/episode_bar"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="10dp"
-            android:scrollbars="none"
-            android:visibility="gone">
-
-            <LinearLayout
-                android:id="@+id/episode_container"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:background="@drawable/bg_segmented_container"
-                android:padding="1dp" />
-
-        </HorizontalScrollView>
-
         <!-- Time row -->
         <LinearLayout
             android:layout_width="match_parent"
@@ -430,7 +388,27 @@
             app:scrubber_enabled_size="16dp"
             app:scrubber_disabled_size="0dp"
             app:bar_height="5dp"
-            app:touch_target_height="24dp" />
+            app:touch_target_height="24dp"
+            android:focusable="true" />
+
+        <!-- Episode chips BELOW seekbar -->
+        <HorizontalScrollView
+            android:id="@+id/episode_bar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:scrollbars="none"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:id="@+id/episode_container"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:background="@drawable/bg_segmented_container"
+                android:padding="1dp" />
+
+        </HorizontalScrollView>
 
     </LinearLayout>
 

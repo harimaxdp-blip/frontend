@@ -16,6 +16,10 @@
     <uses-permission android:name="android.permission.BLUETOOTH" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
+<!-- 1. Add these permissions (alongside your existing ones) -->
+<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+    android:maxSdkVersion="28" />
 
     <application
         android:allowBackup="true"
@@ -25,6 +29,13 @@
         android:supportsRtl="true"
         android:theme="@style/AppTheme"
         android:roundIcon="@mipmap/ic_launcher_round">
+        <!-- 2. Register TorrentPlayerActivity inside <application> -->
+        <activity
+            android:name=".TorrentPlayerActivity"
+            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:screenOrientation="landscape"
+            android:theme="@style/Theme.AppCompat.NoActionBar"
+            android:exported="false" />
         <activity
             android:name=".WebPlayerActivity"
             android:configChanges="orientation|screenSize|keyboardHidden"

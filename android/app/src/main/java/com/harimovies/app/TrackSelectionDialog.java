@@ -5,6 +5,7 @@ import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.LayerDrawable;
 import android.os.Bundle;
 import android.view.Gravity;
 import android.view.KeyEvent;
@@ -12,7 +13,7 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
-import android.widget.ImageView;
+import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -38,56 +39,79 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * TrackSelectionDialog — Netflix-style two-panel layout
+ * TrackSelectionDialog — Refined landscape-optimised two-panel sheet
  *
- * Left panel: sidebar with Quality / Audio / Subtitles tab icons
- * Right panel: scrollable track list for the selected tab
+ * Design language:
+ *  - Near-black surfaces (#0F0F0F outer, #141414 sheet, #0F0F0F sidebar)
+ *  - Netflix red (#E50914) as the single accent colour
+ *  - 2 dp left-edge bar on selected rows
+ *  - Coloured resolution badges: 4K = green, HD = blue, SD = grey, CC = warm
+ *  - Circular back/close buttons
+ *  - Compact typography (10–14 sp), uppercase micro section labels
  *
- * Supports:
- *  - Touch interaction (click rows and tab icons)
- *  - Android TV D-pad remote navigation (left/right between panels,
- *    up/down within panel, DPAD_CENTER / ENTER to select)
+ * Supports touch + Android TV D-pad navigation.
  */
 @UnstableApi
 public class TrackSelectionDialog extends BottomSheetDialogFragment {
 
-    // ─── Constants ───────────────────────────────────────────────────────────
+    // ── Tab indices ──────────────────────────────────────────────────────────
     private static final int TAB_QUALITY   = 0;
     private static final int TAB_AUDIO     = 1;
     private static final int TAB_SUBTITLES = 2;
 
-    // ─── Colors ───────────────────────────────────────────────────────────────
-    private static final int CLR_BG_DARK      = 0xFF0F0F0F;   // outer dialog bg
-    private static final int CLR_BG_PANEL     = 0xFF1A1A1A;   // left sidebar
-    private static final int CLR_BG_CONTENT   = 0xFF121212;   // right content
-    private static final int CLR_RED          = 0xFFE50914;   // Netflix red accent
-    private static final int CLR_RED_BG       = 0x1AE50914;   // selected row tint
-    private static final int CLR_WHITE        = 0xFFFFFFFF;
-    private static final int CLR_WHITE_60     = 0x99FFFFFF;
-    private static final int CLR_WHITE_40     = 0x66FFFFFF;
-    private static final int CLR_WHITE_20     = 0x33FFFFFF;
-    private static final int CLR_WHITE_10     = 0x1AFFFFFF;
-    private static final int CLR_TAB_SELECTED_BG = 0xFF1F1F1F;
+    // ── Palette ──────────────────────────────────────────────────────────────
+    private static final int CLR_BG_OUTER    = 0xFF0A0A0A;  // scene backdrop
+    private static final int CLR_BG_SHEET    = 0xFF141414;  // card surface
+    private static final int CLR_BG_HEADER   = 0xFF0F0F0F;  // header / sidebar
+    private static final int CLR_BG_SIDEBAR  = 0xFF0F0F0F;
+    private static final int CLR_BG_CONTENT  = 0xFF141414;
+    private static final int CLR_DIVIDER     = 0xFF1C1C1C;
+    private static final int CLR_BORDER      = 0xFF1E1E1E;
 
-    // ─── Track item model ────────────────────────────────────────────────────
+    private static final int CLR_RED         = 0xFFE50914;
+    private static final int CLR_RED_ROW_BG  = 0x12E50914;  // ~7 % red tint
+
+    private static final int CLR_WHITE       = 0xFFFFFFFF;
+    private static final int CLR_W80         = 0xCCFFFFFF;
+    private static final int CLR_W55         = 0x8CFFFFFF;
+    private static final int CLR_W30         = 0x4DFFFFFF;
+    private static final int CLR_W15         = 0x26FFFFFF;
+    private static final int CLR_W08         = 0x14FFFFFF;
+
+    // Badge colours
+    private static final int CLR_BADGE_4K_BG   = 0xFF1A3A1A;
+    private static final int CLR_BADGE_4K_FG   = 0xFF4CAF50;
+    private static final int CLR_BADGE_HD_BG   = 0xFF1A1A3A;
+    private static final int CLR_BADGE_HD_FG   = 0xFF5C8AF5;
+    private static final int CLR_BADGE_SD_BG   = 0xFF252525;
+    private static final int CLR_BADGE_SD_FG   = 0xFF555555;
+    private static final int CLR_BADGE_CC_BG   = 0xFF2A1A1A;
+    private static final int CLR_BADGE_CC_FG   = 0xFF888888;
+
+    // Tab icon bg
+    private static final int CLR_ICON_BG_OFF = 0xFF1C1C1C;
+
+    // ── Track item model ─────────────────────────────────────────────────────
     private static class TrackItem {
         final TrackGroup group;
-        final int trackIndex;
-        final String labelMain;
-        final String labelSub;   // second line (bitrate / codec etc.)
-        final int type;
-        final String language;
-        boolean isSelected;
-        final boolean isDisabled; // "Auto" / "Off" sentinel
+        final int        trackIndex;
+        final String     labelMain;
+        final String     labelSub;
+        final String     badge;      // "4K", "HD", "SD", "CC", or null
+        final int        type;
+        final String     language;
+        boolean          isSelected;
+        final boolean    isDisabled;
 
         TrackItem(TrackGroup group, int trackIndex,
-                  String labelMain, String labelSub,
+                  String labelMain, String labelSub, String badge,
                   int type, String language,
                   boolean isSelected, boolean isDisabled) {
             this.group       = group;
             this.trackIndex  = trackIndex;
             this.labelMain   = labelMain;
             this.labelSub    = labelSub;
+            this.badge       = badge;
             this.type        = type;
             this.language    = language;
             this.isSelected  = isSelected;
@@ -95,7 +119,7 @@ public class TrackSelectionDialog extends BottomSheetDialogFragment {
         }
     }
 
-    // ─── State ───────────────────────────────────────────────────────────────
+    // ── State ────────────────────────────────────────────────────────────────
     private ExoPlayer player;
     private Runnable  onDismiss;
     private int       currentTab = TAB_QUALITY;
@@ -104,22 +128,21 @@ public class TrackSelectionDialog extends BottomSheetDialogFragment {
     private List<TrackItem> audioItems    = new ArrayList<>();
     private List<TrackItem> subtitleItems = new ArrayList<>();
 
-    // UI references for tab highlight + content swap
-    private View[]    tabButtons   = new View[3];
-    private TextView[] tabLabels   = new TextView[3];
-    private ImageView[] tabIcons   = new ImageView[3];
+    private View[]       tabViews  = new View[3];
+    private TextView[]   tabCurTv  = new TextView[3];
     private LinearLayout contentList;
     private ScrollView   contentScroll;
 
-    // ─── Factory ─────────────────────────────────────────────────────────────
-    public static TrackSelectionDialog newInstance(ExoPlayer player, @Nullable Runnable onDismiss) {
+    // ── Factory ──────────────────────────────────────────────────────────────
+    public static TrackSelectionDialog newInstance(ExoPlayer player,
+                                                   @Nullable Runnable onDismiss) {
         TrackSelectionDialog d = new TrackSelectionDialog();
         d.player    = player;
         d.onDismiss = onDismiss;
         return d;
     }
 
-    // ─── Expand to 90 % screen height ────────────────────────────────────────
+    // ── Sheet height: 92 % ───────────────────────────────────────────────────
     @Override
     public void onStart() {
         super.onStart();
@@ -139,12 +162,13 @@ public class TrackSelectionDialog extends BottomSheetDialogFragment {
         }
     }
 
-    // ─── dp helper ───────────────────────────────────────────────────────────
-    private int dp(int val) {
-        return Math.round(val * requireContext().getResources().getDisplayMetrics().density);
+    // ── dp helper ────────────────────────────────────────────────────────────
+    private int dp(float val) {
+        return Math.round(val * requireContext().getResources()
+                .getDisplayMetrics().density);
     }
 
-    // ─── onCreateView ────────────────────────────────────────────────────────
+    // ── onCreateView ─────────────────────────────────────────────────────────
     @Nullable
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater,
@@ -153,272 +177,259 @@ public class TrackSelectionDialog extends BottomSheetDialogFragment {
 
         Context ctx = requireContext();
 
-        // Pre-build track lists
         if (player != null) {
-            Tracks tracks = player.getCurrentTracks();
-            videoItems    = buildVideoItems(tracks);
-            audioItems    = buildAudioItems(tracks);
-            subtitleItems = buildSubtitleItems(tracks);
+            Tracks t  = player.getCurrentTracks();
+            videoItems    = buildVideoItems(t);
+            audioItems    = buildAudioItems(t);
+            subtitleItems = buildSubtitleItems(t);
         }
 
-        // Detect current tab from first selected type
-        if (!videoItems.isEmpty())    currentTab = TAB_QUALITY;
-        else if (!audioItems.isEmpty()) currentTab = TAB_AUDIO;
-        else                            currentTab = TAB_SUBTITLES;
+        if      (!videoItems.isEmpty())    currentTab = TAB_QUALITY;
+        else if (!audioItems.isEmpty())    currentTab = TAB_AUDIO;
+        else                               currentTab = TAB_SUBTITLES;
 
-        // ── Root: horizontal two-panel layout ─────────────────────────────
+        // Root
         LinearLayout root = new LinearLayout(ctx);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(CLR_BG_DARK);
+        root.setBackgroundColor(CLR_BG_OUTER);
         root.setLayoutParams(new ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT));
 
-        // ── Header bar ────────────────────────────────────────────────────
-        root.addView(makeHeader(ctx));
+        root.addView(buildHeader(ctx));
 
-        // ── Body: sidebar + content ───────────────────────────────────────
+        // Body row
         LinearLayout body = new LinearLayout(ctx);
         body.setOrientation(LinearLayout.HORIZONTAL);
         body.setLayoutParams(new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
 
-        body.addView(makeSidebar(ctx));
+        body.addView(buildSidebar(ctx));
 
-        // Right content
-        FrameLayout rightPane = new FrameLayout(ctx);
-        rightPane.setBackgroundColor(CLR_BG_CONTENT);
-        LinearLayout.LayoutParams rpLp = new LinearLayout.LayoutParams(
-                0, LinearLayout.LayoutParams.MATCH_PARENT, 1f);
-        rightPane.setLayoutParams(rpLp);
+        // Right pane
+        FrameLayout right = new FrameLayout(ctx);
+        right.setBackgroundColor(CLR_BG_CONTENT);
+        right.setLayoutParams(new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.MATCH_PARENT, 1f));
 
         contentScroll = new ScrollView(ctx);
         contentScroll.setLayoutParams(new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT));
         contentScroll.setFillViewport(true);
+        contentScroll.setVerticalScrollBarEnabled(false);
 
         contentList = new LinearLayout(ctx);
         contentList.setOrientation(LinearLayout.VERTICAL);
-        contentList.setPadding(0, dp(8), 0, dp(24));
+        contentList.setPadding(0, dp(4), 0, dp(20));
         contentScroll.addView(contentList);
-        rightPane.addView(contentScroll);
-        body.addView(rightPane);
-
+        right.addView(contentScroll);
+        body.addView(right);
         root.addView(body);
 
-        // Populate initial tab
         populateContent(ctx);
-
         return root;
     }
 
-    // ─── Header ───────────────────────────────────────────────────────────────
-    private View makeHeader(Context ctx) {
-        LinearLayout header = new LinearLayout(ctx);
-        header.setOrientation(LinearLayout.HORIZONTAL);
-        header.setGravity(Gravity.CENTER_VERTICAL);
-        header.setBackgroundColor(CLR_BG_DARK);
-        header.setPadding(dp(20), dp(14), dp(20), dp(14));
+    // ════════════════════════════════════════════════════════════════════════
+    // Header
+    // ════════════════════════════════════════════════════════════════════════
+    private View buildHeader(Context ctx) {
+        LinearLayout hdr = new LinearLayout(ctx);
+        hdr.setOrientation(LinearLayout.HORIZONTAL);
+        hdr.setGravity(Gravity.CENTER_VERTICAL);
+        hdr.setBackgroundColor(CLR_BG_HEADER);
+        hdr.setPadding(dp(14), dp(10), dp(14), dp(10));
 
-        // Back arrow
-        TextView tvBack = new TextView(ctx);
-        tvBack.setText("←");
-        tvBack.setTextColor(CLR_WHITE);
-        tvBack.setTextSize(20);
-        tvBack.setPadding(0, 0, dp(16), 0);
-        tvBack.setOnClickListener(v -> dismiss());
-        makeFocusable(tvBack, false);
-        header.addView(tvBack);
+        // Circular back button
+        hdr.addView(makeCircleButton(ctx, "←", 18, () -> dismiss()));
+
+        // Spacer
+        View sp1 = new View(ctx);
+        sp1.setLayoutParams(new LinearLayout.LayoutParams(dp(12), 0));
+        hdr.addView(sp1);
 
         // Title block
-        LinearLayout titleBlock = new LinearLayout(ctx);
-        titleBlock.setOrientation(LinearLayout.VERTICAL);
-        titleBlock.setLayoutParams(new LinearLayout.LayoutParams(0,
-                LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        LinearLayout meta = new LinearLayout(ctx);
+        meta.setOrientation(LinearLayout.VERTICAL);
+        meta.setLayoutParams(new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
 
-        TextView tvTitle = new TextView(ctx);
-        tvTitle.setText("Release That Witch");
-        tvTitle.setTextColor(CLR_WHITE);
-        tvTitle.setTextSize(16);
-        tvTitle.setTypeface(null, Typeface.BOLD);
-        titleBlock.addView(tvTitle);
+        TextView tvT = new TextView(ctx);
+        tvT.setText("Release That Witch");
+        tvT.setTextColor(CLR_WHITE);
+        tvT.setTextSize(13);
+        tvT.setTypeface(null, Typeface.BOLD);
+        meta.addView(tvT);
 
-        TextView tvSub = new TextView(ctx);
-        tvSub.setText("Season 1 • Episode 1");
-        tvSub.setTextColor(CLR_WHITE_60);
-        tvSub.setTextSize(12);
-        titleBlock.addView(tvSub);
+        TextView tvS = new TextView(ctx);
+        tvS.setText("Season 1  ·  Episode 1");
+        tvS.setTextColor(CLR_W30);
+        tvS.setTextSize(10);
+        LinearLayout.LayoutParams sLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        sLp.topMargin = dp(2);
+        tvS.setLayoutParams(sLp);
+        meta.addView(tvS);
 
-        header.addView(titleBlock);
+        hdr.addView(meta);
 
-        // Close button
-        TextView tvClose = new TextView(ctx);
-        tvClose.setText("✕");
-        tvClose.setTextColor(CLR_WHITE_60);
-        tvClose.setTextSize(18);
-        tvClose.setGravity(Gravity.CENTER);
-        int pad = dp(8);
-        tvClose.setPadding(pad, pad, pad, pad);
-        tvClose.setOnClickListener(v -> dismiss());
-        makeFocusable(tvClose, false);
-        header.addView(tvClose);
+        // Circular close button
+        hdr.addView(makeCircleButton(ctx, "✕", 13, () -> dismiss()));
 
-        // Thin bottom divider
-        LinearLayout wrapper = new LinearLayout(ctx);
-        wrapper.setOrientation(LinearLayout.VERTICAL);
-        wrapper.setLayoutParams(new LinearLayout.LayoutParams(
+        // Bottom divider wrapper
+        LinearLayout wrap = new LinearLayout(ctx);
+        wrap.setOrientation(LinearLayout.VERTICAL);
+        wrap.setLayoutParams(new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT));
-        wrapper.addView(header);
+        wrap.addView(hdr);
 
-        View divider = new View(ctx);
-        divider.setBackgroundColor(CLR_WHITE_10);
-        divider.setLayoutParams(new LinearLayout.LayoutParams(
+        View div = new View(ctx);
+        div.setBackgroundColor(CLR_BORDER);
+        div.setLayoutParams(new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 1));
-        wrapper.addView(divider);
+        wrap.addView(div);
 
-        return wrapper;
+        return wrap;
     }
 
-    // ─── Left Sidebar ─────────────────────────────────────────────────────────
-    private View makeSidebar(Context ctx) {
-        LinearLayout sidebar = new LinearLayout(ctx);
-        sidebar.setOrientation(LinearLayout.VERTICAL);
-        sidebar.setBackgroundColor(CLR_BG_PANEL);
-        int sidebarWidth = dp(140);
-        sidebar.setLayoutParams(new LinearLayout.LayoutParams(
-                sidebarWidth, LinearLayout.LayoutParams.MATCH_PARENT));
+    /** Small circle button (back / close). */
+    private View makeCircleButton(Context ctx, String symbol,
+                                   int textSizeSp, Runnable onClick) {
+        int size = dp(28);
+        TextView tv = new TextView(ctx);
+        tv.setText(symbol);
+        tv.setTextColor(CLR_W55);
+        tv.setTextSize(textSizeSp);
+        tv.setGravity(Gravity.CENTER);
+        tv.setLayoutParams(new LinearLayout.LayoutParams(size, size));
 
-        // Quality tab
-        tabButtons[TAB_QUALITY]   = makeTabEntry(ctx, TAB_QUALITY,
-                "HD", "hd_badge", "Quality",
-                getSidebarSubtitle(TAB_QUALITY));
-        // Audio tab
-        tabButtons[TAB_AUDIO]     = makeTabEntry(ctx, TAB_AUDIO,
-                "♪", "music_note", "Audio",
-                getSidebarSubtitle(TAB_AUDIO));
-        // Subtitles tab
-        tabButtons[TAB_SUBTITLES] = makeTabEntry(ctx, TAB_SUBTITLES,
-                "CC", "cc_badge", "Subtitles",
-                getSidebarSubtitle(TAB_SUBTITLES));
+        GradientDrawable bg = new GradientDrawable();
+        bg.setShape(GradientDrawable.OVAL);
+        bg.setColor(CLR_W08);
+        tv.setBackground(bg);
 
-        for (View tab : tabButtons) sidebar.addView(tab);
-        return sidebar;
+        tv.setClickable(true);
+        tv.setFocusable(true);
+        tv.setOnClickListener(v -> onClick.run());
+        tv.setOnFocusChangeListener((v, f) ->
+                bg.setColor(f ? CLR_W15 : CLR_W08));
+        return tv;
     }
 
-    private String getSidebarSubtitle(int tab) {
-        switch (tab) {
-            case TAB_QUALITY:
-                // Show currently selected quality
-                for (TrackItem item : videoItems) {
-                    if (item.isSelected) return item.labelMain + (item.isDisabled ? "" : " • Best");
-                }
-                return "Auto";
-            case TAB_AUDIO:
-                for (TrackItem item : audioItems) {
-                    if (item.isSelected) return item.labelMain;
-                }
-                return "—";
-            case TAB_SUBTITLES:
-                for (TrackItem item : subtitleItems) {
-                    if (item.isSelected) return item.labelMain;
-                }
-                return "Off";
-        }
-        return "";
+    // ════════════════════════════════════════════════════════════════════════
+    // Sidebar
+    // ════════════════════════════════════════════════════════════════════════
+    private View buildSidebar(Context ctx) {
+        LinearLayout sb = new LinearLayout(ctx);
+        sb.setOrientation(LinearLayout.VERTICAL);
+        sb.setBackgroundColor(CLR_BG_SIDEBAR);
+        sb.setLayoutParams(new LinearLayout.LayoutParams(
+                dp(82), LinearLayout.LayoutParams.MATCH_PARENT));
+
+        // Right border
+        GradientDrawable sbBg = new GradientDrawable();
+        sbBg.setColor(CLR_BG_SIDEBAR);
+        sbBg.setStroke(1, CLR_BORDER);
+        sb.setBackground(sbBg);
+
+        tabViews[TAB_QUALITY]   = buildTabEntry(ctx, TAB_QUALITY,   "HD", "Quality");
+        tabViews[TAB_AUDIO]     = buildTabEntry(ctx, TAB_AUDIO,     "♪",  "Audio");
+        tabViews[TAB_SUBTITLES] = buildTabEntry(ctx, TAB_SUBTITLES, "CC", "Subtitles");
+
+        sb.addView(tabViews[TAB_QUALITY]);
+        sb.addView(tabViews[TAB_AUDIO]);
+        sb.addView(tabViews[TAB_SUBTITLES]);
+
+        return sb;
     }
 
-    private View makeTabEntry(Context ctx, int tabIndex,
-                               String iconText, String iconTag,
-                               String title, String subtitle) {
+    private View buildTabEntry(Context ctx, int tabIdx,
+                                String iconText, String title) {
         LinearLayout entry = new LinearLayout(ctx);
         entry.setOrientation(LinearLayout.VERTICAL);
         entry.setGravity(Gravity.CENTER);
-        entry.setPadding(dp(12), dp(16), dp(12), dp(16));
-        int h = dp(88);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, h);
-        entry.setLayoutParams(lp);
+        entry.setPadding(dp(4), dp(12), dp(4), dp(12));
+        entry.setLayoutParams(new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(80)));
         entry.setClickable(true);
         entry.setFocusable(true);
 
-        // Icon badge square
-        FrameLayout iconBadge = new FrameLayout(ctx);
-        int badgeSize = dp(36);
-        LinearLayout.LayoutParams badgeLp = new LinearLayout.LayoutParams(badgeSize, badgeSize);
-        badgeLp.gravity = Gravity.CENTER_HORIZONTAL;
-        badgeLp.bottomMargin = dp(6);
-        iconBadge.setLayoutParams(badgeLp);
+        applyTabBg(entry, tabIdx == currentTab);
+
+        // Icon badge
+        FrameLayout badge = new FrameLayout(ctx);
+        int bs = dp(30);
+        LinearLayout.LayoutParams bLp = new LinearLayout.LayoutParams(bs, bs);
+        bLp.gravity = Gravity.CENTER_HORIZONTAL;
+        bLp.bottomMargin = dp(5);
+        badge.setLayoutParams(bLp);
+
         GradientDrawable badgeBg = new GradientDrawable();
-        badgeBg.setColor(CLR_RED);
-        badgeBg.setCornerRadius(dp(6));
-        iconBadge.setBackground(badgeBg);
+        badgeBg.setCornerRadius(dp(8));
+        badgeBg.setColor(tabIdx == currentTab ? CLR_RED : CLR_ICON_BG_OFF);
+        badge.setBackground(badgeBg);
+        badge.setTag(badgeBg);  // so we can update it
 
         TextView tvIcon = new TextView(ctx);
         tvIcon.setText(iconText);
-        tvIcon.setTextColor(CLR_WHITE);
-        tvIcon.setTextSize(tabIndex == TAB_QUALITY ? 10 : 13);
+        tvIcon.setTextColor(tabIdx == currentTab ? CLR_WHITE : CLR_W30);
+        tvIcon.setTextSize(tabIdx == TAB_QUALITY ? 9 : 12);
         tvIcon.setTypeface(null, Typeface.BOLD);
         tvIcon.setGravity(Gravity.CENTER);
         tvIcon.setLayoutParams(new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT));
-        iconBadge.addView(tvIcon);
-        entry.addView(iconBadge);
+        tvIcon.setTag("icon");
+        badge.addView(tvIcon);
+        entry.addView(badge);
 
-        // Title
-        TextView tvTitle = new TextView(ctx);
-        tvTitle.setText(title);
-        tvTitle.setTextColor(CLR_WHITE);
-        tvTitle.setTextSize(13);
-        tvTitle.setTypeface(null, Typeface.BOLD);
-        tvTitle.setGravity(Gravity.CENTER);
-        entry.addView(tvTitle);
-        tabLabels[tabIndex] = tvTitle;
+        // Tab name
+        TextView tvName = new TextView(ctx);
+        tvName.setText(title);
+        tvName.setTextColor(tabIdx == currentTab ? CLR_W80 : CLR_W30);
+        tvName.setTextSize(9.5f);
+        tvName.setTypeface(null, Typeface.BOLD);
+        tvName.setGravity(Gravity.CENTER);
+        tvName.setTag("name");
+        entry.addView(tvName);
 
-        // Subtitle (current selection)
-        TextView tvSub = new TextView(ctx);
-        tvSub.setText(subtitle);
-        tvSub.setTextColor(CLR_RED);
-        tvSub.setTextSize(11);
-        tvSub.setGravity(Gravity.CENTER);
-        tvSub.setSingleLine(true);
-        LinearLayout.LayoutParams subLp = new LinearLayout.LayoutParams(
+        // Current selection
+        TextView tvCur = new TextView(ctx);
+        tvCur.setText(getSidebarCurrent(tabIdx));
+        tvCur.setTextColor(CLR_RED);
+        tvCur.setTextSize(9f);
+        tvCur.setGravity(Gravity.CENTER);
+        tvCur.setSingleLine(true);
+        LinearLayout.LayoutParams curLp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT);
-        tvSub.setLayoutParams(subLp);
-        entry.addView(tvSub);
-        tabIcons[tabIndex] = null; // not using ImageView, using FrameLayout
+        curLp.topMargin = dp(2);
+        tvCur.setLayoutParams(curLp);
+        tvCur.setTag("cur");
+        tabCurTv[tabIdx] = tvCur;
+        entry.addView(tvCur);
 
-        // Bottom red underline for selected tab
-        updateTabHighlight(entry, tabIndex == currentTab);
+        entry.setOnClickListener(v -> switchTab(ctx, tabIdx));
 
-        entry.setOnClickListener(v -> switchTab(ctx, tabIndex));
-
-        // TV focus highlight
         entry.setOnFocusChangeListener((v, focused) -> {
-            if (focused) {
-                entry.setBackgroundColor(0x22E50914);
-            } else {
-                updateTabHighlight(entry, tabIndex == currentTab);
-            }
+            if (focused) entry.setBackgroundColor(CLR_W08);
+            else         applyTabBg(entry, tabIdx == currentTab);
         });
 
-        // D-pad: right arrow moves to content list
         entry.setOnKeyListener((v, keyCode, event) -> {
-            if (event.getAction() == KeyEvent.ACTION_DOWN) {
-                if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
-                    if (contentList.getChildCount() > 0) {
-                        contentList.getChildAt(0).requestFocus();
-                        return true;
-                    }
-                }
-                if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER
-                        || keyCode == KeyEvent.KEYCODE_ENTER) {
-                    switchTab(ctx, tabIndex);
-                    return true;
-                }
+            if (event.getAction() != KeyEvent.ACTION_DOWN) return false;
+            if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
+                if (contentList.getChildCount() > 0)
+                    contentList.getChildAt(0).requestFocus();
+                return true;
+            }
+            if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER
+                    || keyCode == KeyEvent.KEYCODE_ENTER) {
+                switchTab(ctx, tabIdx);
+                return true;
             }
             return false;
         });
@@ -426,234 +437,247 @@ public class TrackSelectionDialog extends BottomSheetDialogFragment {
         return entry;
     }
 
-    private void updateTabHighlight(View tabView, boolean selected) {
-        tabView.setBackgroundColor(selected ? CLR_TAB_SELECTED_BG : Color.TRANSPARENT);
-        // Left red bar for selected
-        if (selected) {
+    /** Left red bar + bg for the active tab, transparent for inactive. */
+    private void applyTabBg(LinearLayout entry, boolean active) {
+        if (active) {
+            // Composite: solid bg + 2 dp left red strip via LayerDrawable
+            GradientDrawable fill = new GradientDrawable();
+            fill.setColor(0xFF1C1C1C);
+
             GradientDrawable bar = new GradientDrawable();
             bar.setColor(CLR_RED);
-            // We fake a left border by adding a 4dp wide colored strip as start padding
-            // (pure-code approach without custom drawables)
+
+            LayerDrawable ld = new LayerDrawable(new android.graphics.drawable.Drawable[]{fill, bar});
+            // bar covers only the left 2 dp
+            int w = dp(2);
+            ld.setLayerInset(1, 0, 0,
+                    /* right inset = total width - bar width; use a large number */ 9999, 0);
+            entry.setBackground(ld);
+        } else {
+            entry.setBackgroundColor(Color.TRANSPARENT);
         }
     }
 
-    // ─── Tab switching ────────────────────────────────────────────────────────
+    private String getSidebarCurrent(int tab) {
+        List<TrackItem> items = itemsForTab(tab);
+        for (TrackItem it : items) if (it.isSelected) return it.labelMain;
+        return tab == TAB_SUBTITLES ? "Off" : "Auto";
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
+    // Tab switching
+    // ════════════════════════════════════════════════════════════════════════
     private void switchTab(Context ctx, int newTab) {
         currentTab = newTab;
-        // Update sidebar highlights
         for (int i = 0; i < 3; i++) {
             boolean sel = (i == currentTab);
-            tabButtons[i].setBackgroundColor(sel ? CLR_TAB_SELECTED_BG : Color.TRANSPARENT);
+            if (tabViews[i] instanceof LinearLayout) {
+                LinearLayout entry = (LinearLayout) tabViews[i];
+                applyTabBg(entry, sel);
+
+                // Update icon badge colour
+                if (entry.getChildCount() >= 1) {
+                    View child0 = entry.getChildAt(0);
+                    if (child0 instanceof FrameLayout) {
+                        FrameLayout badge = (FrameLayout) child0;
+                        if (badge.getTag() instanceof GradientDrawable) {
+                            ((GradientDrawable) badge.getTag())
+                                    .setColor(sel ? CLR_RED : CLR_ICON_BG_OFF);
+                        }
+                        // Icon text colour
+                        View iconTv = badge.findViewWithTag("icon");
+                        if (iconTv instanceof TextView)
+                            ((TextView) iconTv).setTextColor(sel ? CLR_WHITE : CLR_W30);
+                    }
+                }
+
+                // Name colour
+                View nameTv = entry.findViewWithTag("name");
+                if (nameTv instanceof TextView)
+                    ((TextView) nameTv).setTextColor(sel ? CLR_W80 : CLR_W30);
+            }
         }
-        // Repopulate content
         populateContent(ctx);
         contentScroll.scrollTo(0, 0);
     }
 
-    // ─── Content area ─────────────────────────────────────────────────────────
+    // ════════════════════════════════════════════════════════════════════════
+    // Content area
+    // ════════════════════════════════════════════════════════════════════════
     private void populateContent(Context ctx) {
         contentList.removeAllViews();
 
-        List<TrackItem> items;
-        String sectionTitle;
+        List<TrackItem> items = itemsForTab(currentTab);
 
-        switch (currentTab) {
-            case TAB_AUDIO:
-                items        = audioItems;
-                sectionTitle = "Audio Track";
-                break;
-            case TAB_SUBTITLES:
-                items        = subtitleItems;
-                sectionTitle = "Subtitles / Captions";
-                break;
-            default:
-                items        = videoItems;
-                sectionTitle = "Quality";
-                break;
+        if (currentTab == TAB_QUALITY) {
+            // Section: Automatic
+            List<TrackItem> auto = new ArrayList<>();
+            List<TrackItem> manual = new ArrayList<>();
+            for (TrackItem it : items) {
+                if (it.isDisabled) auto.add(it);
+                else               manual.add(it);
+            }
+            if (!auto.isEmpty()) {
+                contentList.addView(makeSectionLabel(ctx, "Automatic"));
+                for (int i = 0; i < auto.size(); i++)
+                    contentList.addView(makeRow(ctx, auto.get(i), items));
+            }
+            if (!manual.isEmpty()) {
+                contentList.addView(makeDivider(ctx));
+                contentList.addView(makeSectionLabel(ctx, "Resolution"));
+                for (int i = 0; i < manual.size(); i++)
+                    contentList.addView(makeRow(ctx, manual.get(i), items));
+            }
+
+        } else if (currentTab == TAB_SUBTITLES) {
+            // "None" first, then the rest under "Available"
+            List<TrackItem> off = new ArrayList<>();
+            List<TrackItem> avail = new ArrayList<>();
+            for (TrackItem it : items) {
+                if (it.isDisabled) off.add(it);
+                else               avail.add(it);
+            }
+            for (TrackItem it : off)
+                contentList.addView(makeRow(ctx, it, items));
+            if (!avail.isEmpty()) {
+                contentList.addView(makeDivider(ctx));
+                contentList.addView(makeSectionLabel(ctx, "Available"));
+                for (TrackItem it : avail)
+                    contentList.addView(makeRow(ctx, it, items));
+            }
+
+        } else {
+            // Audio — flat list under "Language"
+            if (!items.isEmpty()) {
+                contentList.addView(makeSectionLabel(ctx, "Language"));
+                for (TrackItem it : items)
+                    contentList.addView(makeRow(ctx, it, items));
+            }
         }
-
-        // Section header row (icon + title + optional "Best" pill)
-        contentList.addView(makeContentHeader(ctx, sectionTitle));
 
         if (items.isEmpty()) {
             TextView empty = new TextView(ctx);
             empty.setText("No tracks available");
-            empty.setTextColor(CLR_WHITE_40);
-            empty.setTextSize(13);
-            empty.setPadding(dp(20), dp(16), dp(20), dp(8));
+            empty.setTextColor(CLR_W30);
+            empty.setTextSize(12);
+            empty.setPadding(dp(16), dp(16), dp(16), dp(8));
             contentList.addView(empty);
-            return;
-        }
-
-        for (int i = 0; i < items.size(); i++) {
-            TrackItem item = items.get(i);
-            final int idx  = i;
-            View row = makeContentRow(ctx, item, items, idx);
-            contentList.addView(row);
         }
     }
 
-    private View makeContentHeader(Context ctx, String title) {
-        LinearLayout header = new LinearLayout(ctx);
-        header.setOrientation(LinearLayout.HORIZONTAL);
-        header.setGravity(Gravity.CENTER_VERTICAL);
-        header.setPadding(dp(20), dp(16), dp(20), dp(10));
-
-        // Red icon badge (small)
-        FrameLayout badge = new FrameLayout(ctx);
-        int bs = dp(28);
-        LinearLayout.LayoutParams bLp = new LinearLayout.LayoutParams(bs, bs);
-        bLp.rightMargin = dp(10);
-        badge.setLayoutParams(bLp);
-        GradientDrawable badgeBg = new GradientDrawable();
-        badgeBg.setColor(CLR_RED);
-        badgeBg.setCornerRadius(dp(5));
-        badge.setBackground(badgeBg);
-
-        TextView tvIcon = new TextView(ctx);
-        tvIcon.setText(currentTab == TAB_QUALITY ? "HD"
-                : currentTab == TAB_AUDIO ? "♪" : "CC");
-        tvIcon.setTextColor(CLR_WHITE);
-        tvIcon.setTextSize(currentTab == TAB_QUALITY ? 8 : 11);
-        tvIcon.setTypeface(null, Typeface.BOLD);
-        tvIcon.setGravity(Gravity.CENTER);
-        tvIcon.setLayoutParams(new FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.MATCH_PARENT));
-        badge.addView(tvIcon);
-        header.addView(badge);
-
-        // Title text
-        TextView tvTitle = new TextView(ctx);
-        tvTitle.setText(title);
-        tvTitle.setTextColor(CLR_WHITE);
-        tvTitle.setTextSize(15);
-        tvTitle.setTypeface(null, Typeface.BOLD);
-        tvTitle.setLayoutParams(new LinearLayout.LayoutParams(0,
-                LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-        header.addView(tvTitle);
-
-        // "Best ▾" pill for Quality tab
-        if (currentTab == TAB_QUALITY) {
-            TextView pill = new TextView(ctx);
-            pill.setText("Best  ▾");
-            pill.setTextColor(CLR_WHITE);
-            pill.setTextSize(12);
-            pill.setTypeface(null, Typeface.BOLD);
-            int ph = dp(8), pv = dp(5);
-            pill.setPadding(ph, pv, ph, pv);
-            GradientDrawable pillBg = new GradientDrawable();
-            pillBg.setColor(CLR_RED);
-            pillBg.setCornerRadius(dp(4));
-            pill.setBackground(pillBg);
-            header.addView(pill);
-        }
-
-        // Right chevron for Audio / Subtitles
-        if (currentTab != TAB_QUALITY) {
-            TextView chevron = new TextView(ctx);
-            chevron.setText("›");
-            chevron.setTextColor(CLR_WHITE_60);
-            chevron.setTextSize(22);
-            chevron.setPadding(dp(8), 0, 0, 0);
-            header.addView(chevron);
-        }
-
-        return header;
+    private View makeSectionLabel(Context ctx, String text) {
+        TextView tv = new TextView(ctx);
+        tv.setText(text.toUpperCase(Locale.US));
+        tv.setTextColor(CLR_W15);
+        tv.setTextSize(9f);
+        tv.setTypeface(null, Typeface.BOLD);
+        tv.setLetterSpacing(0.1f);
+        tv.setPadding(dp(16), dp(10), dp(16), dp(4));
+        return tv;
     }
 
-    private View makeContentRow(Context ctx, TrackItem item,
-                                 List<TrackItem> allItems, int myIndex) {
+    private View makeDivider(Context ctx) {
+        View v = new View(ctx);
+        v.setBackgroundColor(CLR_DIVIDER);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 1);
+        lp.topMargin    = dp(3);
+        lp.bottomMargin = dp(3);
+        v.setLayoutParams(lp);
+        return v;
+    }
+
+    private View makeRow(Context ctx, TrackItem item, List<TrackItem> allItems) {
         LinearLayout row = new LinearLayout(ctx);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(dp(20), dp(14), dp(20), dp(14));
+        row.setPadding(dp(16), dp(9), dp(16), dp(9));
         row.setClickable(true);
         row.setFocusable(true);
 
-        applyRowBackground(row, item.isSelected);
+        setRowBg(row, item.isSelected);
 
-        // Radio button
-        View radio = new View(ctx);
-        int rs = dp(20);
+        // Radio dot
+        FrameLayout radio = new FrameLayout(ctx);
+        int rs = dp(16);
         LinearLayout.LayoutParams rLp = new LinearLayout.LayoutParams(rs, rs);
-        rLp.rightMargin = dp(16);
+        rLp.rightMargin = dp(12);
         radio.setLayoutParams(rLp);
         drawRadio(radio, item.isSelected);
         row.addView(radio);
 
         // Text block
-        LinearLayout textBlock = new LinearLayout(ctx);
-        textBlock.setOrientation(LinearLayout.VERTICAL);
-        textBlock.setLayoutParams(new LinearLayout.LayoutParams(0,
-                LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        LinearLayout txt = new LinearLayout(ctx);
+        txt.setOrientation(LinearLayout.VERTICAL);
+        txt.setLayoutParams(new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
 
         TextView tvMain = new TextView(ctx);
         tvMain.setText(item.labelMain);
-        tvMain.setTextColor(item.isSelected ? CLR_WHITE : CLR_WHITE_60);
-        tvMain.setTextSize(14);
+        tvMain.setTextColor(item.isSelected ? CLR_WHITE : CLR_W55);
+        tvMain.setTextSize(12);
         if (item.isSelected) tvMain.setTypeface(null, Typeface.BOLD);
-        textBlock.addView(tvMain);
+        txt.addView(tvMain);
 
         if (item.labelSub != null && !item.labelSub.isEmpty()) {
             TextView tvSub = new TextView(ctx);
             tvSub.setText(item.labelSub);
-            tvSub.setTextColor(CLR_WHITE_40);
-            tvSub.setTextSize(12);
+            tvSub.setTextColor(CLR_W15);
+            tvSub.setTextSize(10);
             LinearLayout.LayoutParams sLp = new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT);
-            sLp.topMargin = dp(2);
+            sLp.topMargin = dp(1);
             tvSub.setLayoutParams(sLp);
-            textBlock.addView(tvSub);
+            txt.addView(tvSub);
+        }
+        row.addView(txt);
+
+        // Badge (4K / HD / SD / CC)
+        if (item.badge != null) {
+            row.addView(makeBadge(ctx, item.badge));
         }
 
-        row.addView(textBlock);
-
-        // Checkmark on selected
+        // Checkmark
         if (item.isSelected) {
-            TextView check = new TextView(ctx);
-            check.setText("✓");
-            check.setTextColor(CLR_RED);
-            check.setTextSize(18);
-            check.setTypeface(null, Typeface.BOLD);
-            row.addView(check);
+            TextView ck = new TextView(ctx);
+            ck.setText("✓");
+            ck.setTextColor(CLR_RED);
+            ck.setTextSize(11);
+            ck.setTypeface(null, Typeface.BOLD);
+            LinearLayout.LayoutParams ckLp = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT);
+            ckLp.leftMargin = dp(8);
+            ck.setLayoutParams(ckLp);
+            row.addView(ck);
         }
 
-        // Click
         row.setOnClickListener(v -> {
             for (TrackItem ti : allItems) ti.isSelected = false;
             item.isSelected = true;
             applyTrackSelection(item);
-            // Refresh sidebar subtitle
-            refreshSidebarSubtitles(ctx);
-            // Refresh content rows
+            refreshSidebarCurrents();
             populateContent(ctx);
             if (onDismiss != null) onDismiss.run();
             dismiss();
         });
 
-        // TV focus
         row.setOnFocusChangeListener((v, focused) -> {
-            if (focused) {
-                row.setBackgroundColor(0x33FFFFFF);
-            } else {
-                applyRowBackground(row, item.isSelected);
-            }
+            if (focused) row.setBackgroundColor(CLR_W08);
+            else         setRowBg(row, item.isSelected);
         });
 
-        // D-pad left → focus goes back to sidebar
         row.setOnKeyListener((v, keyCode, event) -> {
-            if (event.getAction() == KeyEvent.ACTION_DOWN) {
-                if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
-                    tabButtons[currentTab].requestFocus();
-                    return true;
-                }
-                if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER
-                        || keyCode == KeyEvent.KEYCODE_ENTER) {
-                    row.performClick();
-                    return true;
-                }
+            if (event.getAction() != KeyEvent.ACTION_DOWN) return false;
+            if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
+                tabViews[currentTab].requestFocus();
+                return true;
+            }
+            if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER
+                    || keyCode == KeyEvent.KEYCODE_ENTER) {
+                row.performClick();
+                return true;
             }
             return false;
         });
@@ -661,115 +685,148 @@ public class TrackSelectionDialog extends BottomSheetDialogFragment {
         return row;
     }
 
-    private void applyRowBackground(View row, boolean selected) {
-        row.setBackgroundColor(selected ? CLR_RED_BG : Color.TRANSPARENT);
+    /** Red-tinted row bg with 2 dp left accent bar when selected. */
+    private void setRowBg(LinearLayout row, boolean selected) {
+        if (selected) {
+            GradientDrawable fill = new GradientDrawable();
+            fill.setColor(CLR_RED_ROW_BG);
+
+            GradientDrawable bar = new GradientDrawable();
+            bar.setColor(CLR_RED);
+
+            LayerDrawable ld = new LayerDrawable(
+                    new android.graphics.drawable.Drawable[]{fill, bar});
+            ld.setLayerInset(1, 0, 0, 9999, 0);
+            row.setBackground(ld);
+        } else {
+            row.setBackgroundColor(Color.TRANSPARENT);
+        }
     }
 
-    private void drawRadio(View dot, boolean selected) {
-        GradientDrawable gd = new GradientDrawable();
-        gd.setShape(GradientDrawable.OVAL);
-        if (selected) {
-            // Filled red outer ring with white inner dot illusion via stroke
-            gd.setColor(CLR_RED);
-            gd.setStroke(dp(2), CLR_RED);
-        } else {
-            gd.setColor(Color.TRANSPARENT);
-            gd.setStroke(dp(2), CLR_WHITE_40);
+    private View makeBadge(Context ctx, String text) {
+        TextView tv = new TextView(ctx);
+        tv.setText(text);
+        tv.setTextSize(9);
+        tv.setTypeface(null, Typeface.BOLD);
+        tv.setLetterSpacing(0.04f);
+        int ph = dp(6), pv = dp(2);
+        tv.setPadding(ph, pv, ph, pv);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        lp.leftMargin = dp(8);
+        tv.setLayoutParams(lp);
+
+        GradientDrawable bg = new GradientDrawable();
+        bg.setCornerRadius(dp(4));
+
+        switch (text) {
+            case "4K":
+                bg.setColor(CLR_BADGE_4K_BG);
+                tv.setTextColor(CLR_BADGE_4K_FG);
+                break;
+            case "HD":
+                bg.setColor(CLR_BADGE_HD_BG);
+                tv.setTextColor(CLR_BADGE_HD_FG);
+                break;
+            case "CC":
+                bg.setColor(CLR_BADGE_CC_BG);
+                tv.setTextColor(CLR_BADGE_CC_FG);
+                break;
+            default: // SD
+                bg.setColor(CLR_BADGE_SD_BG);
+                tv.setTextColor(CLR_BADGE_SD_FG);
+                break;
         }
-        dot.setBackground(gd);
+        tv.setBackground(bg);
+        return tv;
+    }
+
+    private void drawRadio(FrameLayout container, boolean selected) {
+        GradientDrawable outer = new GradientDrawable();
+        outer.setShape(GradientDrawable.OVAL);
+        if (selected) {
+            outer.setColor(CLR_RED);
+            outer.setStroke(dp(1.5f), CLR_RED);
+        } else {
+            outer.setColor(Color.TRANSPARENT);
+            outer.setStroke(dp(1.5f), CLR_W30);
+        }
+        container.setBackground(outer);
 
         if (selected) {
-            // Inner white dot as overlay
-            dot.post(() -> {
-                // Create inner white dot using padding illusion — handled by
-                // a layered drawable approach
-                GradientDrawable outer = new GradientDrawable();
-                outer.setShape(GradientDrawable.OVAL);
-                outer.setColor(CLR_RED);
-                outer.setStroke(dp(2), CLR_RED);
+            // Inner white dot
+            container.post(() -> {
+                GradientDrawable inner = new GradientDrawable();
+                inner.setShape(GradientDrawable.OVAL);
+                inner.setColor(CLR_WHITE);
 
-                // Use a LayerDrawable for the inner white circle
-                android.graphics.drawable.Drawable[] layers = {
-                        outer,
-                        createOvalDrawable(CLR_WHITE, dp(5))
-                };
-                android.graphics.drawable.LayerDrawable ld =
-                        new android.graphics.drawable.LayerDrawable(layers);
+                LayerDrawable ld = new LayerDrawable(
+                        new android.graphics.drawable.Drawable[]{outer, inner});
                 int inset = dp(5);
                 ld.setLayerInset(1, inset, inset, inset, inset);
-                dot.setBackground(ld);
+                container.setBackground(ld);
             });
         }
     }
 
-    private GradientDrawable createOvalDrawable(int color, int cornerRadius) {
-        GradientDrawable gd = new GradientDrawable();
-        gd.setShape(GradientDrawable.OVAL);
-        gd.setColor(color);
-        return gd;
-    }
-
-    private void makeFocusable(View v, boolean needsBackground) {
-        v.setClickable(true);
-        v.setFocusable(true);
-        v.setFocusableInTouchMode(false);
-        if (needsBackground) {
-            v.setOnFocusChangeListener((view, focused) ->
-                    view.setBackgroundColor(focused ? 0x22FFFFFF : Color.TRANSPARENT));
-        }
-    }
-
-    private void refreshSidebarSubtitles(Context ctx) {
+    private void refreshSidebarCurrents() {
         for (int i = 0; i < 3; i++) {
-            String sub = getSidebarSubtitle(i);
-            // The subtitle TextView is the 3rd child in each tab entry (index 2)
-            if (tabButtons[i] instanceof LinearLayout) {
-                LinearLayout tabEntry = (LinearLayout) tabButtons[i];
-                if (tabEntry.getChildCount() >= 3) {
-                    View child = tabEntry.getChildAt(2);
-                    if (child instanceof TextView) {
-                        ((TextView) child).setText(sub);
-                    }
-                }
-            }
+            if (tabCurTv[i] != null)
+                tabCurTv[i].setText(getSidebarCurrent(i));
         }
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
+    // ════════════════════════════════════════════════════════════════════════
     // Track builders
-    // ─────────────────────────────────────────────────────────────────────────
+    // ════════════════════════════════════════════════════════════════════════
+    private List<TrackItem> itemsForTab(int tab) {
+        switch (tab) {
+            case TAB_AUDIO:     return audioItems;
+            case TAB_SUBTITLES: return subtitleItems;
+            default:            return videoItems;
+        }
+    }
 
     private List<TrackItem> buildVideoItems(Tracks tracks) {
         List<TrackItem> items = new ArrayList<>();
 
-        boolean isAutoSelected = true;
+        boolean isAuto = true;
         if (player != null) {
-            for (Tracks.Group group : tracks.getGroups()) {
-                if (group.getType() == C.TRACK_TYPE_VIDEO && group.isSelected()) {
+            for (Tracks.Group g : tracks.getGroups()) {
+                if (g.getType() == C.TRACK_TYPE_VIDEO && g.isSelected()) {
                     if (player.getTrackSelectionParameters().overrides
-                            .containsKey(group.getMediaTrackGroup())) {
-                        isAutoSelected = false;
+                            .containsKey(g.getMediaTrackGroup())) {
+                        isAuto = false;
                     }
                 }
             }
         }
 
         items.add(new TrackItem(null, -1,
-                "Auto (Best)", "Adjusts to give you the best experience",
-                C.TRACK_TYPE_VIDEO, null, isAutoSelected, true));
+                "Auto", "Adjusts for best experience", null,
+                C.TRACK_TYPE_VIDEO, null, isAuto, true));
 
-        for (Tracks.Group group : tracks.getGroups()) {
-            if (group.getType() != C.TRACK_TYPE_VIDEO) continue;
-            for (int t = 0; t < group.length; t++) {
-                if (!group.isTrackSupported(t)) continue;
-                Format fmt   = group.getTrackFormat(t);
-                boolean isSel = group.isTrackSelected(t) && !isAutoSelected;
-                String main  = fmt.height + "p";
+        for (Tracks.Group g : tracks.getGroups()) {
+            if (g.getType() != C.TRACK_TYPE_VIDEO) continue;
+            for (int t = 0; t < g.length; t++) {
+                if (!g.isTrackSupported(t)) continue;
+                Format fmt  = g.getTrackFormat(t);
+                boolean sel = g.isTrackSelected(t) && !isAuto;
+
+                String main  = fmt.height + "p" + (fmt.height >= 1080 ? " Full HD"
+                        : fmt.height >= 720 ? " HD" : "");
                 String sub   = fmt.bitrate > 0 ? (fmt.bitrate / 1000) + " kbps" : "";
                 if (fmt.frameRate > 0 && !sub.isEmpty())
-                    sub += " • " + Math.round(fmt.frameRate) + " fps";
-                items.add(new TrackItem(group.getMediaTrackGroup(), t,
-                        main, sub, C.TRACK_TYPE_VIDEO, null, isSel, false));
+                    sub += "  ·  " + Math.round(fmt.frameRate) + " fps";
+
+                String badge = fmt.height >= 2160 ? "4K"
+                        : fmt.height >= 720  ? "HD"
+                        : "SD";
+
+                items.add(new TrackItem(g.getMediaTrackGroup(), t,
+                        main, sub, badge,
+                        C.TRACK_TYPE_VIDEO, null, sel, false));
             }
         }
         return items;
@@ -778,21 +835,22 @@ public class TrackSelectionDialog extends BottomSheetDialogFragment {
     private List<TrackItem> buildAudioItems(Tracks tracks) {
         List<TrackItem> items = new ArrayList<>();
         int idx = 0;
-        for (Tracks.Group group : tracks.getGroups()) {
-            boolean isAudio = (group.getType() == C.TRACK_TYPE_AUDIO);
-            if (!isAudio && group.length > 0) {
-                Format f = group.getTrackFormat(0);
+        for (Tracks.Group g : tracks.getGroups()) {
+            boolean isAudio = (g.getType() == C.TRACK_TYPE_AUDIO);
+            if (!isAudio && g.length > 0) {
+                Format f = g.getTrackFormat(0);
                 if (f.sampleMimeType != null && MimeTypes.isAudio(f.sampleMimeType))
                     isAudio = true;
             }
             if (!isAudio) continue;
-            for (int t = 0; t < group.length; t++) {
-                Format fmt   = group.getTrackFormat(t);
-                boolean isSel = group.isTrackSelected(t);
-                String main  = buildAudioMainLabel(fmt, idx);
-                String sub   = buildAudioSubLabel(fmt);
-                items.add(new TrackItem(group.getMediaTrackGroup(), t,
-                        main, sub, C.TRACK_TYPE_AUDIO, fmt.language, isSel, false));
+            for (int t = 0; t < g.length; t++) {
+                Format fmt  = g.getTrackFormat(t);
+                boolean sel = g.isTrackSelected(t);
+                items.add(new TrackItem(g.getMediaTrackGroup(), t,
+                        buildAudioMain(fmt, idx),
+                        buildAudioSub(fmt),
+                        null,
+                        C.TRACK_TYPE_AUDIO, fmt.language, sel, false));
                 idx++;
             }
         }
@@ -803,74 +861,69 @@ public class TrackSelectionDialog extends BottomSheetDialogFragment {
         List<TrackItem> items = new ArrayList<>();
         boolean anySelected = false;
         int idx = 0;
-        for (Tracks.Group group : tracks.getGroups()) {
-            boolean isText = (group.getType() == C.TRACK_TYPE_TEXT);
-            if (!isText && group.length > 0) {
-                Format f = group.getTrackFormat(0);
+        for (Tracks.Group g : tracks.getGroups()) {
+            boolean isText = (g.getType() == C.TRACK_TYPE_TEXT);
+            if (!isText && g.length > 0) {
+                Format f = g.getTrackFormat(0);
                 if (f.sampleMimeType != null && MimeTypes.isText(f.sampleMimeType))
                     isText = true;
             }
             if (!isText) continue;
-            for (int t = 0; t < group.length; t++) {
-                Format fmt   = group.getTrackFormat(t);
-                boolean isSel = group.isTrackSelected(t);
-                if (isSel) anySelected = true;
-                String main = buildSubtitleMainLabel(fmt, idx);
-                String sub  = buildSubtitleSubLabel(fmt);
-                items.add(new TrackItem(group.getMediaTrackGroup(), t,
-                        main, sub, C.TRACK_TYPE_TEXT, fmt.language, isSel, false));
+            for (int t = 0; t < g.length; t++) {
+                Format fmt  = g.getTrackFormat(t);
+                boolean sel = g.isTrackSelected(t);
+                if (sel) anySelected = true;
+                String badge = ((fmt.roleFlags & C.ROLE_FLAG_CAPTION) != 0) ? "CC" : null;
+                items.add(new TrackItem(g.getMediaTrackGroup(), t,
+                        buildSubMain(fmt, idx),
+                        buildSubSub(fmt),
+                        badge,
+                        C.TRACK_TYPE_TEXT, fmt.language, sel, false));
                 idx++;
             }
         }
         items.add(0, new TrackItem(null, -1,
-                "No subtitles", "Off",
+                "None", "Subtitles off", null,
                 C.TRACK_TYPE_TEXT, null, !anySelected, true));
         return items;
     }
 
-    // ─── Label helpers ────────────────────────────────────────────────────────
-    private String buildAudioMainLabel(Format fmt, int index) {
+    // ── Label helpers ─────────────────────────────────────────────────────────
+    private String buildAudioMain(Format fmt, int index) {
         if (fmt.language != null && !fmt.language.equals("und")) {
             String name = localeName(fmt.language);
-            if (fmt.label != null && !fmt.label.isEmpty())
-                return name + " — " + fmt.label;
-            return name;
+            return (fmt.label != null && !fmt.label.isEmpty())
+                    ? name + "  —  " + fmt.label : name;
         }
         return "Track " + (index + 1);
     }
 
-    private String buildAudioSubLabel(Format fmt) {
-        List<String> parts = new ArrayList<>();
-        if (fmt.sampleMimeType != null) {
-            String codec = fmt.sampleMimeType.replace("audio/", "").toUpperCase(Locale.US);
-            parts.add(codec);
-        } else if (fmt.codecs != null) {
-            parts.add(fmt.codecs.split("\\.")[0].toUpperCase(Locale.US));
-        }
-        if (fmt.channelCount > 0) parts.add(channelStr(fmt.channelCount));
-        if (fmt.sampleRate > 0)   parts.add(fmt.sampleRate / 1000 + " kHz");
-        return join(parts, "  ·  ");
+    private String buildAudioSub(Format fmt) {
+        List<String> p = new ArrayList<>();
+        if (fmt.sampleMimeType != null)
+            p.add(fmt.sampleMimeType.replace("audio/", "").toUpperCase(Locale.US));
+        else if (fmt.codecs != null)
+            p.add(fmt.codecs.split("\\.")[0].toUpperCase(Locale.US));
+        if (fmt.channelCount > 0) p.add(channelStr(fmt.channelCount));
+        if (fmt.sampleRate   > 0) p.add((fmt.sampleRate / 1000) + " kHz");
+        return join(p, "  ·  ");
     }
 
-    private String buildSubtitleMainLabel(Format fmt, int index) {
+    private String buildSubMain(Format fmt, int index) {
         if (fmt.language != null && !fmt.language.equals("und")) {
             String name = localeName(fmt.language);
-            if (fmt.label != null && !fmt.label.isEmpty())
-                return name + " — " + fmt.label;
-            return name;
+            return (fmt.label != null && !fmt.label.isEmpty())
+                    ? name + "  —  " + fmt.label : name;
         }
         return "Track " + (index + 1);
     }
 
-    private String buildSubtitleSubLabel(Format fmt) {
-        List<String> tags = new ArrayList<>();
-        if (fmt.selectionFlags != 0 && (fmt.selectionFlags & C.SELECTION_FLAG_FORCED) != 0)
-            tags.add("Forced");
-        if (fmt.roleFlags != 0) {
-            if ((fmt.roleFlags & C.ROLE_FLAG_CAPTION) != 0)                   tags.add("CC");
-            if ((fmt.roleFlags & C.ROLE_FLAG_DESCRIBES_MUSIC_AND_SOUND) != 0) tags.add("SDH");
-        }
-        return join(tags, "  ·  ");
+    private String buildSubSub(Format fmt) {
+        List<String> t = new ArrayList<>();
+        if ((fmt.selectionFlags & C.SELECTION_FLAG_FORCED) != 0) t.add("Forced");
+        if ((fmt.roleFlags & C.ROLE_FLAG_CAPTION)                 != 0) t.add("CC");
+        if ((fmt.roleFlags & C.ROLE_FLAG_DESCRIBES_MUSIC_AND_SOUND) != 0) t.add("SDH");
+        return join(t, "  ·  ");
     }
 
     private String localeName(String code) {
@@ -901,7 +954,9 @@ public class TrackSelectionDialog extends BottomSheetDialogFragment {
         return sb.toString();
     }
 
-    // ─── Apply selection to ExoPlayer ─────────────────────────────────────────
+    // ════════════════════════════════════════════════════════════════════════
+    // Apply track selection to ExoPlayer
+    // ════════════════════════════════════════════════════════════════════════
     private void applyTrackSelection(TrackItem item) {
         if (player == null) return;
 
@@ -923,7 +978,9 @@ public class TrackSelectionDialog extends BottomSheetDialogFragment {
         } else if (item.type == C.TRACK_TYPE_TEXT) {
             if (item.isDisabled) {
                 builder.setIgnoredTextSelectionFlags(
-                        C.SELECTION_FLAG_DEFAULT | C.SELECTION_FLAG_FORCED | C.SELECTION_FLAG_AUTOSELECT);
+                        C.SELECTION_FLAG_DEFAULT
+                                | C.SELECTION_FLAG_FORCED
+                                | C.SELECTION_FLAG_AUTOSELECT);
                 builder.clearOverridesOfType(C.TRACK_TYPE_TEXT);
                 builder.setPreferredTextLanguage(null);
                 prefs.edit().remove("pref_lang_text").apply();
@@ -953,8 +1010,8 @@ public class TrackSelectionDialog extends BottomSheetDialogFragment {
         player.setTrackSelectionParameters(builder.build());
     }
 
-    private java.util.List<Integer> singletonList(int value) {
-        java.util.List<Integer> list = new ArrayList<>();
+    private List<Integer> singletonList(int value) {
+        List<Integer> list = new ArrayList<>();
         list.add(value);
         return list;
     }

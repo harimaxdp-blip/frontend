@@ -23,13 +23,8 @@ export default function MoviePlayer() {
     }
   }, [navigate]);
 
-  // ── ALL hooks must be called before any conditional return ──────────────
   useEffect(() => {
-    // Don't run native-player logic once we've already switched to fallback
     if (useFallback) return;
-
-    console.log("PLAYER_DEBUG_VERSION_123456");
-    console.log("PLAYER_DEBUG: Location State:", JSON.stringify(location.state));
 
     const isSeries       = Array.isArray(playlist) && playlist.length > 1;
     const currentEpisode = isSeries ? playlist[startIndex] : movie;
@@ -37,15 +32,21 @@ export default function MoviePlayer() {
     const url   = currentEpisode?.link || currentEpisode?.url || currentEpisode?.episodeLink;
     const title = currentEpisode?.title || currentEpisode?.episodeTitle || "";
 
-    console.log("PLAYER_DEBUG_URL_RESOLVED=" + url);
-    console.log("PLAYER_DEBUG_TITLE_RESOLVED=" + title);
+    if (!url) { handleGoBack(); return; }
 
-    if (!url) {
-      console.log("PLAYER_DEBUG: No URL found, going back.");
-      handleGoBack();
+    // ── Magnet link → TorrentPlayerActivity ────────────────────────────────
+    if (url.startsWith("magnet:")) {
+      DeviceControl.openTorrentPlayer({ magnet: url, title })
+        .then(handleGoBack)
+        .catch((err) => {
+          console.warn("Torrent player failed:", err);
+          // No web fallback for magnet links — just go back
+          handleGoBack();
+        });
       return;
     }
 
+    // ── Normal HTTP video flow (unchanged) ──────────────────────────────────
     const cleanedPlaylist = Array.isArray(playlist)
       ? playlist.map(ep => ({
           link:    ep.link || ep.url || ep.episodeLink || "",
@@ -74,7 +75,7 @@ export default function MoviePlayer() {
     };
 
     const launchFallback = (err) => {
-      console.warn("PLAYER_FALLBACK: native player failed, switching to GlobalPlayer:", err);
+      console.warn("PLAYER_FALLBACK:", err);
       setFallbackPayload({
         url,
         title,
@@ -85,17 +86,12 @@ export default function MoviePlayer() {
     };
 
     if (isDirectVideo) {
-      DeviceControl.openExoPlayer(payload)
-        .then(handleGoBack)
-        .catch(launchFallback);
+      DeviceControl.openExoPlayer(payload).then(handleGoBack).catch(launchFallback);
     } else {
-      DeviceControl.openWebPlayer(payload)
-        .then(handleGoBack)
-        .catch(launchFallback);
+      DeviceControl.openWebPlayer(payload).then(handleGoBack).catch(launchFallback);
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Conditional render AFTER all hooks ─────────────────────────────────
   if (useFallback && fallbackPayload) {
     return (
       <GlobalPlayer
@@ -108,7 +104,6 @@ export default function MoviePlayer() {
     );
   }
 
-  // ── Spinner while waiting for native player ─────────────────────────────
   return (
     <div style={{
       width: "100vw", height: "100vh", background: "#000",

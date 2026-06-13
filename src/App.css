@@ -105,16 +105,6 @@ body {
   display: block;
 }
 
-.gear-icon-svg {
-  width: 20px;
-  height: 20px;
-  display: block;
-  transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.gear-btn:hover  .gear-icon-svg,
-.gear-btn:focus  .gear-icon-svg { transform: rotate(60deg); }
-
 .search-icon-svg {
   width: 20px;
   height: 20px;
@@ -154,7 +144,7 @@ body {
 }
 
 /* ============================================
-   GEAR BUTTON + POPUP
+   GEAR BUTTON — touch-safe hover/active states
 ============================================ */
 .gear-wrapper {
   position: relative;
@@ -162,24 +152,73 @@ body {
 }
 
 .gear-btn {
-  background: none;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
   border: none;
-  color: #ccc;
-  cursor: pointer;
-  width: 40px;
-  height: 40px;
+  background: rgba(255,255,255,0.06);
+  color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 10px;
-  transition: color 0.2s, background 0.2s;
+  cursor: pointer;
+  transition: all .25s ease;
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
 }
 
-.gear-btn:hover {
-  color: #e50914;
-  background: #1e1e1e;
+.star-icon {
+  width: 22px;
+  height: 22px;
+  transition: all .25s ease;
+  animation: starGlow 2.5s infinite ease-in-out;
+}
+
+/* Hover/focus glow — only for devices that truly support hover (mouse/TV) */
+@media (hover: hover) and (pointer: fine) {
+  .gear-btn:hover,
+  .gear-btn:focus-visible {
+    background: rgba(255,255,255,0.12);
+    transform: scale(1.08);
+    box-shadow:
+      0 0 0 3px rgba(255,255,255,.08),
+      0 0 20px rgba(255,255,255,.15);
+  }
+
+  .gear-btn:hover .star-icon,
+  .gear-btn:focus-visible .star-icon {
+    transform: rotate(12deg) scale(1.15);
+  }
+}
+
+/* Touch devices: no sticky hover/focus glow, just a quick press effect */
+@media (hover: none), (pointer: coarse) {
+  .gear-btn:hover,
+  .gear-btn:focus-visible {
+    background: rgba(255,255,255,0.06);
+    transform: none;
+    box-shadow: none;
+  }
+
+  .gear-btn:hover .star-icon,
+  .gear-btn:focus-visible .star-icon {
+    transform: none;
+  }
+}
+
+/* Press feedback on all devices */
+.gear-btn:active {
+  transform: scale(0.92);
+  background: rgba(255,255,255,0.15);
+}
+
+@keyframes starGlow {
+  0%,100% {
+    filter: drop-shadow(0 0 2px rgba(255,255,255,.4));
+  }
+  50% {
+    filter: drop-shadow(0 0 8px rgba(255,255,255,.9));
+  }
 }
 
 /* Popup */

@@ -19,7 +19,7 @@ import Loader from "./components/Loader";
 import Login from "./pages/Login";
 import Offline from "./pages/Offline";
 import logo from "./assets/logo1.png";
-
+import Games from "./pages/Games";
 // ── swap these two imports to whatever images you want in the gear popup ──
 import gearLink1Img from "./assets/gear-link1.png"; // YOUR IMAGE 1
 import gearLink2Img from "./assets/gear-link2.png"; // YOUR IMAGE 2
@@ -32,10 +32,9 @@ const avatars = [avatar13, avatar16, avatar18, avatar19, avatar11, avatar12];
 
 // ── Gear popup link config — swap href and label to whatever pages you need ──
 const GEAR_LINKS = [
-  { img: gearLink1Img, label: "HM", desc: "Movies For You",    href: "/" },
-  { img: gearLink2Img, label: "HM",   desc: "Music For You", href: "/"   },
+  { img: gearLink1Img, label: "HM Games", desc: "Games For You", href: "/games" },
+  { img: gearLink2Img, label: "HM Music", desc: "Music For You", href: "/" },
 ];
-
 // ── Detect pointer type ──
 function setupPointerMode() {
   const setMode = (mode) => document.documentElement.setAttribute("data-input", mode);
@@ -116,19 +115,16 @@ function HamburgerIcon({ open }) {
 // ─────────────────────────────────────────────────────────
 // GearIcon
 // ─────────────────────────────────────────────────────────
-function GearIcon() {
+function StarIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" className="gear-icon-svg" aria-hidden="true">
-      <path d="M12 15a3 3 0 100-6 3 3 0 000 6z" stroke="currentColor" strokeWidth="2"/>
+    <svg
+      viewBox="0 0 24 24"
+      className="star-icon"
+      aria-hidden="true"
+    >
       <path
-        d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33
-           1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06
-           a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09
-           A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68
-           a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06
-           a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09
-           a1.65 1.65 0 00-1.51 1z"
-        stroke="currentColor" strokeWidth="2"
+        d="M12 2.5L14.9 8.4L21.5 9.4L16.7 14.1L17.8 20.7L12 17.6L6.2 20.7L7.3 14.1L2.5 9.4L9.1 8.4L12 2.5Z"
+        fill="currentColor"
       />
     </svg>
   );
@@ -346,7 +342,7 @@ function App() {
                   if (e.key === "Escape") setShowGear(false);
                 }}
               >
-                <GearIcon />
+               <StarIcon />
               </button>
 
               {showGear && (
@@ -455,6 +451,7 @@ function App() {
       >
         <Routes>
           <Route path="/"        element={<Home type="all" />} />
+          <Route path="/games" element={<Games />} />
           <Route path="/banners" element={<BannerManager />} />
           <Route path="/movies"  element={<Home type="movie" />} />
           <Route path="/banner"  element={<Banner />} />

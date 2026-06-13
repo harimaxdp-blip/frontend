@@ -4,10 +4,10 @@ const config: CapacitorConfig = {
   appId: 'com.harimovies.app',
   appName: 'HM',
   webDir: 'build',
-  server: {
+/*  server: {
     url: 'https://hm-tau-eight.vercel.app',
     cleartext: false
-  }
+  }*/
 };
 
 export default config;

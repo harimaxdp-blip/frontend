@@ -19,7 +19,8 @@ import noResultsAnime  from "../assets/no-results-anime.png";
 import { useSpatialNav } from "../hooks/useSpatialNav";
 
 import tvIcon from "../assets/tv1.png";
-
+import seriIcon from "../assets/tv2.png";
+import animeIcon from "../assets/tv.png";
 // ─── Constants ────────────────────────────────────────────────────────────────
 const NO_RESULTS_IMG = {
   all:    noResultsAll,
@@ -29,6 +30,9 @@ const NO_RESULTS_IMG = {
 };
 const POSTER_FALLBACK  = "https://via.placeholder.com/300x450";
 const LAST_WATCHED_KEY = "ott_last_watched";
+
+// ── SharedPrefs name used by PlayerActivity.java ──
+const ANDROID_LW_PREFS = "hm_last_watched";
 
 let _navStateId = 0;
 const nextNavId = () => ++_navStateId;
@@ -46,6 +50,35 @@ const ls = {
   getJSON: (k)    => { try { return JSON.parse(localStorage.getItem(k)); }   catch { return null; } },
   setJSON: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); }   catch {} },
 };
+
+// ─── Read ALL last-watched entries from the Android JS bridge ─────────────────
+function readAndroidLastWatched() {
+  try {
+    if (window.HariMovies && typeof window.HariMovies.getSharedPrefAll === "function") {
+      const raw = window.HariMovies.getSharedPrefAll(ANDROID_LW_PREFS);
+      if (raw) {
+        const map = JSON.parse(raw);
+        const result = {};
+        for (const [k, v] of Object.entries(map)) {
+          try { result[k] = JSON.parse(v); } catch { /* skip malformed */ }
+        }
+        return result;
+      }
+    }
+  } catch (e) {
+    console.warn("HariMovies bridge read failed:", e);
+  }
+  return ls.getJSON(LAST_WATCHED_KEY) || {};
+}
+
+// ─── TV detection helper ──────────────────────────────────────────────────────
+function detectIsTV() {
+  const ua = navigator.userAgent;
+  return /android tv|googletv|smarttv|tv/i.test(ua) ||
+    (/android/i.test(ua) && /tv/i.test(ua)) ||
+    document.body.classList.contains("tv-mode") ||
+    document.body.classList.contains("android-mode");
+}
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
 function randomImg(episodes) {
@@ -153,15 +186,6 @@ const SkeletonCard = React.memo(function SkeletonCard() {
   return (
     <div className="card-skeleton">
       <div className="skel-img" /><div className="skel-title" /><div className="skel-sub" />
-    </div>
-  );
-});
-
-const PlayerLoading = React.memo(function PlayerLoading({ title }) {
-  return (
-    <div className="player-loading" role="status" aria-live="polite">
-      <div className="player-loading-spinner" />
-      <div className="player-loading-title"><strong>{title}</strong>Loading…</div>
     </div>
   );
 });
@@ -295,6 +319,9 @@ export default function Home({ type = "all" }) {
   const [isDataLoaded, setIsDataLoaded] = useState(false);
   const handleGridKeyDown               = useSpatialNav();
 
+  // ── TV detection state ────────────────────────────────────────────────────
+  const [isTV, setIsTV] = useState(false);
+
   const [languageFilter, setLanguageFilter] = useState("all");
   const [genreFilter,    setGenreFilter]    = useState("all");
   const [yearFilter,     setYearFilter]     = useState("all");
@@ -305,11 +332,15 @@ export default function Home({ type = "all" }) {
   const [voiceHint,    setVoiceHint]    = useState("");
   const [voiceError,   setVoiceError]   = useState("");
 
-  const [lastWatched, setLastWatched] = useState(() => ls.getJSON(LAST_WATCHED_KEY) || {});
+  // ── initialise lastWatched by merging localStorage + Android bridge ──
+  const [lastWatched, setLastWatched] = useState(() => {
+    const androidData = readAndroidLastWatched();
+    const localData   = ls.getJSON(LAST_WATCHED_KEY) || {};
+    return { ...localData, ...androidData };
+  });
 
   const [showUpBtn,     setShowUpBtn]     = useState(false);
   const [viewStack,     setViewStack]     = useState([{ kind: "home" }]);
-  const [playerLoading, setPlayerLoading] = useState(null);
 
   const navigate         = useNavigate();
   const savedScrollMap   = useRef({});
@@ -322,7 +353,53 @@ export default function Home({ type = "all" }) {
   const selectedCollection = currentView.kind === "collection" ? currentView.data : null;
   const selectedSeason     = currentView.kind === "season"     ? currentView.data : null;
 
-  // ── Up button ────────────────────────────────────────────────────────────────
+  // ── Detect TV/Android on mount ───────────────────────────────────────────
+  useEffect(() => {
+    const ua = navigator.userAgent;
+    const isAndroid = /android tv|googletv/i.test(ua) || (/android/i.test(ua) && /tv/i.test(ua));
+    const isTVDevice = /tv|android tv|googletv|smarttv/i.test(ua);
+    document.body.classList.remove("tv-mode", "android-mode");
+    if (isAndroid) {
+      document.body.classList.add("android-mode", "tv-mode");
+      setIsTV(true);
+    } else if (isTVDevice) {
+      document.body.classList.add("tv-mode");
+      setIsTV(true);
+    } else {
+      setIsTV(false);
+    }
+  }, []);
+
+  // ── Sync last-watched from Android bridge on visibility change ────────────
+  useEffect(() => {
+    const syncFromAndroid = () => {
+      if (document.visibilityState !== "visible") return;
+      const androidData = readAndroidLastWatched();
+      if (!androidData || Object.keys(androidData).length === 0) return;
+      setLastWatched((prev) => {
+        const merged = { ...prev, ...androidData };
+        const changed = Object.entries(androidData).some(
+          ([k, v]) => JSON.stringify(prev[k]) !== JSON.stringify(v)
+        );
+        if (changed) {
+          ls.setJSON(LAST_WATCHED_KEY, merged);
+          return merged;
+        }
+        return prev;
+      });
+    };
+
+    document.addEventListener("visibilitychange", syncFromAndroid);
+    window.addEventListener("focus", syncFromAndroid);
+    syncFromAndroid();
+
+    return () => {
+      document.removeEventListener("visibilitychange", syncFromAndroid);
+      window.removeEventListener("focus", syncFromAndroid);
+    };
+  }, []);
+
+  // ── Up button ─────────────────────────────────────────────────────────────
   useEffect(() => {
     const root = getScrollRoot();
     const fn   = () => setShowUpBtn(getPageScrollY() > 300);
@@ -341,17 +418,7 @@ export default function Home({ type = "all" }) {
     (a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }), []
   );
 
-  // ── TV/Android detection ─────────────────────────────────────────────────────
-  useEffect(() => {
-    const ua = navigator.userAgent;
-    const isAndroid = /android tv|googletv/i.test(ua) || (/android/i.test(ua) && /tv/i.test(ua));
-    const isTV      = /tv|android tv|googletv|smarttv/i.test(ua);
-    document.body.classList.remove("tv-mode", "android-mode");
-    if (isAndroid) document.body.classList.add("android-mode", "tv-mode");
-    else if (isTV) document.body.classList.add("tv-mode");
-  }, []);
-
-  // ── Firestore ────────────────────────────────────────────────────────────────
+  // ── Firestore ─────────────────────────────────────────────────────────────
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "movies"), (snap) => {
       setMovies(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
@@ -367,13 +434,13 @@ export default function Home({ type = "all" }) {
     return () => unsub();
   }, []);
 
-  // ── Type helpers ─────────────────────────────────────────────────────────────
+  // ── Type helpers ──────────────────────────────────────────────────────────
   const isMovieType  = useCallback((t) => ["movie", "movies"].includes(normalize(t)), [normalize]);
   const isSeriesType = useCallback((t) => ["series", "tv", "show"].includes(normalize(t)), [normalize]);
   const isAnimeType  = useCallback((t) => normalize(t) === "anime", [normalize]);
   const isAnimeGenre = useCallback((item) => normalize(item?.genre) === "anime", [normalize]);
 
-  // ── Banners ───────────────────────────────────────────────────────────────────
+  // ── Banners ───────────────────────────────────────────────────────────────
   const banners = useMemo(() => {
     return allBanners
       .filter((b) => {
@@ -436,7 +503,7 @@ export default function Home({ type = "all" }) {
     let s = 0; for (const c of q) { if (t.includes(c)) s++; } return s;
   }, [normalize]);
 
-  // ── Movie groups ──────────────────────────────────────────────────────────────
+  // ── Movie groups ──────────────────────────────────────────────────────────
   const movieGroups = useMemo(() => {
     const filtered = movies.filter(
       (item) => isMovieType(item.type) && !isAnimeGenre(item) && matchesTab(item) && passesFilters(item)
@@ -452,7 +519,7 @@ export default function Home({ type = "all" }) {
       .map(([n, items]) => [n, [...items].sort(sortByYearThenCreatedAt)]);
   }, [movies, isMovieType, isAnimeGenre, matchesTab, passesFilters, search, searchScore]);
 
-  // ── Series groups ─────────────────────────────────────────────────────────────
+  // ── Series groups ─────────────────────────────────────────────────────────
   const seriesGroups = useMemo(() => {
     const filtered = movies.filter(
       (item) => isSeriesType(item.type) && !isAnimeGenre(item) && matchesTab(item) && passesFilters(item, "seriesTitle")
@@ -471,7 +538,7 @@ export default function Home({ type = "all" }) {
     return Object.entries(groups).sort((a, b) => { if (b[1].maxYear !== a[1].maxYear) return b[1].maxYear - a[1].maxYear; return b[1].maxCreatedAt - a[1].maxCreatedAt; });
   }, [movies, isSeriesType, isAnimeGenre, matchesTab, passesFilters, normalize]);
 
-  // ── Anime movie groups ────────────────────────────────────────────────────────
+  // ── Anime movie groups ────────────────────────────────────────────────────
   const animeMovieGroups = useMemo(() => {
     const noEp = (ep) => ep === undefined || ep === null || ep === "" || ep === 0 || ep === "0";
     const filtered = movies.filter((item) => (isAnimeType(item.type) || isAnimeGenre(item)) && noEp(item.episode) && passesFilters(item));
@@ -486,7 +553,7 @@ export default function Home({ type = "all" }) {
       .map(([n, items]) => [n, [...items].sort(sortByYearThenCreatedAt)]);
   }, [movies, isAnimeType, isAnimeGenre, passesFilters, search, searchScore]);
 
-  // ── Anime series groups ───────────────────────────────────────────────────────
+  // ── Anime series groups ───────────────────────────────────────────────────
   const animeSeriesGroups = useMemo(() => {
     const hasEp = (ep) => ep !== undefined && ep !== null && ep !== "" && ep !== 0 && ep !== "0";
     const filtered = movies.filter((item) => (isAnimeType(item.type) || isAnimeGenre(item)) && hasEp(item.episode) && passesFilters(item, "seriesTitle"));
@@ -504,21 +571,37 @@ export default function Home({ type = "all" }) {
     return Object.entries(groups).sort((a, b) => { if (b[1].maxYear !== a[1].maxYear) return b[1].maxYear - a[1].maxYear; return b[1].maxCreatedAt - a[1].maxCreatedAt; });
   }, [movies, isAnimeType, isAnimeGenre, passesFilters, normalize]);
 
-  // ── Last Watched helpers ──────────────────────────────────────────────────────
-  const lwKey = useCallback((seriesTitle, seasonNum) =>
-    `${normalize(seriesTitle)}_s${seasonNum}`, [normalize]);
+  // ── Last Watched helpers ──────────────────────────────────────────────────
 
-  const getLastWatchedEp = useCallback((seriesTitle, seasonNum) =>
-    lastWatched[lwKey(seriesTitle, seasonNum)] || null,
-  [lastWatched, lwKey]);
+  const lwKey = useCallback((seriesTitle, seasonNum) => {
+    const normSeason =
+      !seasonNum || seasonNum === "0" || seasonNum === 0
+        ? "1"
+        : String(seasonNum);
+    return `${normalize(seriesTitle)}_s${normSeason}`;
+  }, [normalize]);
 
-  const saveLastWatched = useCallback((seriesTitle, seasonNum, episodeNum, episodeId) => {
-    const updated = { ...lastWatched, [lwKey(seriesTitle, seasonNum)]: { episodeNum, episodeId } };
-    setLastWatched(updated);
-    ls.setJSON(LAST_WATCHED_KEY, updated);
-  }, [lastWatched, lwKey]);
+  const getLastWatchedEp = useCallback(
+    (seriesTitle, seasonNum) => lastWatched[lwKey(seriesTitle, seasonNum)] || null,
+    [lastWatched, lwKey]
+  );
 
-  // ── Navigation helpers ────────────────────────────────────────────────────────
+  const saveLastWatched = useCallback(
+    (seriesTitle, seasonNum, episodeNum, episodeId) => {
+      const normSeason =
+        !seasonNum || seasonNum === "0" || seasonNum === 0
+          ? "1"
+          : String(seasonNum);
+      const key     = lwKey(seriesTitle, normSeason);
+      const entry   = { episodeNum, episodeId };
+      const updated = { ...lastWatched, [key]: entry };
+      setLastWatched(updated);
+      ls.setJSON(LAST_WATCHED_KEY, updated);
+    },
+    [lastWatched, lwKey]
+  );
+
+  // ── Navigation helpers ────────────────────────────────────────────────────
   const saveCurrentState = useCallback(() => {
     savedScrollMap.current[navIdRef.current] = getPageScrollY();
     const focused = document.activeElement;
@@ -540,7 +623,7 @@ export default function Home({ type = "all" }) {
     setViewStack((prev) => prev.slice(0, -1));
   }, [viewStack.length]);
 
-  // ── Restore scroll after popView ─────────────────────────────────────────────
+  // ── Restore scroll after popView ─────────────────────────────────────────
   useLayoutEffect(() => {
     if (!isNavigatingBack.current) return;
     isNavigatingBack.current = false;
@@ -560,11 +643,10 @@ export default function Home({ type = "all" }) {
     [80, 200, 400, 800].forEach((d) => setTimeout(doRestore, d));
   }, [viewStack]);
 
-  // ── Back button / popstate ────────────────────────────────────────────────────
+  // ── Back button / popstate ────────────────────────────────────────────────
   useEffect(() => {
     const onPop  = () => { if (viewStack.length > 1) popView(); };
     const onKey  = (e) => {
-      // ESC, GoBack, Backspace (TV remote), Samsung back key
       const isBack =
         e.key === "Escape"   || e.key === "GoBack"   || e.key === "Backspace" ||
         e.keyCode === 27     || e.keyCode === 10009   || e.keyCode === 8;
@@ -578,7 +660,7 @@ export default function Home({ type = "all" }) {
     return () => { window.removeEventListener("popstate", onPop); window.removeEventListener("keydown", onKey); };
   }, [viewStack, popView]);
 
-  // ── Restore state after returning from MoviePlayer ────────────────────────────
+  // ── Restore state after returning from MoviePlayer ────────────────────────
   useEffect(() => {
     if (!isDataLoaded) return;
     const savedState = ss.getJSON("ott_nav_state");
@@ -587,6 +669,16 @@ export default function Home({ type = "all" }) {
 
     const { kind, collectionName, seriesTitle, seasonNum, scrollY, focusId,
             parentScrollY, parentFocusId, filters } = savedState;
+
+    // Sync last-watched from Android bridge now that we're back
+    const androidData = readAndroidLastWatched();
+    if (androidData && Object.keys(androidData).length > 0) {
+      setLastWatched((prev) => {
+        const merged = { ...prev, ...androidData };
+        ls.setJSON(LAST_WATCHED_KEY, merged);
+        return merged;
+      });
+    }
 
     try {
       if (filters?.language !== undefined) setLanguageFilter(filters.language);
@@ -639,7 +731,7 @@ export default function Home({ type = "all" }) {
     restoreScrollAndFocus(scrollY, focusId);
   }, [isDataLoaded, movieGroups, animeMovieGroups, seriesGroups, animeSeriesGroups, normalize]);
 
-  // ── Auto-focus first card on TV ──────────────────────────────────────────────
+  // ── Auto-focus first card on TV ───────────────────────────────────────────
   useEffect(() => {
     if (!isDataLoaded) return;
     requestAnimationFrame(() => {
@@ -650,7 +742,7 @@ export default function Home({ type = "all" }) {
     });
   }, [isDataLoaded, currentView.kind]);
 
-  // ── Reset on tab change ──────────────────────────────────────────────────────
+  // ── Reset on tab change ───────────────────────────────────────────────────
   useLayoutEffect(() => {
     setLanguageFilter("all"); setGenreFilter("all"); setYearFilter("all"); setSearch("");
     setViewStack([{ kind: "home" }]);
@@ -659,7 +751,7 @@ export default function Home({ type = "all" }) {
     if (!ss.getJSON("ott_nav_state")) scrollPageTo(0);
   }, [type]);
 
-  // ── Actions ───────────────────────────────────────────────────────────────────
+  // ── Actions ───────────────────────────────────────────────────────────────
   const handleOpenCollection = useCallback((name, items) => {
     pushView({ kind: "collection", data: {
       name, items,
@@ -676,9 +768,8 @@ export default function Home({ type = "all" }) {
     }});
   }, [pushView]);
 
+  // ── FIX 1: Removed 700ms delay + PlayerLoading overlay entirely ───────────
   const playMovie = useCallback((movie, playlist = null, currentIndex = 0) => {
-    setPlayerLoading(movie.title);
-
     if (movie.episode !== undefined && movie.episode !== null && movie.episode !== "" &&
         movie.episode !== 0 && movie.episode !== "0") {
       const sTitle = movie.seriesTitle || movie.title;
@@ -712,13 +803,12 @@ export default function Home({ type = "all" }) {
     };
     ss.setJSON("ott_nav_state", navState);
 
-    setTimeout(() => {
-      navigate("/player", { state: { movie, playlist: finalPlaylist, currentIndex: finalIndex } });
-    }, 700);
+    // Navigate immediately — no delay, no loading overlay
+    navigate("/player", { state: { movie, playlist: finalPlaylist, currentIndex: finalIndex } });
   }, [navigate, currentView, languageFilter, genreFilter, yearFilter, search,
       seriesGroups, animeSeriesGroups, normalize, saveLastWatched]);
 
-  // ── Voice search ──────────────────────────────────────────────────────────────
+  // ── Voice search ──────────────────────────────────────────────────────────
   const requestMic = useCallback(async () => {
     setVoiceError("");
     if (typeof DeviceControl?.requestMicrophonePermissionNative === "function") {
@@ -780,7 +870,7 @@ export default function Home({ type = "all" }) {
     action();
   };
 
-  // ── Filter options ────────────────────────────────────────────────────────────
+  // ── Filter options ────────────────────────────────────────────────────────
   const availableLanguages = useMemo(() =>
     [...new Set(movies.filter(matchesTab).map((m) => normalize(m.language)))].filter(Boolean).sort(),
   [movies, matchesTab, normalize]);
@@ -800,7 +890,7 @@ export default function Home({ type = "all" }) {
 
   const cardId = (prefix, id) => `${prefix}_${id}`;
 
-  // ── Render: movie grid ────────────────────────────────────────────────────────
+  // ── Render: movie grid ────────────────────────────────────────────────────
   const renderMovieGrid = (groups, prefix = "m") =>
     groups.map(([name, items], i) => {
       const cid = cardId(prefix, items[0].id);
@@ -820,7 +910,8 @@ export default function Home({ type = "all" }) {
       );
     });
 
-  // ── Render: series section ────────────────────────────────────────────────────
+  // ── Render: series section ────────────────────────────────────────────────
+  // FIX 2: Continue watching badge is now a clickable Play button
   const renderSeriesSection = (titleKey, data) => {
     const seriesTitle = data.displayName || titleKey;
     const seasons     = Object.entries(data.seasons).sort((a, b) => parseInt(a[0]) - parseInt(b[0]));
@@ -833,19 +924,46 @@ export default function Home({ type = "all" }) {
             const lw    = getLastWatchedEp(seriesTitle, sNum);
             const img   = randomImg(eps);
             const total = eps.length;
+
+            // Find the last-watched episode object for continue-play
+            const lwEpisode = lw
+              ? [...eps].sort((a, b) =>
+                  a.localeCompare
+                    ? 0
+                    : String(a.episode).localeCompare(String(b.episode), undefined, { numeric: true })
+                ).find(ep => ep.id === lw.episodeId) || eps.find(ep => ep.id === lw.episodeId)
+              : null;
+
+            const sortedEps = [...eps].sort((a, b) =>
+              String(a.episode).localeCompare(String(b.episode), undefined, { numeric: true, sensitivity: "base" })
+            );
+
             return (
               <FocusCard key={sNum} className="card is-collection season-card" style={{ "--i": i }}
                 data-card-id={cid}
                 onClick={(e) => handleClick(e, () => handleOpenSeason(seriesTitle, sNum, eps))}>
                 <PosterImg src={img} alt={`Season ${sNum}`} />
-                {/* Episode count — top right */}
                 <div className="collection-badge">{total} Ep{total !== 1 ? "s" : ""}</div>
-                {/* Last watched chip — top left */}
+
+                {/* FIX 2: Continue watching — now a real play button */}
                 {lw && (
-                  <div className="last-watched-badge" aria-label={`Last watched episode ${lw.episodeNum}`}>
-                    <span className="lw-dot" aria-hidden="true" />EP {lw.episodeNum}
-                  </div>
+                  <button
+                    className="continue-play-btn"
+                    aria-label={`Continue from episode ${lw.episodeNum}`}
+                    onClick={(e) => {
+                      e.stopPropagation(); // don't open season view
+                      const epToPlay = lwEpisode || sortedEps.find(ep => String(ep.episode) === String(lw.episodeNum)) || sortedEps[0];
+                      if (epToPlay) {
+                        const idx = sortedEps.findIndex(ep => ep.id === epToPlay.id);
+                        playMovie(epToPlay, sortedEps, idx >= 0 ? idx : 0);
+                      }
+                    }}
+                  >
+                    <span className="continue-play-icon" aria-hidden="true">▶</span>
+                    <span className="continue-play-label">EP {lw.episodeNum}</span>
+                  </button>
                 )}
+
                 <div className="card-info">
                   <h3>Season {sNum}</h3>
                   <p>{lw ? `Continue · EP ${lw.episodeNum}` : `${total} Episode${total !== 1 ? "s" : ""}`}</p>
@@ -858,12 +976,11 @@ export default function Home({ type = "all" }) {
     );
   };
 
-  // ── Main render ───────────────────────────────────────────────────────────────
+  // ── Main render ───────────────────────────────────────────────────────────
   return (
     <>
-      {playerLoading && <PlayerLoading title={playerLoading} />}
+      {/* FIX 1: PlayerLoading overlay removed entirely */}
 
-      {/* Scroll-to-top button */}
       <div className="fixed-controls" aria-label="Quick actions">
         <button className={`control-btn top-btn ${showUpBtn ? "top-btn--visible" : ""}`}
           onClick={scrollToTop} aria-label="Scroll to top" title="Back to top">
@@ -875,14 +992,13 @@ export default function Home({ type = "all" }) {
         </button>
       </div>
 
-      {/* Hero — home only */}
-      {currentView.kind === "home" && banners.length > 0 && (
+      {/* FIX 3: Hide hero banner completely on TV/Android TV */}
+      {currentView.kind === "home" && banners.length > 0 && !isTV && (
         <HeroBanner banners={banners} onPlay={playMovie} />
       )}
 
       <div className="movies-page">
 
-        {/* Search + Filters — home only */}
         {currentView.kind === "home" && (
           <>
             <div id="search-section" className="search-bar" role="search">
@@ -925,7 +1041,6 @@ export default function Home({ type = "all" }) {
           </>
         )}
 
-        {/* Content */}
         {!isDataLoaded ? (
           <section className="content-section" aria-busy="true" aria-label="Loading content">
             <h2 className="section-title">Loading…</h2>
@@ -935,23 +1050,35 @@ export default function Home({ type = "all" }) {
           </section>
 
         ) : selectedSeason ? (
-          /* ── Episode list ─────────────────────────────────────────────────── */
           <section key="episode-list" className="collection-view slide-in-premium">
-            {/* ── Breadcrumb header — NO back button, nav via gesture/Escape/remote ── */}
             <div className="season-header">
               <div className="season-breadcrumb">
                 <span className="season-breadcrumb-series">{selectedSeason.seriesTitle}</span>
                 <span className="season-breadcrumb-sep" aria-hidden="true">›</span>
                 <span className="season-breadcrumb-season">Season {selectedSeason.seasonNum}</span>
               </div>
-              {/* Last-watched pill shown at header level for quick context */}
               {(() => {
                 const lw = getLastWatchedEp(selectedSeason.seriesTitle, selectedSeason.seasonNum);
+                const sortedEps = [...selectedSeason.episodes].sort((a, b) =>
+                  String(a.episode).localeCompare(String(b.episode), undefined, { numeric: true, sensitivity: "base" })
+                );
                 return lw ? (
-                  <div className="season-continue-pill" aria-label={`Last watched episode ${lw.episodeNum}`}>
+                  <button
+                    className="season-continue-pill season-continue-pill--btn"
+                    aria-label={`Continue from episode ${lw.episodeNum}`}
+                    onClick={() => {
+                      const epToPlay = sortedEps.find(ep => ep.id === lw.episodeId)
+                        || sortedEps.find(ep => String(ep.episode) === String(lw.episodeNum))
+                        || sortedEps[0];
+                      if (epToPlay) {
+                        const idx = sortedEps.findIndex(ep => ep.id === epToPlay.id);
+                        playMovie(epToPlay, sortedEps, idx >= 0 ? idx : 0);
+                      }
+                    }}
+                  >
                     <span className="scp-play" aria-hidden="true">▶</span>
                     <span>Continue · EP&nbsp;{lw.episodeNum}</span>
-                  </div>
+                  </button>
                 ) : null;
               })()}
             </div>
@@ -971,11 +1098,9 @@ export default function Home({ type = "all" }) {
                       style={{ "--i": i }} data-card-id={cid}
                       onClick={(e) => handleClick(e, () => playMovie(ep, sorted, i))}>
                       <PosterImg src={ep.img} alt={ep.title} loading="eager" />
-                      {/* Episode number chip — top left corner */}
                       <div className="ep-num-badge" aria-hidden="true">
                         EP {ep.episode || "S"}
                       </div>
-                      {/* Continue banner overlaid at bottom of poster */}
                       {isLastSeen && (
                         <div className="last-seen-banner" aria-label="Continue watching">
                           <span className="lsb-play" aria-hidden="true">▶</span> Continue
@@ -995,9 +1120,7 @@ export default function Home({ type = "all" }) {
           </section>
 
         ) : selectedCollection ? (
-          /* ── Movie collection ─────────────────────────────────────────────── */
           <section key="collection-view" className="collection-view slide-in-premium">
-            {/* Breadcrumb — no back button */}
             <div className="season-header">
               <div className="season-breadcrumb">
                 <span className="season-breadcrumb-series">{selectedCollection.name}</span>
@@ -1018,7 +1141,6 @@ export default function Home({ type = "all" }) {
           </section>
 
         ) : (
-          /* ── Home browse ──────────────────────────────────────────────────── */
           <div key="home-browse">
             {(type === "all" || type === "movie") && movieGroups.length > 0 && (
               <section className="content-section">
@@ -1032,7 +1154,7 @@ export default function Home({ type = "all" }) {
             {(type === "all" || type === "series") && seriesGroups.length > 0 && (
               <section className="content-section">
                 <h2 className="section-title">
-                  <img src={tvIcon} alt="" className="section-icon" aria-hidden="true" /> Series
+                  <img src={seriIcon} alt="" className="section-icon" aria-hidden="true" /> Series
                 </h2>
                 {seriesGroups.map(([title, data]) => renderSeriesSection(title, data))}
               </section>
@@ -1041,7 +1163,7 @@ export default function Home({ type = "all" }) {
             {(type === "all" || type === "anime") && animeMovieGroups.length > 0 && (
               <section className="content-section">
                 <h2 className="section-title">
-                  <img src={tvIcon} alt="" className="section-icon" aria-hidden="true" /> Anime Movies
+                  <img src={animeIcon} alt="" className="section-icon" aria-hidden="true" /> Anime Movies
                 </h2>
                 <div className="grid" onKeyDown={handleGridKeyDown}>{renderMovieGrid(animeMovieGroups, "amg")}</div>
               </section>
@@ -1050,7 +1172,7 @@ export default function Home({ type = "all" }) {
             {(type === "all" || type === "anime") && animeSeriesGroups.length > 0 && (
               <section className="content-section">
                 <h2 className="section-title">
-                  <img src={tvIcon} alt="" className="section-icon" aria-hidden="true" /> Anime Series
+                  <img src={animeIcon} alt="" className="section-icon" aria-hidden="true" /> Anime Series
                 </h2>
                 {animeSeriesGroups.map(([title, data]) => renderSeriesSection(title, data))}
               </section>

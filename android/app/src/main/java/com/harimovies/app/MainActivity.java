@@ -1,6 +1,7 @@
 package com.harimovies.app;
 
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.media.AudioManager;
 import android.net.Uri;
 import android.os.Build;
@@ -11,6 +12,8 @@ import android.view.View;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.view.WindowManager;
+import android.webkit.JavascriptInterface;
+import android.webkit.WebView;
 
 import androidx.core.splashscreen.SplashScreen;
 import androidx.core.view.WindowCompat;
@@ -18,9 +21,50 @@ import androidx.core.view.WindowCompat;
 import com.getcapacitor.BridgeActivity;
 import com.harimovies.DeviceControlPlugin;
 
+import org.json.JSONObject;
+
+import java.util.Map;
+
 public class MainActivity extends BridgeActivity {
 
     private AudioManager audioManager;
+
+    // ─────────────────────────────────────────────
+    // JS BRIDGE — exposed to Capacitor WebView as window.HariMovies
+    // ─────────────────────────────────────────────
+
+    public class HariMoviesBridge {
+
+        // Returns ALL key→value pairs from a SharedPreferences file as a JSON string.
+        // Home.js calls: window.HariMovies.getSharedPrefAll("hm_last_watched")
+        @JavascriptInterface
+        public String getSharedPrefAll(String prefsName) {
+            try {
+                SharedPreferences prefs = getSharedPreferences(prefsName, MODE_PRIVATE);
+                Map<String, ?> all = prefs.getAll();
+                JSONObject json = new JSONObject();
+                for (Map.Entry<String, ?> entry : all.entrySet()) {
+                    json.put(entry.getKey(), String.valueOf(entry.getValue()));
+                }
+                return json.toString();
+            } catch (Exception e) {
+                Log.e("HariMoviesBridge", "getSharedPrefAll failed: " + e.getMessage());
+                return "{}";
+            }
+        }
+
+        // Returns a single value from a SharedPreferences file.
+        @JavascriptInterface
+        public String getSharedPref(String prefsName, String key) {
+            try {
+                return getSharedPreferences(prefsName, MODE_PRIVATE)
+                        .getString(key, null);
+            } catch (Exception e) {
+                Log.e("HariMoviesBridge", "getSharedPref failed: " + e.getMessage());
+                return null;
+            }
+        }
+    }
 
     // ─────────────────────────────────────────────
     // LIFECYCLE
@@ -31,6 +75,10 @@ public class MainActivity extends BridgeActivity {
         SplashScreen.installSplashScreen(this);
         registerPlugin(DeviceControlPlugin.class);
         super.onCreate(savedInstanceState);
+
+        // Register HariMoviesBridge on the Capacitor WebView AFTER super.onCreate()
+        // so that bridge.getWebView() is ready.
+        registerHariMoviesBridge();
 
         requestBrightnessPermission();
         setVolumeControlStream(AudioManager.STREAM_MUSIC);
@@ -47,16 +95,82 @@ public class MainActivity extends BridgeActivity {
         hideSystemUI();
     }
 
+    private void registerHariMoviesBridge() {
+        try {
+            WebView webView = this.bridge.getWebView();
+            webView.addJavascriptInterface(new HariMoviesBridge(), "HariMovies");
+            Log.d("HariMoviesBridge", "Registered successfully on Capacitor WebView");
+        } catch (Exception e) {
+            Log.e("HariMoviesBridge", "Failed to register bridge: " + e.getMessage());
+        }
+    }
+
     @Override
     public void onResume() {
         super.onResume();
         hideSystemUI();
+
+        // Each time the app resumes (i.e. user returns from PlayerActivity),
+        // push the latest hm_last_watched SharedPreferences into the WebView's
+        // localStorage so Home.js's localStorage fallback is always fresh.
+        syncLastWatchedToLocalStorage();
     }
 
     @Override
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
         if (hasFocus) hideSystemUI();
+    }
+
+    // ─────────────────────────────────────────────
+    // SYNC SharedPrefs → WebView localStorage
+    // Called on every onResume so returning from PlayerActivity
+    // always gives Home.js the latest last-watched data.
+    // ─────────────────────────────────────────────
+
+    private void syncLastWatchedToLocalStorage() {
+        try {
+            SharedPreferences prefs = getSharedPreferences("hm_last_watched", MODE_PRIVATE);
+            Map<String, ?> all = prefs.getAll();
+            if (all == null || all.isEmpty()) return;
+
+            // Build the flat map that Home.js stores under "ott_last_watched":
+            // { "normalizedTitle_s1": { episodeNum: "3", episodeId: "abc" }, ... }
+            JSONObject fullMap = new JSONObject();
+            for (Map.Entry<String, ?> entry : all.entrySet()) {
+                try {
+                    // Each value is a JSON string like '{"episodeNum":"3","episodeId":"xyz"}'
+                    JSONObject epData = new JSONObject(String.valueOf(entry.getValue()));
+                    fullMap.put(entry.getKey(), epData);
+                } catch (Exception parseEx) {
+                    Log.w("HariMoviesBridge", "Skipping malformed entry: " + entry.getKey());
+                }
+            }
+
+            // Escape for injection into a JS string literal
+            String jsonStr = fullMap.toString().replace("\\", "\\\\").replace("'", "\\'");
+
+            String js =
+                "(function() {" +
+                "  try {" +
+                "    var incoming = JSON.parse('" + jsonStr + "');" +
+                "    var existing = {};" +
+                "    try { existing = JSON.parse(localStorage.getItem('ott_last_watched') || '{}'); } catch(e) {}" +
+                "    var merged = Object.assign({}, existing, incoming);" +
+                "    localStorage.setItem('ott_last_watched', JSON.stringify(merged));" +
+                "    console.log('[HariMovies] Synced last_watched to localStorage, keys=' + Object.keys(incoming).length);" +
+                "  } catch(e) {" +
+                "    console.warn('[HariMovies] sync failed', e);" +
+                "  }" +
+                "})();";
+
+            this.bridge.getWebView().post(() ->
+                this.bridge.getWebView().evaluateJavascript(js, null)
+            );
+
+        } catch (Exception e) {
+            Log.e("HariMoviesBridge", "syncLastWatchedToLocalStorage failed: " + e.getMessage());
+        }
     }
 
     // ─────────────────────────────────────────────
