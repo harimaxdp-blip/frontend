@@ -82,7 +82,7 @@ package com.harimovies.app;
         private boolean isFullscreen = false;
         private int     resizeModeIndex = 0;
         private boolean resumeChecked = false;
-private android.widget.PopupWindow trackPopup;
+
         // ── Playlist for series ──────────────────────────────────────────────────
         private List<JSONObject> playlist = new ArrayList<>();
         private int currentIndex = 0;

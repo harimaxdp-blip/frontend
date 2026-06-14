@@ -46,4 +46,11 @@
 
     </style>
 
+    <!-- TRANSPARENT BOTTOM SHEET -->
+    <style name="TransparentBottomSheet" parent="Theme.Design.BottomSheetDialog">
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:backgroundDimEnabled">false</item>
+        <item name="backgroundTint">@android:color/transparent</item>
+    </style>
+
 </resources>
