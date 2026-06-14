@@ -320,7 +320,7 @@ export default function Home({ type = "all" }) {
   const handleGridKeyDown               = useSpatialNav();
 
   // ── TV detection state ────────────────────────────────────────────────────
-  const [isTV, setIsTV] = useState(false);
+  const [isTV, setIsTV] = useState(() => detectIsTV());
 
   const [languageFilter, setLanguageFilter] = useState("all");
   const [genreFilter,    setGenreFilter]    = useState("all");
