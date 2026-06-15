@@ -23,6 +23,7 @@ import com.harimovies.DeviceControlPlugin;
 
 import org.json.JSONObject;
 
+import java.io.File;
 import java.util.Map;
 
 public class MainActivity extends BridgeActivity {
@@ -75,6 +76,11 @@ public class MainActivity extends BridgeActivity {
         SplashScreen.installSplashScreen(this);
         registerPlugin(DeviceControlPlugin.class);
         super.onCreate(savedInstanceState);
+
+        // Global Torrent Cache Cleanup
+        // Ensures that if TorrentPlayerActivity crashed or was killed,
+        // we clean up the storage when the user opens the app again.
+        new Thread(this::cleanTorrentCache).start();
 
         // Register HariMoviesBridge on the Capacitor WebView AFTER super.onCreate()
         // so that bridge.getWebView() is ready.
@@ -304,5 +310,26 @@ public class MainActivity extends BridgeActivity {
                     | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
             );
         }
+    }
+
+    private void cleanTorrentCache() {
+        try {
+            File cacheDir = new File(getCacheDir(), "torrent_stream");
+            if (cacheDir.exists()) {
+                Log.d("HariMovies", "Cleaning global torrent cache...");
+                deleteRecursive(cacheDir);
+            }
+        } catch (Exception e) {
+            Log.e("HariMovies", "Error cleaning cache", e);
+        }
+    }
+
+    private void deleteRecursive(File f) {
+        if (f == null || !f.exists()) return;
+        if (f.isDirectory()) {
+            File[] kids = f.listFiles();
+            if (kids != null) for (File k : kids) deleteRecursive(k);
+        }
+        f.delete();
     }
 }
