@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <group
+        android:translateX="22"
+        android:translateY="14">
+
+        <!-- HM Helmet Body (white) -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="
+            M18,0 V24 H10 L6,28 V46 L10,50 V64 L24,76 V50 H34 V92 L46,102 V50 H54 V76 L68,64 V50 L72,46 V28 L68,24 H60 V0 H48 V24 H30 V0 Z
+            M54,0 H72 V24 H78 L82,28 V46 L78,50 V64 L64,76 V50 H54 Z" />
+
+        <!-- Left Lens (red) -->
+        <path
+            android:fillColor="#E10600"
+            android:pathData="
+            M16,30 H34
+            C37,30 39,32 39,35
+            V42
+            C39,45 37,47 34,47
+            H16
+            C13,47 11,45 11,42
+            V35
+            C11,32 13,30 16,30 Z" />
+
+        <!-- Right Lens (blue) -->
+        <path
+            android:fillColor="#004DB8"
+            android:pathData="
+            M43,30 H61
+            C64,30 66,32 66,35
+            V42
+            C66,45 64,47 61,47
+            H43
+            C40,47 38,45 38,42
+            V35
+            C38,32 40,30 43,30 Z" />
+
+    </group>
+
+</vector>

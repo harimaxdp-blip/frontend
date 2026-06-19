@@ -20,22 +20,24 @@ import Login from "./pages/Login";
 import Offline from "./pages/Offline";
 import logo from "./assets/logo1.png";
 import Games from "./pages/Games";
-// ── swap these two imports to whatever images you want in the gear popup ──
-import gearLink1Img from "./assets/gear-link1.png"; // YOUR IMAGE 1
-import gearLink2Img from "./assets/gear-link2.png"; // YOUR IMAGE 2
-
+import ComingSoonGames from "./pages/ComingSoonGames";
+import ComingSoonMusic from "./pages/ComingSoonMusic";
+import gearLink1Img from "./assets/gear-link1.png";
+import gearLink2Img from "./assets/gear-link2.png";
 import "./App.css";
 
 const CATEGORY_PATHS = new Set(["/", "/movies", "/series", "/anime"]);
 
+// Pages that should have NO topbar/navbar/sidebar at all
+const FULLSCREEN_PATHS = new Set(["/player", "/coming-soon-games", "/coming-soon-music"]);
+
 const avatars = [avatar13, avatar16, avatar18, avatar19, avatar11, avatar12];
 
-// ── Gear popup link config — swap href and label to whatever pages you need ──
 const GEAR_LINKS = [
-  { img: gearLink1Img, label: "HM Games", desc: "Games For You", href: "/games" },
-  { img: gearLink2Img, label: "HM Music", desc: "Music For You", href: "/" },
+  { img: gearLink1Img, label: "HM Games", desc: "Games For You",  href: "/coming-soon-games" },
+  { img: gearLink2Img, label: "HM Music", desc: "Music For You",  href: "/coming-soon-music" },
 ];
-// ── Detect pointer type ──
+
 function setupPointerMode() {
   const setMode = (mode) => document.documentElement.setAttribute("data-input", mode);
   window.addEventListener("touchstart", () => setMode("touch"), { passive: true, once: false });
@@ -49,7 +51,7 @@ function setupPointerMode() {
 setupPointerMode();
 
 // ─────────────────────────────────────────────────────────
-// AvatarImg — shimmer skeleton for local & remote images
+// AvatarImg
 // ─────────────────────────────────────────────────────────
 function AvatarImg({ src, alt, imgClassName, wrapClassName, minDelay = 500 }) {
   const [show, setShow] = useState(false);
@@ -86,7 +88,7 @@ function AvatarImg({ src, alt, imgClassName, wrapClassName, minDelay = 500 }) {
 }
 
 // ─────────────────────────────────────────────────────────
-// SearchIcon
+// Icons
 // ─────────────────────────────────────────────────────────
 function SearchIcon() {
   return (
@@ -97,9 +99,6 @@ function SearchIcon() {
   );
 }
 
-// ─────────────────────────────────────────────────────────
-// HamburgerIcon
-// ─────────────────────────────────────────────────────────
 function HamburgerIcon({ open }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" className="menu-icon-svg" aria-hidden="true">
@@ -112,16 +111,9 @@ function HamburgerIcon({ open }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────
-// GearIcon
-// ─────────────────────────────────────────────────────────
 function StarIcon() {
   return (
-    <svg
-      viewBox="0 0 24 24"
-      className="star-icon"
-      aria-hidden="true"
-    >
+    <svg viewBox="0 0 24 24" className="star-icon" aria-hidden="true">
       <path
         d="M12 2.5L14.9 8.4L21.5 9.4L16.7 14.1L17.8 20.7L12 17.6L6.2 20.7L7.3 14.1L2.5 9.4L9.1 8.4L12 2.5Z"
         fill="currentColor"
@@ -131,7 +123,7 @@ function StarIcon() {
 }
 
 // ─────────────────────────────────────────────────────────
-// GearPopup — two image+link cards
+// GearPopup
 // ─────────────────────────────────────────────────────────
 function GearPopup({ onClose, onNavigate }) {
   return (
@@ -188,7 +180,7 @@ function App() {
     return () => { window.removeEventListener("online", on); window.removeEventListener("offline", off); };
   }, []);
 
-  // ── Close profile popup on outside click ──
+  // ── Close profile on outside click ──
   useEffect(() => {
     if (!showProfile) return;
     const handler = (e) => {
@@ -205,7 +197,7 @@ function App() {
     };
   }, [showProfile]);
 
-  // ── Close gear popup on outside click ──
+  // ── Close gear on outside click ──
   useEffect(() => {
     if (!showGear) return;
     const handler = (e) => {
@@ -249,17 +241,20 @@ function App() {
   // ── Active page ──
   const getActive = () => {
     const p = location.pathname;
-    if (p.startsWith("/movies")) return "MOVIES";
-    if (p.startsWith("/series")) return "SERIES";
-    if (p.startsWith("/anime"))  return "ANIME";
-    if (p.startsWith("/upload")) return "UPLOAD";
-    if (p.startsWith("/edit"))   return "EDIT";
-    if (p.startsWith("/player")) return "PLAYER";
+    if (p.startsWith("/movies"))           return "MOVIES";
+    if (p.startsWith("/series"))           return "SERIES";
+    if (p.startsWith("/anime"))            return "ANIME";
+    if (p.startsWith("/upload"))           return "UPLOAD";
+    if (p.startsWith("/edit"))             return "EDIT";
+    if (p.startsWith("/player"))           return "PLAYER";
     return "ALL";
   };
 
-  const active       = getActive();
-  const isPlayerPage = location.pathname.startsWith("/player");
+  const active = getActive();
+
+  // ── Determine if this page is fullscreen (no chrome) ──
+  const isFullscreenPage = FULLSCREEN_PATHS.has(location.pathname) ||
+    location.pathname.startsWith("/player");
 
   const focusFirstSidebarItem = useCallback(() => {
     requestAnimationFrame(() => {
@@ -268,7 +263,7 @@ function App() {
   }, []);
 
   const handleMenuKeyDown = useCallback((e) => {
-    if (e.key === "ArrowDown") { e.preventDefault(); setOpen(true); focusFirstSidebarItem(); return; }
+    if (e.key === "ArrowDown")  { e.preventDefault(); setOpen(true); focusFirstSidebarItem(); return; }
     if (e.key === "ArrowRight") { e.preventDefault(); document.querySelector(".gear-btn")?.focus({ preventScroll: true }); return; }
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
@@ -277,9 +272,9 @@ function App() {
   }, [focusFirstSidebarItem]);
 
   useEffect(() => {
-    if (!open || isPlayerPage) return;
+    if (!open || isFullscreenPage) return;
     focusFirstSidebarItem();
-  }, [focusFirstSidebarItem, isPlayerPage, open]);
+  }, [focusFirstSidebarItem, isFullscreenPage, open]);
 
   // ── Scroll to top on category switch ──
   useLayoutEffect(() => {
@@ -312,10 +307,10 @@ function App() {
     <div className="app">
 
       {/* ========================= TOPBAR ========================= */}
-      {!isPlayerPage && (
+      {!isFullscreenPage && (
         <div className="topbar">
 
-          {/* LEFT: hamburger + gear */}
+          {/* LEFT */}
           <div className="topbar-left">
             <button
               ref={menuButtonRef}
@@ -329,7 +324,6 @@ function App() {
               <HamburgerIcon open={open} />
             </button>
 
-            {/* ── Gear button ── */}
             <div className="gear-wrapper" ref={gearRef}>
               <button
                 className="gear-btn"
@@ -337,12 +331,12 @@ function App() {
                 aria-expanded={showGear}
                 onClick={() => setShowGear((s) => !s)}
                 onKeyDown={(e) => {
-                  if (e.key === "ArrowLeft") { e.preventDefault(); menuButtonRef.current?.focus({ preventScroll: true }); }
+                  if (e.key === "ArrowLeft")  { e.preventDefault(); menuButtonRef.current?.focus({ preventScroll: true }); }
                   if (e.key === "ArrowRight") { e.preventDefault(); document.querySelector(".search-btn")?.focus({ preventScroll: true }); }
-                  if (e.key === "Escape") setShowGear(false);
+                  if (e.key === "Escape")     setShowGear(false);
                 }}
               >
-               <StarIcon />
+                <StarIcon />
               </button>
 
               {showGear && (
@@ -354,12 +348,12 @@ function App() {
             </div>
           </div>
 
-          {/* CENTER: logo — absolutely centered so it ignores left/right widths */}
+          {/* CENTER */}
           <div className="topbar-center">
             <img src={logo} className="logo-img" alt="logo" />
           </div>
 
-          {/* RIGHT: search + profile */}
+          {/* RIGHT */}
           <div className="topbar-right">
             <button
               className="search-btn"
@@ -435,7 +429,7 @@ function App() {
       )}
 
       {/* ========================= SIDEBAR ========================= */}
-      {!isPlayerPage && (
+      {!isFullscreenPage && (
         <>
           <div className={`sidebar ${open ? "open" : ""}`}>
             <Sidebar active={active} setActive={handleSetActive} close={() => setOpen(false)} />
@@ -447,24 +441,26 @@ function App() {
       {/* ========================= CONTENT ========================= */}
       <div
         ref={contentRef}
-        className={`content ${open && !isPlayerPage ? "shift" : ""} ${isPlayerPage ? "player-mode" : ""}`}
+        className={`content ${open && !isFullscreenPage ? "shift" : ""} ${isFullscreenPage ? "player-mode" : ""}`}
       >
         <Routes>
-          <Route path="/"        element={<Home type="all" />} />
-          <Route path="/games" element={<Games />} />
-          <Route path="/banners" element={<BannerManager />} />
-          <Route path="/movies"  element={<Home type="movie" />} />
-          <Route path="/banner"  element={<Banner />} />
-          <Route path="/series"  element={<Home type="series" />} />
-          <Route path="/anime"   element={<Home type="anime" />} />
-          <Route path="/upload"  element={<UploadMovie />} />
-          <Route path="/edit"    element={<EditMovies />} />
-          <Route path="/player"  element={<MoviePlayer />} />
-          <Route path="*"        element={<Home type="all" />} />
+          <Route path="/"                 element={<Home type="all" />} />
+          <Route path="/games"            element={<Games />} />
+          <Route path="/banners"          element={<BannerManager />} />
+          <Route path="/movies"           element={<Home type="movie" />} />
+          <Route path="/banner"           element={<Banner />} />
+          <Route path="/series"           element={<Home type="series" />} />
+          <Route path="/anime"            element={<Home type="anime" />} />
+          <Route path="/upload"           element={<UploadMovie />} />
+          <Route path="/edit"             element={<EditMovies />} />
+          <Route path="/player"           element={<MoviePlayer />} />
+          <Route path="/coming-soon-games" element={<ComingSoonGames />} />
+          <Route path="/coming-soon-music" element={<ComingSoonMusic />} />
+          <Route path="*"                 element={<Home type="all" />} />
         </Routes>
       </div>
 
-      {!isPlayerPage && <BottomNav />}
+      {!isFullscreenPage && <BottomNav />}
     </div>
   );
 }

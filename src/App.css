@@ -39,46 +39,48 @@ body {
   position: fixed;
   top: 0;
   left: 0;
-  height: 60px;
+  height: calc(60px + env(safe-area-inset-top, 0px));
   width: 100%;
   background: #0a0a0a;
   display: flex;
   align-items: center;
-  padding: 0 10px;
-  /* notch-aware safe area */
-  padding-left:  max(10px, env(safe-area-inset-left));
-  padding-right: max(10px, env(safe-area-inset-right));
+  justify-content: space-between; /* Changes flow structure to maintain outer margins */
+
+  /* Robust padding logic for all mobile device screens */
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-left: max(16px, env(safe-area-inset-left));
+  padding-right: max(16px, env(safe-area-inset-right));
+
   z-index: 3000;
   border-bottom: 1px solid #1c1c1c;
+  box-sizing: border-box;
 }
 
-/* LEFT: fixed-width so center logo stays truly centered */
+/* LEFT */
 .topbar-left {
   display: flex;
   align-items: center;
-  gap: 4px;
-  /* width matches topbar-right so center is perfectly balanced */
-  width: 120px;
-  flex-shrink: 0;
+  gap: 8px;
+  flex: 1; /* Allows dynamic shifting based on safe areas */
+  justify-content: flex-start;
 }
 
-/* CENTER: absolute centering — unaffected by left/right widths */
+/* CENTER: Safely isolated inside flex space */
 .topbar-center {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  /* keeps logo above notch-safe padding visually */
-  pointer-events: none; /* clicks pass through to underlying; logo is decorative */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  pointer-events: none;
 }
 
+/* RIGHT */
 .topbar-right {
-  margin-left: auto;
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 6px;
-  width: 120px;
-  flex-shrink: 0;
+  gap: 8px;
+  flex: 1;
 }
 
 /* ============================================
@@ -610,17 +612,22 @@ body {
    MOBILE (≤ 768px)
 ============================================ */
 @media (max-width: 768px) {
+  .content {
+    margin-top: calc(60px + env(safe-area-inset-top, 0px));
+    height: calc(100vh - (60px + env(safe-area-inset-top, 0px)));
+  }
+
   .menu-btn { display: none !important; }
   .sidebar  { display: none !important; }
 
   .topbar-left {
-    width: auto;
     min-width: 60px;
+    flex: 1;
   }
 
   .topbar-right {
-    width: 90px;
     gap: 4px;
+    flex: 1;
   }
 
   .content {

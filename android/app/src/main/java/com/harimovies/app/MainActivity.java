@@ -17,6 +17,7 @@ import android.webkit.WebView;
 
 import androidx.core.splashscreen.SplashScreen;
 import androidx.core.view.WindowCompat;
+import androidx.media3.common.util.UnstableApi;
 
 import com.getcapacitor.BridgeActivity;
 import com.harimovies.DeviceControlPlugin;
@@ -26,6 +27,7 @@ import org.json.JSONObject;
 import java.io.File;
 import java.util.Map;
 
+@UnstableApi
 public class MainActivity extends BridgeActivity {
 
     private AudioManager audioManager;
@@ -63,6 +65,16 @@ public class MainActivity extends BridgeActivity {
             } catch (Exception e) {
                 Log.e("HariMoviesBridge", "getSharedPref failed: " + e.getMessage());
                 return null;
+            }
+        }
+
+        @JavascriptInterface
+        public void quitApp() {
+            try {
+                finishAffinity();
+                System.exit(0);
+            } catch (Exception e) {
+                Log.e("HariMoviesBridge", "quitApp failed: " + e.getMessage());
             }
         }
     }

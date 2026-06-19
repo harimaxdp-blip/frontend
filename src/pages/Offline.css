@@ -313,6 +313,43 @@
   color: #999;
 }
 
+/* ── Actions Row ── */
+.offline-actions-row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  margin-top: 10px;
+}
+
+.offline-actions-row .offline-back-btn {
+  margin-top: 0;
+}
+
+/* ── Quit App button ── */
+.offline-quit-btn {
+  background: #111;
+  color: #e50914;
+  border: 1px solid #1c1c1c;
+  padding: 11px 32px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  width: 100%;
+  box-sizing: border-box;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.offline-quit-btn:hover {
+  background: #1a0a0a;
+  border-color: #3a1010;
+}
+
+.offline-quit-btn:active {
+  transform: scale(0.98);
+}
+
 /* ── Mobile tweaks ── */
 @media (max-width: 400px) {
   .offline-title {

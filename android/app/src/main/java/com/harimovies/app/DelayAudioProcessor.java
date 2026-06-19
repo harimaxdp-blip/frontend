@@ -73,12 +73,19 @@ public final class DelayAudioProcessor implements AudioProcessor {
 
     @Override
     public boolean isActive() {
-        return inputFormat != AudioFormat.NOT_SET;
+        return inputFormat != AudioFormat.NOT_SET && activeDelayUs != 0;
     }
 
     @Override
     public void queueInput(@NonNull ByteBuffer inputBuffer) {
         if (!inputBuffer.hasRemaining()) return;
+
+        // Drain any silence from the queue first (positive delay)
+        // While draining silence, we don't consume inputBuffer so it persists for next call
+        if (!silenceQueue.isEmpty()) {
+            outputBuffer = silenceQueue.poll();
+            return;
+        }
 
         // Drop bytes for negative delay
         if (bytesToDrop > 0) {
@@ -88,15 +95,15 @@ public final class DelayAudioProcessor implements AudioProcessor {
             if (!inputBuffer.hasRemaining()) return;
         }
 
-        // Drain any silence from the queue first (positive delay)
-        if (!silenceQueue.isEmpty()) {
-            outputBuffer = silenceQueue.poll();
-            return;
-        }
-
         // Normal passthrough
-        outputBuffer = inputBuffer;
-        inputBuffer.position(inputBuffer.limit());
+        // We must copy the data if we want to return it as a whole, 
+        // but for passthrough we can just point to it.
+        // NOTE: The caller (AudioSink) expects the inputBuffer to be consumed.
+        int remaining = inputBuffer.remaining();
+        if (remaining > 0) {
+            outputBuffer = inputBuffer.duplicate();
+            inputBuffer.position(inputBuffer.limit());
+        }
     }
 
     @Override

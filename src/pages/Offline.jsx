@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import { App } from "@capacitor/app";
 import "./Offline.css";
 
 export default function Offline() {
@@ -31,6 +32,20 @@ export default function Offline() {
 
   const handleGoBack = () => {
     window.history.back();
+  };
+
+  const handleQuitApp = async () => {
+    try {
+      // 1. Try native bridge fallback if available
+      if (window.HariMovies && window.HariMovies.quitApp) {
+        window.HariMovies.quitApp();
+        return;
+      }
+      // 2. Try standard Capacitor App plugin
+      await App.exitApp();
+    } catch (err) {
+      console.error("Failed to quit app", err);
+    }
   };
 
   const btnLabel = () => {
@@ -172,11 +187,17 @@ export default function Offline() {
         </button>
 
         {/* Go back — only if history exists */}
-        {hasHistory && (
-          <button className="offline-back-btn" onClick={handleGoBack}>
-            Go Back
+        <div className="offline-actions-row">
+          {hasHistory && (
+            <button className="offline-back-btn" onClick={handleGoBack}>
+              Go Back
+            </button>
+          )}
+
+          <button className="offline-quit-btn" onClick={handleQuitApp}>
+            Quit App
           </button>
-        )}
+        </div>
       </div>
     </div>
   );

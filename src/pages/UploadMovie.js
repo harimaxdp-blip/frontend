@@ -40,14 +40,50 @@ const [slots, setSlots] = useState(
   const [bannerSaving, setBannerSaving]   = useState(false);
   const [activeTab, setActiveTab]         = useState(TAB_UPLOAD);
 
-  const genres = [
-    "Action","Adventure","Comedy","Drama","Horror","Thriller",
-    "Romance","Sci-Fi","Fantasy","Animation","Documentary","Mystery","Zombie",
-  ];
-
-  const languages = [
-    "Tamil","English","Telugu","Malayalam","Hindi","Korean","Chinese","Japanese",
-  ];
+const genres = [
+  "Action",
+  "Adventure",
+  "Comedy",
+  "Drama",
+  "Horror",
+  "Thriller",
+  "Romance",
+  "Sci-Fi",
+  "Fantasy",
+  "Animation",
+  "Documentary",
+  "Mystery",
+  "Zombie",
+  "Martial Arts",
+  "Anime",
+  "Crime",
+  "Family",
+  "Musical"
+];
+const languages = [
+  "Tamil",
+  "English",
+  "Telugu",
+  "Malayalam",
+  "Hindi",
+  "Kannada",
+  "Punjabi",
+  "Marathi",
+  "Bengali",
+  "Urdu",
+  "Japanese",
+  "Korean",
+  "Chinese",
+  "French",
+  "Spanish",
+  "German",
+  "Italian",
+  "Thai",
+  "Arabic",
+  "Russian",
+  "Portuguese",
+  "Turkish"
+];
 
   // ── Load all movies + banners ──────────────────────────────────────────────
   useEffect(() => {

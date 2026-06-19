@@ -20,6 +20,7 @@ import com.getcapacitor.PermissionState;
 import com.harimovies.app.MainActivity;
 import androidx.media3.common.util.UnstableApi;
 import com.harimovies.app.PlayerActivity;
+import com.harimovies.app.StreamResolver;
 
 @UnstableApi
 @CapacitorPlugin(name = "DeviceControl", permissions = {
@@ -150,6 +151,28 @@ public class DeviceControlPlugin extends Plugin {
         // Ensure protocol
         if (!url.startsWith("http") && !url.startsWith("magnet:")) {
             url = "https://" + url;
+        }
+
+        // --- SMART ROUTING FOR WEB PLAYER ---
+        // If it's a Telegram link, route it to PlayerActivity instead of WebPlayer
+        if (StreamResolver.isTelegram(url)) {
+            Intent intent = new Intent(getActivity(), PlayerActivity.class);
+            intent.putExtra("url", url);
+            intent.putExtra("title", title);
+            
+            String playlistStr = call.getString("playlist");
+            if (playlistStr == null) {
+                com.getcapacitor.JSArray playlistArr = call.getArray("playlist");
+                if (playlistArr != null) playlistStr = playlistArr.toString();
+            }
+            if (playlistStr != null) {
+                intent.putExtra("playlist", playlistStr);
+                intent.putExtra("index", call.getInt("index", 0));
+            }
+            
+            getActivity().startActivity(intent);
+            call.resolve();
+            return;
         }
 
         Intent intent = new Intent(getActivity(), WebPlayerActivity.class);

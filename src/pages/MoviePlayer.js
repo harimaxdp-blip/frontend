@@ -7,7 +7,7 @@ export default function MoviePlayer() {
   const navigate   = useNavigate();
   const location   = useLocation();
   const movie      = location.state?.movie;
-  const playlist   = location.state?.playlist     ?? null;
+  const playlist   = location.state?.playlist      ?? null;
   const startIndex = location.state?.currentIndex ?? 0;
 
   const [useFallback, setUseFallback]       = useState(false);
@@ -46,7 +46,7 @@ export default function MoviePlayer() {
       return;
     }
 
-    // ── Normal HTTP video flow (unchanged) ──────────────────────────────────
+    // ── Normal HTTP video flow ──────────────────────────────────────────────
     const cleanedPlaylist = Array.isArray(playlist)
       ? playlist.map(ep => ({
           link:    ep.link || ep.url || ep.episodeLink || "",
@@ -104,19 +104,15 @@ export default function MoviePlayer() {
     );
   }
 
+  // Pure black mask layout blocks rendering distortions while the native activity rotates landscape
   return (
     <div style={{
-      width: "100vw", height: "100vh", background: "#000",
-      display: "flex", alignItems: "center", justifyContent: "center",
-    }}>
-      <div style={{
-        width: 48, height: 48,
-        border: "4px solid #ffffff33",
-        borderTop: "4px solid #e50914",
-        borderRadius: "50%",
-        animation: "spin 0.8s linear infinite",
-      }} />
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-    </div>
+      width: "100vw",
+      height: "100vh",
+      backgroundColor: "#000000",
+      position: "fixed",
+      inset: 0,
+      zIndex: 99999
+    }} />
   );
 }

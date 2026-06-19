@@ -17,6 +17,38 @@
         app:show_buffering="never"
         app:surface_type="texture_view" />
 
+    <!-- LOCK BUTTON — outside PlayerView so touch always reaches it -->
+    <ImageButton
+        android:id="@+id/btn_lock"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:layout_gravity="center_vertical|end"
+        android:layout_marginEnd="80dp"
+        android:background="@drawable/bg_lock_btn"
+        android:contentDescription="Lock controls"
+        android:src="@drawable/ic_lock_open"
+        app:tint="#FFFFFFFF"
+        android:padding="8dp"
+        android:focusable="false"
+        android:visibility="gone" />
+
+    <!-- LOCK HINT — outside PlayerView -->
+    <TextView
+        android:id="@+id/tv_lock_hint"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_vertical|end"
+        android:layout_marginEnd="136dp"
+        android:background="@drawable/bg_seek_pill"
+        android:paddingStart="14dp"
+        android:paddingEnd="14dp"
+        android:paddingTop="8dp"
+        android:paddingBottom="8dp"
+        android:text="Tap 🔒 to unlock"
+        android:textColor="#FFFFFFFF"
+        android:textSize="12sp"
+        android:visibility="gone" />
+
     <!-- Torrent Status Overlay -->
     <LinearLayout
         android:id="@+id/status_container"

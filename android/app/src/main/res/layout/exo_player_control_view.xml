@@ -64,7 +64,7 @@
                 android:layout_height="32dp"
                 android:background="@drawable/bg_icon_btn"
                 android:src="@drawable/ic_chevron_left"
-                android:tint="#FFFFFFFF"
+                app:tint="#FFFFFFFF"
                 android:contentDescription="Back"
                 android:padding="8dp"
                 android:focusable="true" />
@@ -119,7 +119,7 @@
                 android:layout_marginStart="8dp"
                 android:background="@drawable/bg_icon_btn"
                 android:src="@drawable/ic_aspect_ratio"
-                android:tint="#FFFFFFFF"
+                app:tint="#FFFFFFFF"
                 android:contentDescription="Picture Mode"
                 android:padding="8dp"
                 android:focusable="true" />
@@ -131,7 +131,7 @@
                 android:layout_marginStart="8dp"
                 android:background="@drawable/bg_icon_btn"
                 android:src="@drawable/ic_equalizer"
-                android:tint="#FFFFFFFF"
+                app:tint="#FFFFFFFF"
                 android:contentDescription="Fullscreen"
                 android:padding="8dp"
                 android:focusable="true" />
@@ -143,7 +143,7 @@
                 android:layout_marginStart="8dp"
                 android:background="@drawable/bg_icon_btn"
                 android:src="@drawable/ic_sync"
-                android:tint="#FFFFFFFF"
+                app:tint="#FFFFFFFF"
                 android:contentDescription="A/V Sync"
                 android:padding="8dp"
                 android:focusable="true" />
@@ -155,7 +155,7 @@
                 android:layout_marginStart="8dp"
                 android:background="@drawable/bg_icon_btn"
                 android:src="@drawable/ic_settings"
-                android:tint="#FFFFFFFF"
+                app:tint="#FFFFFFFF"
                 android:contentDescription="Quality &amp; Audio"
                 android:padding="8dp"
                 android:focusable="true" />
@@ -182,7 +182,7 @@
             android:layout_marginEnd="16dp"
             android:background="@drawable/bg_ctrl_side"
             android:src="@drawable/ic_step_backward"
-            android:tint="#FFFFFFFF"
+            app:tint="#FFFFFFFF"
             android:contentDescription="Previous Episode"
             android:padding="12dp"
             android:visibility="gone"
@@ -194,7 +194,7 @@
             android:layout_height="52dp"
             android:background="@drawable/bg_ctrl_side"
             android:src="@drawable/ic_replay_10"
-            android:tint="#FFFFFFFF"
+            app:tint="#FFFFFFFF"
             android:contentDescription="Rewind"
             android:padding="12dp"
             android:focusable="true" />
@@ -207,7 +207,7 @@
             android:layout_marginEnd="24dp"
             android:background="@drawable/bg_ctrl_play"
             android:src="@drawable/ic_play"
-            android:tint="#000000"
+            app:tint="#000000"
             android:contentDescription="Play/Pause"
             android:padding="18dp"
             android:elevation="8dp"
@@ -219,7 +219,7 @@
             android:layout_height="52dp"
             android:background="@drawable/bg_ctrl_side"
             android:src="@drawable/ic_forward_30"
-            android:tint="#FFFFFFFF"
+            app:tint="#FFFFFFFF"
             android:contentDescription="Forward"
             android:padding="12dp"
             android:focusable="true" />
@@ -231,7 +231,7 @@
             android:layout_marginStart="16dp"
             android:background="@drawable/bg_ctrl_side"
             android:src="@drawable/ic_step_forward"
-            android:tint="#FFFFFFFF"
+            app:tint="#FFFFFFFF"
             android:contentDescription="Next Episode"
             android:padding="12dp"
             android:visibility="gone"
@@ -349,7 +349,7 @@
             android:paddingBottom="6dp">
 
             <TextView
-                android:id="@+id/exo_position"
+                android:id="@+id/tv_current_time"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:textColor="#FFFFFFFF"
@@ -357,21 +357,40 @@
                 android:fontFamily="monospace"
                 android:text="0:00" />
 
+            <!-- Hidden default ExoPlayer views to maintain functionality if needed -->
+            <TextView
+                android:id="@+id/exo_position"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:visibility="gone" />
+
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text=" / "
                 android:textColor="#80FFFFFF"
-                android:textSize="12sp" />
+                android:textSize="12sp"
+                android:visibility="gone" />
 
             <TextView
                 android:id="@+id/exo_duration"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:visibility="gone" />
+
+            <View
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:layout_weight="1" />
+
+            <TextView
+                android:id="@+id/tv_remaining_time"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:textColor="#80FFFFFF"
                 android:textSize="12sp"
                 android:fontFamily="monospace"
-                android:text="0:00" />
+                android:text="-0:00" />
 
         </LinearLayout>
 
@@ -430,7 +449,7 @@
             android:layout_width="20dp"
             android:layout_height="20dp"
             android:src="@drawable/ic_brightness"
-            android:tint="#FFFFFFFF"
+            app:tint="#FFFFFFFF"
             android:layout_marginBottom="8dp" />
 
         <FrameLayout
@@ -478,7 +497,7 @@
             android:layout_width="20dp"
             android:layout_height="20dp"
             android:src="@drawable/ic_volume_up"
-            android:tint="#FFFFFFFF"
+            app:tint="#FFFFFFFF"
             android:layout_marginBottom="8dp" />
 
         <FrameLayout
@@ -525,7 +544,7 @@
             android:layout_width="20dp"
             android:layout_height="20dp"
             android:src="@drawable/ic_forward_30"
-            android:tint="#FFFFFFFF" />
+            app:tint="#FFFFFFFF" />
 
         <TextView
             android:id="@+id/tv_seek_delta"

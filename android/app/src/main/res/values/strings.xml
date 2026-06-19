@@ -4,4 +4,17 @@
     <string name="title_activity_main">HM</string>
     <string name="package_name">com.harimovies.app</string>
     <string name="custom_url_scheme">com.harimovies.app</string>
+    <string name="continue_watching">Continue Watching?</string>
+    <string name="paused_at">Paused at %1$s</string>
+    <string name="resume_hint">◀ ▶ navigate  •  OK select</string>
+    <string name="sync_offset">Offset: %1$s%2$d ms</string>
+    <string name="sync_adjust">A/V Sync Adjust</string>
+    <string name="preview_time_format">%1$s / %2$s</string>
+    <string name="sync_hint">Audio early → drag left (−)  •  Audio late → drag right (+)</string>
+    <string name="percentage_format">%1$d%%</string>
+    <string name="sync_min">−2000ms</string>
+    <string name="sync_mid">0</string>
+    <string name="sync_max">+2000ms</string>
+    <string name="seek_delta_format">%1$s%2$ds</string>
+    <string name="lock_hint">Tap 🔒 to unlock</string>
 </resources>

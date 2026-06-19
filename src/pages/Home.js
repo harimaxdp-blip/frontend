@@ -1,4 +1,4 @@
-import React, {
+﻿import React, {
   useEffect,
   useMemo,
   useState,
@@ -10,48 +10,45 @@ import { useNavigate } from "react-router-dom";
 import { db } from "../firebase";
 import { collection, onSnapshot } from "firebase/firestore";
 import DeviceControl from "../plugins/deviceControl";
+import { FilterPopup, GENRES } from "./FilterPopup";
 import "./Movies.css";
 import noResultsAll    from "../assets/no-results-all.png";
 import noResultsMovie  from "../assets/no-results-movie.png";
 import noResultsSeries from "../assets/no-results-series.png";
 import noResultsAnime  from "../assets/no-results-anime.png";
-
 import { useSpatialNav } from "../hooks/useSpatialNav";
-
-import tvIcon from "../assets/tv1.png";
-import seriIcon from "../assets/tv2.png";
+import tvIcon    from "../assets/tv1.png";
+import seriIcon  from "../assets/tv2.png";
 import animeIcon from "../assets/tv.png";
-// ─── Constants ────────────────────────────────────────────────────────────────
+import { Film, Globe, Calendar } from "lucide-react";
+
 const NO_RESULTS_IMG = {
-  all:    noResultsAll,
-  movie:  noResultsMovie,
-  series: noResultsSeries,
-  anime:  noResultsAnime,
+  all:     noResultsAll,
+  movie:   noResultsMovie,
+  series:  noResultsSeries,
+  anime:   noResultsAnime,
 };
 const POSTER_FALLBACK  = "https://via.placeholder.com/300x450";
 const LAST_WATCHED_KEY = "ott_last_watched";
-
-// ── SharedPrefs name used by PlayerActivity.java ──
+const RECENT_KEY       = "hm_recent";
+const RECENT_LIMIT     = 10;
 const ANDROID_LW_PREFS = "hm_last_watched";
 
 let _navStateId = 0;
 const nextNavId = () => ++_navStateId;
 
-// ─── Storage helpers ──────────────────────────────────────────────────────────
 const ss = {
   get:     (k)    => { try { return sessionStorage.getItem(k); }              catch { return null; } },
-  set:     (k, v) => { try { sessionStorage.setItem(k, v); }                 catch {} },
-  del:     (k)    => { try { sessionStorage.removeItem(k); }                 catch {} },
+  set:     (k, v) => { try { sessionStorage.setItem(k, v); }                  catch {} },
+  del:     (k)    => { try { sessionStorage.removeItem(k); }                  catch {} },
   getJSON: (k)    => { try { return JSON.parse(sessionStorage.getItem(k)); } catch { return null; } },
   setJSON: (k, v) => { try { sessionStorage.setItem(k, JSON.stringify(v)); } catch {} },
 };
-
 const ls = {
   getJSON: (k)    => { try { return JSON.parse(localStorage.getItem(k)); }   catch { return null; } },
   setJSON: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); }   catch {} },
 };
 
-// ─── Read ALL last-watched entries from the Android JS bridge ─────────────────
 function readAndroidLastWatched() {
   try {
     if (window.HariMovies && typeof window.HariMovies.getSharedPrefAll === "function") {
@@ -60,18 +57,15 @@ function readAndroidLastWatched() {
         const map = JSON.parse(raw);
         const result = {};
         for (const [k, v] of Object.entries(map)) {
-          try { result[k] = JSON.parse(v); } catch { /* skip malformed */ }
+          try { result[k] = JSON.parse(v); } catch {}
         }
         return result;
       }
     }
-  } catch (e) {
-    console.warn("HariMovies bridge read failed:", e);
-  }
+  } catch (e) { console.warn("HariMovies bridge read failed:", e); }
   return ls.getJSON(LAST_WATCHED_KEY) || {};
 }
 
-// ─── TV detection helper ──────────────────────────────────────────────────────
 function detectIsTV() {
   const ua = navigator.userAgent;
   return /android tv|googletv|smarttv|tv/i.test(ua) ||
@@ -80,29 +74,32 @@ function detectIsTV() {
     document.body.classList.contains("android-mode");
 }
 
-// ─── Utilities ────────────────────────────────────────────────────────────────
 function randomImg(episodes) {
   const withImg = episodes.filter((e) => e.img);
   if (!withImg.length) return POSTER_FALLBACK;
   return withImg[Math.floor(Math.random() * withImg.length)].img;
 }
 
+function firstSeasonImg(seasons) {
+  const entries = Object.entries(seasons || {}).sort((a, b) => parseInt(a[0]) - parseInt(b[0]));
+  const firstSeason = entries.find(([s]) => String(s) === "1") || entries[0];
+  if (!firstSeason) return POSTER_FALLBACK;
+  const sorted = [...firstSeason[1]].sort((a, b) =>
+    String(a.episode || "").localeCompare(String(b.episode || ""), undefined, { numeric: true, sensitivity: "base" })
+  );
+  return sorted.find((ep) => ep.img)?.img || randomImg(firstSeason[1]);
+}
+
 const getScrollRoot = () =>
   document.querySelector(".content") || document.scrollingElement || document.documentElement;
-
-const getPageScrollY = () => {
-  const root = getScrollRoot();
-  return root ? root.scrollTop : window.scrollY;
-};
-
+const getPageScrollY = () => { const r = getScrollRoot(); return r ? r.scrollTop : window.scrollY; };
 const scrollPageTo = (top, behavior = "auto") => {
-  const root = getScrollRoot();
-  if (root?.scrollTo) root.scrollTo({ top, left: 0, behavior });
+  const r = getScrollRoot();
+  if (r?.scrollTo) r.scrollTo({ top, left: 0, behavior });
   else window.scrollTo({ top, left: 0, behavior });
 };
 
 let restoreScrollToken = 0;
-
 const restoreScrollAndFocus = (scrollY, focusId) => {
   const token   = ++restoreScrollToken;
   const targetY = Number(scrollY) || 0;
@@ -111,7 +108,7 @@ const restoreScrollAndFocus = (scrollY, focusId) => {
     scrollPageTo(targetY);
     if (focusId) {
       const el = document.querySelector(`[data-card-id="${focusId}"]`);
-      if (el) el.focus({ preventScroll: true });
+      if (el) { el.focus({ preventScroll: true }); el.scrollIntoView({ block: "center", inline: "nearest", behavior: "auto" }); }
     }
   };
   requestAnimationFrame(doIt);
@@ -119,15 +116,17 @@ const restoreScrollAndFocus = (scrollY, focusId) => {
 };
 
 function triggerRipple(e, el) {
-  const rect    = el.getBoundingClientRect();
-  const size    = Math.max(rect.width, rect.height);
+  const rect = el.getBoundingClientRect();
+  const size = Math.max(rect.width, rect.height);
   const clientX = e.clientX ?? e.touches?.[0]?.clientX ?? rect.left + rect.width  / 2;
   const clientY = e.clientY ?? e.touches?.[0]?.clientY ?? rect.top  + rect.height / 2;
-  const x = clientX - rect.left - size / 2;
-  const y = clientY - rect.top  - size / 2;
   const span = document.createElement("span");
   span.className = "ripple-wave";
-  Object.assign(span.style, { width: `${size}px`, height: `${size}px`, left: `${x}px`, top: `${y}px` });
+  Object.assign(span.style, {
+    width: `${size}px`, height: `${size}px`,
+    left: `${clientX - rect.left - size / 2}px`,
+    top:  `${clientY - rect.top  - size / 2}px`,
+  });
   el.appendChild(span);
   setTimeout(() => span.remove(), 650);
 }
@@ -142,27 +141,35 @@ function getCreatedAt(item) {
 }
 
 function sortByYearThenCreatedAt(a, b) {
-  const yearA = parseInt(a.year) || 0;
-  const yearB = parseInt(b.year) || 0;
-  if (yearB !== yearA) return yearB - yearA;
+  const yA = parseInt(a.year) || 0, yB = parseInt(b.year) || 0;
+  if (yB !== yA) return yB - yA;
   return getCreatedAt(b) - getCreatedAt(a);
 }
 
 function groupSortKey(items) {
   return {
-    year:      Math.max(...items.map((m) => parseInt(m.year) || 0)),
+    year:       Math.max(...items.map((m) => parseInt(m.year) || 0)),
     createdAt: Math.max(...items.map(getCreatedAt)),
   };
 }
 
 function sortGroups(a, b) {
-  const ka = groupSortKey(a[1]);
-  const kb = groupSortKey(b[1]);
+  const ka = groupSortKey(a[1]), kb = groupSortKey(b[1]);
   if (kb.year !== ka.year) return kb.year - ka.year;
   return kb.createdAt - ka.createdAt;
 }
 
-// ─── Poster image with shimmer ────────────────────────────────────────────────
+const TrashIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"
+    style={{ width: "14px", height: "14px", display: "block" }}>
+    <path d="M3 6H5H21" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M8 6V4C8 3.44772 8.44772 3 9 3H15C15.5523 3 16 3.44772 16 4V6M19 6L18.1245 19.1334C18.0544 20.1954 17.1818 21 16.1168 21H7.88316C6.81824 21 5.94558 20.1954 5.87546 19.1334L5 6H19Z"
+      stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M10 11V17" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+    <path d="M14 11V17" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+  </svg>
+);
+
 const PosterImg = React.memo(function PosterImg({ src, alt, ...props }) {
   const [loaded, setLoaded] = useState(false);
   const [error,  setError]  = useState(false);
@@ -170,8 +177,7 @@ const PosterImg = React.memo(function PosterImg({ src, alt, ...props }) {
   return (
     <div className="poster-wrap">
       {!loaded && <div className="poster-shimmer" aria-hidden="true" />}
-      <img
-        src={finalSrc} alt={alt}
+      <img src={finalSrc} alt={alt}
         className={`poster-img ${loaded ? "poster-img--loaded" : "poster-img--loading"}`}
         onLoad={() => setLoaded(true)}
         onError={() => { setError(true); setLoaded(true); }}
@@ -181,7 +187,6 @@ const PosterImg = React.memo(function PosterImg({ src, alt, ...props }) {
   );
 });
 
-// ─── Skeleton / Loading / NoResults ───────────────────────────────────────────
 const SkeletonCard = React.memo(function SkeletonCard() {
   return (
     <div className="card-skeleton">
@@ -199,7 +204,6 @@ const NoResults = React.memo(function NoResults({ img }) {
   );
 });
 
-// ─── Hero Banner ──────────────────────────────────────────────────────────────
 const HeroBanner = React.memo(function HeroBanner({ banners, onPlay }) {
   const [current, setCurrent]                 = useState(0);
   const [isTransitioning, setIsTransitioning] = useState(false);
@@ -246,7 +250,11 @@ const HeroBanner = React.memo(function HeroBanner({ banners, onPlay }) {
     el.addEventListener("touchstart", ts, { passive: true });
     el.addEventListener("touchmove",  tm, { passive: true });
     el.addEventListener("touchend",   te);
-    return () => { el.removeEventListener("touchstart", ts); el.removeEventListener("touchmove", tm); el.removeEventListener("touchend", te); };
+    return () => {
+      el.removeEventListener("touchstart", ts);
+      el.removeEventListener("touchmove",  tm);
+      el.removeEventListener("touchend",   te);
+    };
   }, [next, prev, resetTimer]);
 
   if (!banners?.length) return null;
@@ -258,7 +266,10 @@ const HeroBanner = React.memo(function HeroBanner({ banners, onPlay }) {
     <div ref={bannerRef} className="hero-banner" role="region" aria-label="Featured content"
       onMouseEnter={() => { pausedRef.current = true;  clearInterval(timerRef.current); }}
       onMouseLeave={() => { pausedRef.current = false; resetTimer(); }}
-      onKeyDown={(e) => { if (e.key === "ArrowLeft") { prev(); resetTimer(); } if (e.key === "ArrowRight") { next(); resetTimer(); } }}
+      onKeyDown={(e) => {
+        if (e.key === "ArrowLeft")  { prev(); resetTimer(); }
+        if (e.key === "ArrowRight") { next(); resetTimer(); }
+      }}
       tabIndex={0}>
       <div className={`hero-bg ${isTransitioning ? "hero-bg--out" : "hero-bg--in"}`}
         style={{ backgroundImage: `url(${banner.image || banner.imageUrl})` }} />
@@ -282,8 +293,8 @@ const HeroBanner = React.memo(function HeroBanner({ banners, onPlay }) {
       </div>
       {banners.length > 1 && (
         <>
-          <button className="hero-nav hero-nav--prev" onClick={() => { prev(); resetTimer(); }} aria-label="Previous slide">‹</button>
-          <button className="hero-nav hero-nav--next" onClick={() => { next(); resetTimer(); }} aria-label="Next slide">›</button>
+          <button className="hero-nav hero-nav--prev" onClick={() => { prev(); resetTimer(); }} aria-label="Previous">‹</button>
+          <button className="hero-nav hero-nav--next" onClick={() => { next(); resetTimer(); }} aria-label="Next">›</button>
           <div className="hero-dots" role="tablist">
             {banners.map((_, i) => (
               <button key={i} role="tab" aria-selected={i === current}
@@ -297,7 +308,6 @@ const HeroBanner = React.memo(function HeroBanner({ banners, onPlay }) {
   );
 });
 
-// ─── Focusable card ───────────────────────────────────────────────────────────
 const FocusCard = React.forwardRef(function FocusCard(
   { className, style, onClick, children, tabIndex = 0, "data-card-id": dataCardId }, ref
 ) {
@@ -310,21 +320,20 @@ const FocusCard = React.forwardRef(function FocusCard(
   );
 });
 
-// ═══════════════════════════════════════════════════════════════
-// MAIN COMPONENT
-// ═══════════════════════════════════════════════════════════════
 export default function Home({ type = "all" }) {
   const [movies, setMovies]             = useState([]);
   const [allBanners, setAllBanners]     = useState([]);
+  const [filterOpen, setFilterOpen]     = useState(false);
+  const [filterTab, setFilterTab]       = useState("language"); // Updated order default
   const [isDataLoaded, setIsDataLoaded] = useState(false);
   const handleGridKeyDown               = useSpatialNav();
 
-  // ── TV detection state ────────────────────────────────────────────────────
   const [isTV, setIsTV] = useState(() => detectIsTV());
 
-  const [languageFilter, setLanguageFilter] = useState("all");
-  const [genreFilter,    setGenreFilter]    = useState("all");
-  const [yearFilter,     setYearFilter]     = useState("all");
+  // Changed filter states to arrays to support multiple selections
+  const [languageFilter, setLanguageFilter] = useState([]);
+  const [genreFilter,    setGenreFilter]    = useState([]);
+  const [yearFilter,     setYearFilter]     = useState([]);
   const [search,         setSearch]         = useState("");
 
   const [isListening,  setIsListening]  = useState(false);
@@ -332,18 +341,22 @@ export default function Home({ type = "all" }) {
   const [voiceHint,    setVoiceHint]    = useState("");
   const [voiceError,   setVoiceError]   = useState("");
 
-  // ── initialise lastWatched by merging localStorage + Android bridge ──
   const [lastWatched, setLastWatched] = useState(() => {
-    const androidData = readAndroidLastWatched();
-    const localData   = ls.getJSON(LAST_WATCHED_KEY) || {};
-    return { ...localData, ...androidData };
+    const a = readAndroidLastWatched(), l = ls.getJSON(LAST_WATCHED_KEY) || {};
+    return { ...l, ...a };
   });
 
-  const [showUpBtn,     setShowUpBtn]     = useState(false);
-  const [viewStack,     setViewStack]     = useState([{ kind: "home" }]);
+  const [recentWatched, setRecentWatched] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(RECENT_KEY)) || { movies: [], series: [], anime: [] }; }
+    catch { return { movies: [], series: [], anime: [] }; }
+  });
+
+  const [showUpBtn, setShowUpBtn] = useState(false);
+  const [viewStack, setViewStack] = useState([{ kind: "home" }]);
 
   const navigate         = useNavigate();
   const savedScrollMap   = useRef({});
+  const savedFocusMap    = useRef({});
   const isNavigatingBack = useRef(false);
   const navIdRef         = useRef(0);
   const recognitionRef   = useRef(null);
@@ -351,55 +364,37 @@ export default function Home({ type = "all" }) {
 
   const currentView        = viewStack[viewStack.length - 1];
   const selectedCollection = currentView.kind === "collection" ? currentView.data : null;
+  const selectedSeries     = currentView.kind === "series"     ? currentView.data : null;
   const selectedSeason     = currentView.kind === "season"     ? currentView.data : null;
 
-  // ── Detect TV/Android on mount ───────────────────────────────────────────
   useEffect(() => {
     const ua = navigator.userAgent;
     const isAndroid = /android tv|googletv/i.test(ua) || (/android/i.test(ua) && /tv/i.test(ua));
-    const isTVDevice = /tv|android tv|googletv|smarttv/i.test(ua);
+    const isTVDev   = /tv|android tv|googletv|smarttv/i.test(ua);
     document.body.classList.remove("tv-mode", "android-mode");
-    if (isAndroid) {
-      document.body.classList.add("android-mode", "tv-mode");
-      setIsTV(true);
-    } else if (isTVDevice) {
-      document.body.classList.add("tv-mode");
-      setIsTV(true);
-    } else {
-      setIsTV(false);
-    }
+    if (isAndroid)      { document.body.classList.add("android-mode", "tv-mode"); setIsTV(true); }
+    else if (isTVDev)   { document.body.classList.add("tv-mode"); setIsTV(true); }
+    else                { setIsTV(false); }
   }, []);
 
-  // ── Sync last-watched from Android bridge on visibility change ────────────
   useEffect(() => {
-    const syncFromAndroid = () => {
+    const sync = () => {
       if (document.visibilityState !== "visible") return;
-      const androidData = readAndroidLastWatched();
-      if (!androidData || Object.keys(androidData).length === 0) return;
+      const a = readAndroidLastWatched();
+      if (!a || !Object.keys(a).length) return;
       setLastWatched((prev) => {
-        const merged = { ...prev, ...androidData };
-        const changed = Object.entries(androidData).some(
-          ([k, v]) => JSON.stringify(prev[k]) !== JSON.stringify(v)
-        );
-        if (changed) {
-          ls.setJSON(LAST_WATCHED_KEY, merged);
-          return merged;
-        }
+        const merged  = { ...prev, ...a };
+        const changed = Object.entries(a).some(([k, v]) => JSON.stringify(prev[k]) !== JSON.stringify(v));
+        if (changed) { ls.setJSON(LAST_WATCHED_KEY, merged); return merged; }
         return prev;
       });
     };
-
-    document.addEventListener("visibilitychange", syncFromAndroid);
-    window.addEventListener("focus", syncFromAndroid);
-    syncFromAndroid();
-
-    return () => {
-      document.removeEventListener("visibilitychange", syncFromAndroid);
-      window.removeEventListener("focus", syncFromAndroid);
-    };
+    document.addEventListener("visibilitychange", sync);
+    window.addEventListener("focus", sync);
+    sync();
+    return () => { document.removeEventListener("visibilitychange", sync); window.removeEventListener("focus", sync); };
   }, []);
 
-  // ── Up button ─────────────────────────────────────────────────────────────
   useEffect(() => {
     const root = getScrollRoot();
     const fn   = () => setShowUpBtn(getPageScrollY() > 300);
@@ -408,71 +403,50 @@ export default function Home({ type = "all" }) {
     return () => root.removeEventListener("scroll", fn);
   }, []);
 
-  const scrollToTop = useCallback((e) => {
-    triggerRipple(e, e.currentTarget);
-    scrollPageTo(0, "smooth");
-  }, []);
+  const scrollToTop = useCallback((e) => { triggerRipple(e, e.currentTarget); scrollPageTo(0, "smooth"); }, []);
 
   const normalize   = useCallback((v) => String(v || "").toLowerCase().trim(), []);
-  const naturalSort = useCallback(
-    (a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }), []
-  );
+  const naturalSort = useCallback((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }), []);
 
-  // ── Firestore ─────────────────────────────────────────────────────────────
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, "movies"), (snap) => {
+    const u = onSnapshot(collection(db, "movies"), (snap) => {
       setMovies(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
       setIsDataLoaded(true);
     });
-    return () => unsub();
+    return () => u();
   }, []);
 
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, "banners"), (snap) => {
+    const u = onSnapshot(collection(db, "banners"), (snap) => {
       setAllBanners(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
     });
-    return () => unsub();
+    return () => u();
   }, []);
 
-  // ── Type helpers ──────────────────────────────────────────────────────────
   const isMovieType  = useCallback((t) => ["movie", "movies"].includes(normalize(t)), [normalize]);
   const isSeriesType = useCallback((t) => ["series", "tv", "show"].includes(normalize(t)), [normalize]);
   const isAnimeType  = useCallback((t) => normalize(t) === "anime", [normalize]);
   const isAnimeGenre = useCallback((item) => normalize(item?.genre) === "anime", [normalize]);
 
-  // ── Banners ───────────────────────────────────────────────────────────────
   const banners = useMemo(() => {
-    return allBanners
-      .filter((b) => {
-        if (b.active === false) return false;
-        if (!b.image && !b.imageUrl) return false;
-        const dn = normalize(b.description || "");
-        const tn = normalize(b.title || "");
-        if (dn.includes("advertisement") || dn.includes("adevertiment") || tn === "ad") return false;
-        const bt = normalize(b.bannerType || "");
-        const mr = b.movieRef || {};
-        if (type === "movie") {
-          if (bt) return bt === "movie" && bt !== "anime";
-          return isMovieType(mr.type) && !isAnimeGenre(mr) && !isAnimeType(mr.type);
-        }
-        if (type === "series") {
-          if (bt) return ["series", "tv", "show"].includes(bt) && bt !== "anime";
-          return isSeriesType(mr.type) && !isAnimeGenre(mr);
-        }
-        if (type === "anime") {
-          if (bt) return bt === "anime";
-          return isAnimeType(mr.type) || isAnimeGenre(mr) || normalize(b.genre) === "anime";
-        }
-        return true;
-      })
-      .sort((a, b) => (a.order || 0) - (b.order || 0));
+    return allBanners.filter((b) => {
+      if (b.active === false) return false;
+      if (!b.image && !b.imageUrl) return false;
+      const dn = normalize(b.description || ""), tn = normalize(b.title || "");
+      if (dn.includes("advertisement") || dn.includes("adevertiment") || tn === "ad") return false;
+      const bt = normalize(b.bannerType || ""), mr = b.movieRef || {};
+      if (type === "movie")  { if (bt) return bt === "movie" && bt !== "anime"; return isMovieType(mr.type) && !isAnimeGenre(mr) && !isAnimeType(mr.type); }
+      if (type === "series") { if (bt) return ["series","tv","show"].includes(bt) && bt !== "anime"; return isSeriesType(mr.type) && !isAnimeGenre(mr); }
+      if (type === "anime")  { if (bt) return bt === "anime"; return isAnimeType(mr.type) || isAnimeGenre(mr) || normalize(b.genre) === "anime"; }
+      return true;
+    }).sort((a, b) => (a.order || 0) - (b.order || 0));
   }, [allBanners, type, normalize, isMovieType, isSeriesType, isAnimeType, isAnimeGenre]);
 
   const matchesTab = useCallback((item) => {
     const c = normalize(item.type);
     if (type === "all")    return true;
-    if (type === "movie")  return ["movie", "movies"].includes(c) && !isAnimeGenre(item);
-    if (type === "series") return ["series", "tv", "show"].includes(c) && !isAnimeGenre(item);
+    if (type === "movie")  return ["movie","movies"].includes(c) && !isAnimeGenre(item);
+    if (type === "series") return ["series","tv","show"].includes(c) && !isAnimeGenre(item);
     if (type === "anime")  return c === "anime" || isAnimeGenre(item);
     return true;
   }, [type, normalize, isAnimeGenre]);
@@ -483,14 +457,13 @@ export default function Home({ type = "all" }) {
     return m / query.length > 0.7;
   };
 
+  // Adjusted filtering to accommodate multiple matching elements
   const passesFilters = useCallback((item, titleField = "title") => {
-    const mL = languageFilter === "all" || normalize(item.language) === normalize(languageFilter);
-    const mG = genreFilter    === "all" || normalize(item.genre)    === normalize(genreFilter);
-    const mY = yearFilter     === "all" || String(item.year)        === String(yearFilter);
-    const q  = normalize(search);
-    const t  = normalize(item[titleField] || item.title);
-    const mS = !q || t.includes(q) || isSimilar(t, q);
-    return mL && mG && mY && mS;
+    const mL = languageFilter.length === 0 || languageFilter.includes(normalize(item.language));
+    const mG = genreFilter.length === 0 || genreFilter.includes(normalize(item.genre));
+    const mY = yearFilter.length === 0 || yearFilter.includes(String(item.year));
+    const q  = normalize(search), t = normalize(item[titleField] || item.title);
+    return mL && mG && mY && (!q || t.includes(q) || isSimilar(t, q));
   }, [languageFilter, genreFilter, yearFilter, search, normalize]);
 
   const searchScore = useCallback((title, query) => {
@@ -503,11 +476,8 @@ export default function Home({ type = "all" }) {
     let s = 0; for (const c of q) { if (t.includes(c)) s++; } return s;
   }, [normalize]);
 
-  // ── Movie groups ──────────────────────────────────────────────────────────
   const movieGroups = useMemo(() => {
-    const filtered = movies.filter(
-      (item) => isMovieType(item.type) && !isAnimeGenre(item) && matchesTab(item) && passesFilters(item)
-    );
+    const filtered = movies.filter((i) => isMovieType(i.type) && !isAnimeGenre(i) && matchesTab(i) && passesFilters(i));
     const groups = {};
     filtered.forEach((m) => {
       const base = m.collectionTitle?.trim() || m.title.split(/\s*[-–—]\s*\d|\d+/)[0].trim() || m.title;
@@ -519,11 +489,8 @@ export default function Home({ type = "all" }) {
       .map(([n, items]) => [n, [...items].sort(sortByYearThenCreatedAt)]);
   }, [movies, isMovieType, isAnimeGenre, matchesTab, passesFilters, search, searchScore]);
 
-  // ── Series groups ─────────────────────────────────────────────────────────
-  const seriesGroups = useMemo(() => {
-    const filtered = movies.filter(
-      (item) => isSeriesType(item.type) && !isAnimeGenre(item) && matchesTab(item) && passesFilters(item, "seriesTitle")
-    );
+  const buildSeriesGroups = useCallback((filterFn) => {
+    const filtered = movies.filter(filterFn);
     const groups = {};
     filtered.forEach((item) => {
       const title  = normalize(item.seriesTitle || item.title || "Unknown Series");
@@ -536,12 +503,15 @@ export default function Home({ type = "all" }) {
       groups[title].seasons[season].push(item);
     });
     return Object.entries(groups).sort((a, b) => { if (b[1].maxYear !== a[1].maxYear) return b[1].maxYear - a[1].maxYear; return b[1].maxCreatedAt - a[1].maxCreatedAt; });
-  }, [movies, isSeriesType, isAnimeGenre, matchesTab, passesFilters, normalize]);
+  }, [movies, normalize]);
 
-  // ── Anime movie groups ────────────────────────────────────────────────────
+  const seriesGroups = useMemo(() =>
+    buildSeriesGroups((i) => isSeriesType(i.type) && !isAnimeGenre(i) && matchesTab(i) && passesFilters(i, "seriesTitle")),
+  [buildSeriesGroups, isSeriesType, isAnimeGenre, matchesTab, passesFilters]);
+
   const animeMovieGroups = useMemo(() => {
     const noEp = (ep) => ep === undefined || ep === null || ep === "" || ep === 0 || ep === "0";
-    const filtered = movies.filter((item) => (isAnimeType(item.type) || isAnimeGenre(item)) && noEp(item.episode) && passesFilters(item));
+    const filtered = movies.filter((i) => (isAnimeType(i.type) || isAnimeGenre(i)) && noEp(i.episode) && passesFilters(i));
     const groups = {};
     filtered.forEach((m) => {
       const base = m.collectionTitle?.trim() || m.title.split(/\s*[-–—]\s*\d|\d+/)[0].trim() || m.title;
@@ -553,32 +523,14 @@ export default function Home({ type = "all" }) {
       .map(([n, items]) => [n, [...items].sort(sortByYearThenCreatedAt)]);
   }, [movies, isAnimeType, isAnimeGenre, passesFilters, search, searchScore]);
 
-  // ── Anime series groups ───────────────────────────────────────────────────
   const animeSeriesGroups = useMemo(() => {
     const hasEp = (ep) => ep !== undefined && ep !== null && ep !== "" && ep !== 0 && ep !== "0";
-    const filtered = movies.filter((item) => (isAnimeType(item.type) || isAnimeGenre(item)) && hasEp(item.episode) && passesFilters(item, "seriesTitle"));
-    const groups = {};
-    filtered.forEach((item) => {
-      const title  = normalize(item.seriesTitle || item.title || "Unknown Series");
-      const season = String(item.season || "1");
-      if (!groups[title]) groups[title] = { displayName: item.seriesTitle || item.title || "Unknown Series", seasons: {}, maxYear: 0, maxCreatedAt: 0 };
-      const yr = parseInt(item.year) || 0, ca = getCreatedAt(item);
-      if (yr > groups[title].maxYear) groups[title].maxYear = yr;
-      if (ca > groups[title].maxCreatedAt) groups[title].maxCreatedAt = ca;
-      if (!groups[title].seasons[season]) groups[title].seasons[season] = [];
-      groups[title].seasons[season].push(item);
-    });
-    return Object.entries(groups).sort((a, b) => { if (b[1].maxYear !== a[1].maxYear) return b[1].maxYear - a[1].maxYear; return b[1].maxCreatedAt - a[1].maxCreatedAt; });
-  }, [movies, isAnimeType, isAnimeGenre, passesFilters, normalize]);
-
-  // ── Last Watched helpers ──────────────────────────────────────────────────
+    return buildSeriesGroups((i) => (isAnimeType(i.type) || isAnimeGenre(i)) && hasEp(i.episode) && passesFilters(i, "seriesTitle"));
+  }, [buildSeriesGroups, isAnimeType, isAnimeGenre, passesFilters]);
 
   const lwKey = useCallback((seriesTitle, seasonNum) => {
-    const normSeason =
-      !seasonNum || seasonNum === "0" || seasonNum === 0
-        ? "1"
-        : String(seasonNum);
-    return `${normalize(seriesTitle)}_s${normSeason}`;
+    const s = !seasonNum || seasonNum === "0" || seasonNum === 0 ? "1" : String(seasonNum);
+    return `${normalize(seriesTitle)}_s${s}`;
   }, [normalize]);
 
   const getLastWatchedEp = useCallback(
@@ -586,36 +538,71 @@ export default function Home({ type = "all" }) {
     [lastWatched, lwKey]
   );
 
-  const saveLastWatched = useCallback(
-    (seriesTitle, seasonNum, episodeNum, episodeId) => {
-      const normSeason =
-        !seasonNum || seasonNum === "0" || seasonNum === 0
-          ? "1"
-          : String(seasonNum);
-      const key     = lwKey(seriesTitle, normSeason);
-      const entry   = { episodeNum, episodeId };
-      const updated = { ...lastWatched, [key]: entry };
-      setLastWatched(updated);
+  const saveLastWatched = useCallback((seriesTitle, seasonNum, episodeNum, episodeId) => {
+    const s   = !seasonNum || seasonNum === "0" || seasonNum === 0 ? "1" : String(seasonNum);
+    const key = lwKey(seriesTitle, s);
+    setLastWatched((prev) => {
+      const updated = { ...prev, [key]: { episodeNum, episodeId } };
       ls.setJSON(LAST_WATCHED_KEY, updated);
-    },
-    [lastWatched, lwKey]
-  );
+      return updated;
+    });
+  }, [lwKey]);
 
-  // ── Navigation helpers ────────────────────────────────────────────────────
-  const saveCurrentState = useCallback(() => {
-    savedScrollMap.current[navIdRef.current] = getPageScrollY();
+  const addRecentWatched = useCallback((movie) => {
+    const isAnimeItem  = movie.type === "anime" || normalize(movie.genre) === "anime";
+    const isMovieItem  = ["movie", "movies"].includes(normalize(movie.type)) && !isAnimeItem;
+    const isEpisode    = movie.episode !== undefined && movie.episode !== null &&
+                         movie.episode !== "" && movie.episode !== 0 && movie.episode !== "0";
+
+    const category = isAnimeItem ? "anime" : isMovieItem ? "movies" : "series";
+    const entryId = isEpisode ? normalize(movie.seriesTitle || movie.title) : movie.id;
+
+    const entry = isEpisode
+      ? {
+          id:             entryId,
+          realId:         movie.id,
+          title:          movie.seriesTitle || movie.title,
+          seriesTitle:    movie.seriesTitle || movie.title,
+          img:            movie.img,
+          type:           movie.type,
+          genre:          movie.genre,
+          year:           movie.year,
+          lastEpisodeId:  movie.id,
+          lastEpisodeNum: movie.episode,
+          lastSeason:     String(movie.season || "1"),
+        }
+      : { ...movie };
+
+    setRecentWatched((prev) => {
+      const filtered = (prev[category] || []).filter((x) => x.id !== entryId);
+      const updated  = { ...prev, [category]: [entry, ...filtered].slice(0, RECENT_LIMIT) };
+      try { localStorage.setItem(RECENT_KEY, JSON.stringify(updated)); } catch {}
+      return updated;
+    });
+  }, [normalize]);
+
+  const deleteRecentWatched = useCallback((category, itemId) => {
+    setRecentWatched((prev) => {
+      const updated = { ...prev, [category]: (prev[category] || []).filter((x) => x.id !== itemId) };
+      try { localStorage.setItem(RECENT_KEY, JSON.stringify(updated)); } catch {}
+      return updated;
+    });
+  }, []);
+
+  const saveCurrentScrollAndFocus = useCallback(() => {
+    savedScrollMap.current[navIdRef.current]  = getPageScrollY();
     const focused = document.activeElement;
-    if (focused?.dataset?.cardId) ss.set(`focus_${navIdRef.current}`, focused.dataset.cardId);
+    if (focused?.dataset?.cardId) savedFocusMap.current[navIdRef.current] = focused.dataset.cardId;
   }, []);
 
   const pushView = useCallback((newView) => {
-    saveCurrentState();
+    saveCurrentScrollAndFocus();
     const newId = nextNavId();
     navIdRef.current = newId;
     window.history.pushState({ id: newId, kind: newView.kind }, "");
     setViewStack((prev) => [...prev, newView]);
     scrollPageTo(0);
-  }, [saveCurrentState]);
+  }, [saveCurrentScrollAndFocus]);
 
   const popView = useCallback(() => {
     if (viewStack.length <= 1) return;
@@ -623,7 +610,6 @@ export default function Home({ type = "all" }) {
     setViewStack((prev) => prev.slice(0, -1));
   }, [viewStack.length]);
 
-  // ── Restore scroll after popView ─────────────────────────────────────────
   useLayoutEffect(() => {
     if (!isNavigatingBack.current) return;
     isNavigatingBack.current = false;
@@ -631,46 +617,41 @@ export default function Home({ type = "all" }) {
     const id      = state?.id ?? 0;
     navIdRef.current = id;
     const targetY = savedScrollMap.current[id] ?? 0;
-    const focusId = ss.get(`focus_${id}`);
+    const focusId = savedFocusMap.current[id] ?? null;
     const doRestore = () => {
       scrollPageTo(targetY);
       if (focusId) {
         const el = document.querySelector(`[data-card-id="${focusId}"]`);
-        if (el) el.focus({ preventScroll: true });
+        if (el) { el.focus({ preventScroll: true }); el.scrollIntoView({ block: "center", inline: "nearest" }); }
       }
     };
     requestAnimationFrame(doRestore);
     [80, 200, 400, 800].forEach((d) => setTimeout(doRestore, d));
   }, [viewStack]);
 
-  // ── Back button / popstate ────────────────────────────────────────────────
   useEffect(() => {
-    const onPop  = () => { if (viewStack.length > 1) popView(); };
-    const onKey  = (e) => {
-      const isBack =
-        e.key === "Escape"   || e.key === "GoBack"   || e.key === "Backspace" ||
-        e.keyCode === 27     || e.keyCode === 10009   || e.keyCode === 8;
-      if (isBack && viewStack.length > 1) {
-        e.preventDefault();
-        window.history.back();
-      }
+    const onPop = () => { if (viewStack.length > 1) popView(); };
+    const onKey = (e) => {
+      const isBack = e.key === "Escape" || e.key === "GoBack" || e.key === "Backspace" ||
+                     e.keyCode === 27   || e.keyCode === 10009 || e.keyCode === 8;
+      if (isBack && viewStack.length > 1) { e.preventDefault(); window.history.back(); }
     };
     window.addEventListener("popstate", onPop);
     window.addEventListener("keydown",  onKey);
     return () => { window.removeEventListener("popstate", onPop); window.removeEventListener("keydown", onKey); };
   }, [viewStack, popView]);
 
-  // ── Restore state after returning from MoviePlayer ────────────────────────
   useEffect(() => {
     if (!isDataLoaded) return;
-    const savedState = ss.getJSON("ott_nav_state");
-    if (!savedState) return;
+    const saved = ss.getJSON("ott_nav_state");
+    if (!saved) return;
     ss.del("ott_nav_state");
 
-    const { kind, collectionName, seriesTitle, seasonNum, scrollY, focusId,
-            parentScrollY, parentFocusId, filters } = savedState;
+    const {
+      stackKinds, collectionName, seriesTitle, seriesDisplayName, seasonNum,
+      scrollY, focusId, homeScrollY, homeFocusId, seriesScrollY, seriesFocusId, filters,
+    } = saved;
 
-    // Sync last-watched from Android bridge now that we're back
     const androidData = readAndroidLastWatched();
     if (androidData && Object.keys(androidData).length > 0) {
       setLastWatched((prev) => {
@@ -684,43 +665,29 @@ export default function Home({ type = "all" }) {
       if (filters?.language !== undefined) setLanguageFilter(filters.language);
       if (filters?.genre    !== undefined) setGenreFilter(filters.genre);
       if (filters?.year     !== undefined) setYearFilter(filters.year);
-      if (filters?.search   !== undefined) setSearch(filters.search);
+      setFilterOpen(false);
     } catch {}
 
-    if (kind === "collection" && collectionName) {
-      const group = movieGroups.find(([n]) => n === collectionName) ||
-                    animeMovieGroups.find(([n]) => n === collectionName);
-      if (group) {
-        const id = nextNavId(); navIdRef.current = id;
-        savedScrollMap.current[0] = Number(parentScrollY) || 0;
-        if (parentFocusId) ss.set("focus_0", parentFocusId);
-        window.history.replaceState({ id: 0, kind: "home" }, "");
-        window.history.pushState({ id, kind: "collection" }, "");
-        setViewStack([
-          { kind: "home" },
-          { kind: "collection", data: { name: group[0], items: group[1], parentScrollY, parentFocusId } },
-        ]);
-        restoreScrollAndFocus(scrollY, focusId);
-        return;
-      }
-    }
+    const kinds = stackKinds || [];
 
-    if (kind === "season" && seriesTitle && seasonNum) {
-      const entry = [...seriesGroups, ...animeSeriesGroups].find(([t]) => t === normalize(seriesTitle));
+    if (kinds.includes("season") && seriesTitle && seasonNum) {
+      const entry = [...seriesGroups, ...animeSeriesGroups].find(([t]) => t === seriesTitle);
       if (entry) {
         const eps = entry[1].seasons[seasonNum];
         if (eps) {
-          const id = nextNavId(); navIdRef.current = id;
-          savedScrollMap.current[0] = Number(parentScrollY) || 0;
-          if (parentFocusId) ss.set("focus_0", parentFocusId);
-          window.history.replaceState({ id: 0, kind: "home" }, "");
-          window.history.pushState({ id, kind: "season" }, "");
+          const id0 = 0, id1 = nextNavId(), id2 = nextNavId();
+          navIdRef.current = id2;
+          savedScrollMap.current[id0]  = Number(homeScrollY)   || 0;
+          savedScrollMap.current[id1]  = Number(seriesScrollY) || 0;
+          savedFocusMap.current[id0]   = homeFocusId   || null;
+          savedFocusMap.current[id1]   = seriesFocusId || null;
+          window.history.replaceState({ id: id0, kind: "home"   }, "");
+          window.history.pushState(   { id: id1, kind: "series" }, "");
+          window.history.pushState(   { id: id2, kind: "season" }, "");
           setViewStack([
             { kind: "home" },
-            { kind: "season", data: {
-                seriesTitle: entry[1].displayName || seriesTitle,
-                seasonNum, episodes: eps, parentScrollY, parentFocusId
-            }},
+            { kind: "series", data: { titleKey: seriesTitle, seriesTitle: entry[1].displayName || seriesDisplayName || seriesTitle, seasons: entry[1].seasons } },
+            { kind: "season", data: { seriesTitle: entry[1].displayName || seriesDisplayName || seriesTitle, seasonNum, episodes: eps } },
           ]);
           restoreScrollAndFocus(scrollY, focusId);
           return;
@@ -728,10 +695,46 @@ export default function Home({ type = "all" }) {
       }
     }
 
+    if (kinds.includes("series") && seriesTitle) {
+      const entry = [...seriesGroups, ...animeSeriesGroups].find(([t]) => t === seriesTitle);
+      if (entry) {
+        const id0 = 0, id1 = nextNavId();
+        navIdRef.current = id1;
+        savedScrollMap.current[id0] = Number(homeScrollY) || 0;
+        savedFocusMap.current[id0]  = homeFocusId || null;
+        window.history.replaceState({ id: id0, kind: "home"   }, "");
+        window.history.pushState(   { id: id1, kind: "series" }, "");
+        setViewStack([
+          { kind: "home" },
+          { kind: "series", data: { titleKey: seriesTitle, seriesTitle: entry[1].displayName || seriesDisplayName || seriesTitle, seasons: entry[1].seasons } },
+        ]);
+        restoreScrollAndFocus(scrollY, focusId);
+        return;
+      }
+    }
+
+    if (kinds.includes("collection") && collectionName) {
+      const group = movieGroups.find(([n]) => n === collectionName) ||
+                    animeMovieGroups.find(([n]) => n === collectionName);
+      if (group) {
+        const id0 = 0, id1 = nextNavId();
+        navIdRef.current = id1;
+        savedScrollMap.current[id0] = Number(homeScrollY) || 0;
+        savedFocusMap.current[id0]  = homeFocusId || null;
+        window.history.replaceState({ id: id0, kind: "home"       }, "");
+        window.history.pushState(   { id: id1, kind: "collection" }, "");
+        setViewStack([
+          { kind: "home" },
+          { kind: "collection", data: { name: group[0], items: group[1] } },
+        ]);
+        restoreScrollAndFocus(scrollY, focusId);
+        return;
+      }
+    }
+
     restoreScrollAndFocus(scrollY, focusId);
   }, [isDataLoaded, movieGroups, animeMovieGroups, seriesGroups, animeSeriesGroups, normalize]);
 
-  // ── Auto-focus first card on TV ───────────────────────────────────────────
   useEffect(() => {
     if (!isDataLoaded) return;
     requestAnimationFrame(() => {
@@ -742,43 +745,42 @@ export default function Home({ type = "all" }) {
     });
   }, [isDataLoaded, currentView.kind]);
 
-  // ── Reset on tab change ───────────────────────────────────────────────────
   useLayoutEffect(() => {
-    setLanguageFilter("all"); setGenreFilter("all"); setYearFilter("all"); setSearch("");
+    setLanguageFilter([]); setGenreFilter([]); setYearFilter([]); setSearch("");
     setViewStack([{ kind: "home" }]);
     navIdRef.current = 0;
     savedScrollMap.current = {};
+    savedFocusMap.current  = {};
     if (!ss.getJSON("ott_nav_state")) scrollPageTo(0);
   }, [type]);
 
-  // ── Actions ───────────────────────────────────────────────────────────────
   const handleOpenCollection = useCallback((name, items) => {
-    pushView({ kind: "collection", data: {
-      name, items,
-      parentScrollY: getPageScrollY(),
-      parentFocusId: document.activeElement?.dataset?.cardId || null,
-    }});
+    pushView({ kind: "collection", data: { name, items } });
   }, [pushView]);
+
+  const handleOpenSeries = useCallback((seriesTitle, data) => {
+    pushView({ kind: "series", data: {
+      titleKey:    normalize(seriesTitle),
+      seriesTitle: data.displayName || seriesTitle,
+      seasons:     data.seasons,
+    }});
+  }, [pushView, normalize]);
 
   const handleOpenSeason = useCallback((seriesTitle, seasonNum, episodes) => {
-    pushView({ kind: "season", data: {
-      seriesTitle, seasonNum, episodes,
-      parentScrollY: getPageScrollY(),
-      parentFocusId: document.activeElement?.dataset?.cardId || null,
-    }});
+    pushView({ kind: "season", data: { seriesTitle, seasonNum, episodes } });
   }, [pushView]);
 
-  // ── FIX 1: Removed 700ms delay + PlayerLoading overlay entirely ───────────
+  const cardId = useCallback((prefix, id) => `${prefix}_${id}`, []);
+
   const playMovie = useCallback((movie, playlist = null, currentIndex = 0) => {
-    if (movie.episode !== undefined && movie.episode !== null && movie.episode !== "" &&
-        movie.episode !== 0 && movie.episode !== "0") {
+    if (movie.episode !== undefined && movie.episode !== null &&
+        movie.episode !== "" && movie.episode !== 0 && movie.episode !== "0") {
       const sTitle = movie.seriesTitle || movie.title;
       const sNum   = String(movie.season || "1");
       if (sTitle) saveLastWatched(sTitle, sNum, movie.episode, movie.id);
     }
 
-    let finalPlaylist    = playlist;
-    let finalIndex       = currentIndex;
+    let finalPlaylist = playlist, finalIndex = currentIndex;
     if (!finalPlaylist && movie.type !== "movie") {
       const sKey  = normalize(movie.seriesTitle || movie.title);
       const sNum  = String(movie.season || "1");
@@ -790,25 +792,46 @@ export default function Home({ type = "all" }) {
       }
     }
 
-    const navState = {
-      kind:           currentView.kind,
-      collectionName: currentView.kind === "collection" ? currentView.data?.name           : null,
-      seriesTitle:    currentView.kind === "season"     ? normalize(currentView.data?.seriesTitle) : null,
-      seasonNum:      currentView.kind === "season"     ? currentView.data?.seasonNum       : null,
-      parentScrollY:  currentView.data?.parentScrollY   ?? null,
-      parentFocusId:  currentView.data?.parentFocusId   ?? null,
-      scrollY:        getPageScrollY(),
-      focusId:        document.activeElement?.dataset?.cardId || null,
-      filters: { language: languageFilter, genre: genreFilter, year: yearFilter, search },
-    };
-    ss.setJSON("ott_nav_state", navState);
+    const stackKinds = viewStack.map((v) => v.kind);
+    const getNavInfo = (idx) => ({
+      scrollY: savedScrollMap.current[idx] ?? getPageScrollY(),
+      focusId: savedFocusMap.current[idx]  ?? null,
+    });
+    const homeInfo   = getNavInfo(0);
+    const seriesInfo = viewStack.length >= 3 ? getNavInfo(navIdRef.current - 1) : null;
 
-    // Navigate immediately — no delay, no loading overlay
+    saveCurrentScrollAndFocus();
+    const deepScrollY = savedScrollMap.current[navIdRef.current] ?? 0;
+    const deepFocusId = savedFocusMap.current[navIdRef.current]  ?? cardId("ep", movie.id);
+
+    const seasonView = viewStack.find((v) => v.kind === "season");
+    const seriesView = viewStack.find((v) => v.kind === "series");
+    const colView    = viewStack.find((v) => v.kind === "collection");
+
+    ss.setJSON("ott_nav_state", {
+      stackKinds,
+      collectionName:    colView?.data?.name    ?? null,
+      seriesTitle:       seriesView?.data?.titleKey ?? (seasonView ? normalize(seasonView.data?.seriesTitle) : null),
+      seriesDisplayName: seriesView?.data?.seriesTitle ?? seasonView?.data?.seriesTitle ?? null,
+      seasonNum:         seasonView?.data?.seasonNum   ?? null,
+      scrollY:           deepScrollY,
+      focusId:           deepFocusId,
+      homeScrollY:       homeInfo.scrollY,
+      homeFocusId:       homeInfo.focusId,
+      seriesScrollY:     seriesInfo?.scrollY ?? null,
+      seriesFocusId:     seriesInfo?.focusId ?? null,
+      filters: { language: languageFilter, genre: genreFilter, year: yearFilter, search: "" },
+    });
+
+    setSearch("");
+    addRecentWatched(movie);
     navigate("/player", { state: { movie, playlist: finalPlaylist, currentIndex: finalIndex } });
-  }, [navigate, currentView, languageFilter, genreFilter, yearFilter, search,
-      seriesGroups, animeSeriesGroups, normalize, saveLastWatched]);
+  }, [
+    navigate, viewStack, languageFilter, genreFilter, yearFilter,
+    seriesGroups, animeSeriesGroups, normalize, saveLastWatched, addRecentWatched,
+    saveCurrentScrollAndFocus, cardId,
+  ]);
 
-  // ── Voice search ──────────────────────────────────────────────────────────
   const requestMic = useCallback(async () => {
     setVoiceError("");
     if (typeof DeviceControl?.requestMicrophonePermissionNative === "function") {
@@ -853,45 +876,43 @@ export default function Home({ type = "all" }) {
       }
       const text = (final || interim).trim();
       if (text) setSearch(text);
-      if (final) { setIsProcessing(true); setVoiceHint("Processing..."); } else { setIsProcessing(false); setVoiceHint("Listening..."); }
+      if (final) { setIsProcessing(true); setVoiceHint("Processing..."); }
+      else        { setIsProcessing(false); setVoiceHint("Listening..."); }
       scheduleSilence();
     };
-    rec.onerror  = (ev) => { setVoiceError(ev.error === "not-allowed" || ev.error === "service-not-allowed" ? "Microphone permission denied." : "Voice recognition failed. Try again."); stopVoice(); };
-    rec.onend    = () => { setIsListening(false); setIsProcessing(false); setVoiceHint(""); recognitionRef.current = null; };
+    rec.onerror = (ev) => {
+      setVoiceError(ev.error === "not-allowed" || ev.error === "service-not-allowed"
+        ? "Microphone permission denied." : "Voice recognition failed. Try again.");
+      stopVoice();
+    };
+    rec.onend = () => { setIsListening(false); setIsProcessing(false); setVoiceHint(""); recognitionRef.current = null; };
     try { rec.start(); } catch { setVoiceError("Unable to start voice recognition."); stopVoice(); }
   }, [requestMic, scheduleSilence, stopVoice]);
 
   useEffect(() => () => stopVoice(), [stopVoice]);
 
-  const handleClick = (e, action) => {
+  const handleClick = useCallback((e, action) => {
     restoreScrollToken += 1;
     e.currentTarget?.focus?.({ preventScroll: true });
     triggerRipple(e, e.currentTarget);
     action();
-  };
+  }, []);
 
-  // ── Filter options ────────────────────────────────────────────────────────
   const availableLanguages = useMemo(() =>
     [...new Set(movies.filter(matchesTab).map((m) => normalize(m.language)))].filter(Boolean).sort(),
-  [movies, matchesTab, normalize]);
-
-  const availableGenres = useMemo(() =>
-    [...new Set(movies.filter(matchesTab).map((m) => normalize(m.genre)))].filter(Boolean).sort(),
   [movies, matchesTab, normalize]);
 
   const availableYears = useMemo(() =>
     [...new Set(movies.filter(matchesTab).map((m) => m.year))].filter(Boolean).sort((a, b) => b - a),
   [movies, matchesTab]);
 
-  const noResults =
-    isDataLoaded &&
+  const noResults = isDataLoaded &&
     movieGroups.length === 0 && seriesGroups.length === 0 &&
     animeMovieGroups.length === 0 && animeSeriesGroups.length === 0;
 
-  const cardId = (prefix, id) => `${prefix}_${id}`;
+  const isSearchActive = search.trim().length > 0;
 
-  // ── Render: movie grid ────────────────────────────────────────────────────
-  const renderMovieGrid = (groups, prefix = "m") =>
+  const renderMovieGrid = useCallback((groups, prefix = "m") =>
     groups.map(([name, items], i) => {
       const cid = cardId(prefix, items[0].id);
       return (
@@ -908,79 +929,113 @@ export default function Home({ type = "all" }) {
           </div>
         </FocusCard>
       );
-    });
+    }), [cardId, handleClick, handleOpenCollection, playMovie]);
 
-  // ── Render: series section ────────────────────────────────────────────────
-  // FIX 2: Continue watching badge is now a clickable Play button
-  const renderSeriesSection = (titleKey, data) => {
+  const renderSeriesCard = useCallback((titleKey, data, i = 0) => {
     const seriesTitle = data.displayName || titleKey;
     const seasons     = Object.entries(data.seasons).sort((a, b) => parseInt(a[0]) - parseInt(b[0]));
+    const episodes    = seasons.flatMap(([, eps]) => eps);
+    const posterImg   = firstSeasonImg(data.seasons);
     return (
-      <section key={titleKey} className="series-section">
-        <h2 className="series-main-title">{seriesTitle}</h2>
-        <div className="grid" onKeyDown={handleGridKeyDown}>
-          {seasons.map(([sNum, eps], i) => {
-            const cid   = cardId(`s_${titleKey}`, sNum);
-            const lw    = getLastWatchedEp(seriesTitle, sNum);
-            const img   = randomImg(eps);
-            const total = eps.length;
+      <FocusCard key={titleKey} className="card is-collection series-card" style={{ "--i": i }}
+        data-card-id={cardId("series", titleKey)}
+        onClick={(e) => handleClick(e, () => handleOpenSeries(seriesTitle, data))}>
+        <PosterImg src={posterImg} alt={seriesTitle} loading="eager" />
+        <div className="collection-badge">{seasons.length} Season{seasons.length !== 1 ? "s" : ""}</div>
+        <div className="card-info">
+          <h3>{seriesTitle}</h3>
+          <p>{episodes.length} Episode{episodes.length !== 1 ? "s" : ""}</p>
+        </div>
+      </FocusCard>
+    );
+  }, [cardId, handleClick, handleOpenSeries]);
 
-            // Find the last-watched episode object for continue-play
-            const lwEpisode = lw
-              ? [...eps].sort((a, b) =>
-                  a.localeCompare
-                    ? 0
-                    : String(a.episode).localeCompare(String(b.episode), undefined, { numeric: true })
-                ).find(ep => ep.id === lw.episodeId) || eps.find(ep => ep.id === lw.episodeId)
-              : null;
-
-            const sortedEps = [...eps].sort((a, b) =>
-              String(a.episode).localeCompare(String(b.episode), undefined, { numeric: true, sensitivity: "base" })
-            );
-
+  const renderRecentSection = useCallback((title, items, category) => {
+    if (isSearchActive) return null;
+    if (!items?.length) return null;
+    return (
+      <section className="recently-watched-section" key={`rw_${category}`}>
+        <h2 className="section-title">{title}</h2>
+        <div className="rw-hstrip">
+          {items.map((item, i) => {
+            const isEpisode = item.lastEpisodeNum !== undefined && item.lastEpisodeNum !== null;
+            const cid = cardId(`rw_${category}`, item.id);
             return (
-              <FocusCard key={sNum} className="card is-collection season-card" style={{ "--i": i }}
+              <div
+                key={`rw_${category}_${item.id}_${i}`}
+                className="rw-hcard"
+                tabIndex={0}
+                role="button"
+                aria-pressed="false"
                 data-card-id={cid}
-                onClick={(e) => handleClick(e, () => handleOpenSeason(seriesTitle, sNum, eps))}>
-                <PosterImg src={img} alt={`Season ${sNum}`} />
-                <div className="collection-badge">{total} Ep{total !== 1 ? "s" : ""}</div>
-
-                {/* FIX 2: Continue watching — now a real play button */}
-                {lw && (
-                  <button
-                    className="continue-play-btn"
-                    aria-label={`Continue from episode ${lw.episodeNum}`}
-                    onClick={(e) => {
-                      e.stopPropagation(); // don't open season view
-                      const epToPlay = lwEpisode || sortedEps.find(ep => String(ep.episode) === String(lw.episodeNum)) || sortedEps[0];
+                onClick={(e) => {
+                  triggerRipple(e, e.currentTarget);
+                  if (isEpisode) {
+                    const sKey  = item.id;
+                    const sNum  = item.lastSeason || "1";
+                    const entry = [...seriesGroups, ...animeSeriesGroups].find(([t]) => t === sKey);
+                    if (entry) {
+                      const eps    = entry[1].seasons[sNum] || [];
+                      const sorted = [...eps].sort((a, b) =>
+                        String(a.episode).localeCompare(String(b.episode), undefined, { numeric: true, sensitivity: "base" })
+                      );
+                      const lw = getLastWatchedEp(item.seriesTitle || item.title, sNum);
+                      const epToPlay = lw
+                        ? (sorted.find(ep => ep.id === lw.episodeId)
+                           || sorted.find(ep => String(ep.episode) === String(lw.episodeNum))
+                           || sorted[0])
+                        : sorted[0];
                       if (epToPlay) {
-                        const idx = sortedEps.findIndex(ep => ep.id === epToPlay.id);
-                        playMovie(epToPlay, sortedEps, idx >= 0 ? idx : 0);
+                        const idx = sorted.findIndex(ep => ep.id === epToPlay.id);
+                        playMovie(epToPlay, sorted, idx >= 0 ? idx : 0);
+                        return;
                       }
-                    }}
+                    }
+                  }
+                  playMovie(item);
+                }}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.currentTarget.click(); } }}
+              >
+                <div className="rw-hcard-poster">
+                  <PosterImg src={item.img} alt={item.seriesTitle || item.title} />
+                  {isEpisode && <div className="rw-hcard-bar" />}
+                  <span className={`rw-hcard-badge rw-hcard-badge--${
+                    category === "anime" ? "anime" : category === "series" ? "series" : "movie"
+                  }`}>
+                    {category === "anime" ? "ANIME" : category === "series" ? "SERIES" : "MOVIE"}
+                  </span>
+                  <button
+                    className="rw-hcard-delete"
+                    aria-label="Remove from recently watched"
+                    title="Remove"
+                    onClick={(e) => { e.stopPropagation(); deleteRecentWatched(category, item.id); }}
                   >
-                    <span className="continue-play-icon" aria-hidden="true">▶</span>
-                    <span className="continue-play-label">EP {lw.episodeNum}</span>
+                    <TrashIcon />
                   </button>
-                )}
-
-                <div className="card-info">
-                  <h3>Season {sNum}</h3>
-                  <p>{lw ? `Continue · EP ${lw.episodeNum}` : `${total} Episode${total !== 1 ? "s" : ""}`}</p>
                 </div>
-              </FocusCard>
+                <div className="rw-hcard-info">
+                  <p className="rw-hcard-title">{item.seriesTitle || item.title}</p>
+                  <p className="rw-hcard-meta">
+                    {isEpisode ? `S${item.lastSeason || 1} · EP ${item.lastEpisodeNum}` : item.year || ""}
+                  </p>
+                </div>
+              </div>
             );
           })}
         </div>
       </section>
     );
+  }, [isSearchActive, cardId, seriesGroups, animeSeriesGroups, getLastWatchedEp, playMovie, deleteRecentWatched]);
+
+  // Safely display chosen tags without .charAt runtime crashes
+  const getFilterLabel = (filterArray, fallbackText) => {
+    if (!filterArray || filterArray.length === 0) return fallbackText;
+    if (filterArray.length === 1) return filterArray[0].charAt(0).toUpperCase() + filterArray[0].slice(1);
+    return `${filterArray.length} Items`;
   };
 
-  // ── Main render ───────────────────────────────────────────────────────────
   return (
     <>
-      {/* FIX 1: PlayerLoading overlay removed entirely */}
-
       <div className="fixed-controls" aria-label="Quick actions">
         <button className={`control-btn top-btn ${showUpBtn ? "top-btn--visible" : ""}`}
           onClick={scrollToTop} aria-label="Scroll to top" title="Back to top">
@@ -992,13 +1047,36 @@ export default function Home({ type = "all" }) {
         </button>
       </div>
 
-      {/* FIX 3: Hide hero banner completely on TV/Android TV */}
       {currentView.kind === "home" && banners.length > 0 && !isTV && (
         <HeroBanner banners={banners} onPlay={playMovie} />
       )}
 
-      <div className="movies-page">
+      <FilterPopup
+        open={filterOpen}
+        initialTab={filterTab}
+        onClose={() => setFilterOpen(false)}
+        genre={genreFilter}
+        onGenreChange={setGenreFilter}
+        lang={languageFilter}
+        onLangChange={setLanguageFilter}
+        year={yearFilter}
+        onYearChange={setYearFilter}
+        availableLanguages={availableLanguages}
+        availableYears={availableYears}
+        onApply={({ genre, lang, year }) => {
+          if (genre) setGenreFilter(genre);
+          if (lang) setLanguageFilter(lang);
+          if (year) setYearFilter(year);
+          setFilterOpen(false);
+        }}
+        onReset={() => {
+          setGenreFilter([]);
+          setLanguageFilter([]);
+          setYearFilter([]);
+        }}
+      />
 
+      <div className="movies-page">
         {currentView.kind === "home" && (
           <>
             <div id="search-section" className="search-bar" role="search">
@@ -1008,10 +1086,12 @@ export default function Home({ type = "all" }) {
                 placeholder={isListening ? "Listening…" : "Search movies, series, anime…"}
                 aria-label="Search content" type="search" enterKeyHint="search" />
               <div className="search-voice-group">
-                <button className={`mic-btn ${isListening ? "listening-active" : isProcessing ? "processing-active" : ""}`}
+                <button
+                  className={`mic-btn ${isListening ? "listening-active" : isProcessing ? "processing-active" : ""}`}
                   onClick={startVoice}
                   aria-label={isListening ? "Stop voice search" : "Start voice search"}
-                  title={isListening ? "Stop listening" : "Voice search"} type="button">
+                  title={isListening ? "Stop listening" : "Voice search"}
+                  type="button">
                   <svg viewBox="0 0 24 24" className="mic-icon" aria-hidden="true">
                     <path d="M12 14.5c1.93 0 3.5-1.57 3.5-3.5V5c0-1.93-1.57-3.5-3.5-3.5S8.5 3.07 8.5 5v6c0 1.93 1.57 3.5 3.5 3.5ZM7 9.5C7 6.46 9.46 4 12.5 4S18 6.46 18 9.5v1.5H17v-1.5C17 7.57 15.43 6 13.5 6S10 7.57 10 9.5v1.5H7V9.5Z" />
                     <path d="M19 11.5c0 3.38-2.71 6.15-6 6.46V20h2v2h-6v-2h2v-2.04c-3.29-.31-6-3.08-6-6.46h2c0 2.76 2.24 5 5 5s5-2.24 5-5h2Z" />
@@ -1020,35 +1100,141 @@ export default function Home({ type = "all" }) {
                 </button>
               </div>
             </div>
-            <div className="voice-status-row">
-              {voiceHint && <div className="voice-hint">{voiceHint}</div>}
-              {voiceError && <div className="voice-error">{voiceError}</div>}
-            </div>
-            <div className="filter-bar" role="group" aria-label="Filter content">
-              <select value={languageFilter} onChange={(e) => setLanguageFilter(e.target.value)} aria-label="Filter by language">
-                <option value="all">All Languages</option>
-                {availableLanguages.map((l) => <option key={l} value={l}>{l.toUpperCase()}</option>)}
-              </select>
-              <select value={genreFilter} onChange={(e) => setGenreFilter(e.target.value)} aria-label="Filter by genre">
-                <option value="all">All Genres</option>
-                {availableGenres.map((g) => <option key={g} value={g}>{g.charAt(0).toUpperCase() + g.slice(1)}</option>)}
-              </select>
-              <select value={yearFilter} onChange={(e) => setYearFilter(e.target.value)} aria-label="Filter by year">
-                <option value="all">All Years</option>
-                {availableYears.map((y) => <option key={y} value={y}>{y}</option>)}
-              </select>
+
+            {(voiceHint || voiceError) && (
+              <div className="voice-status-row">
+                {voiceHint  && <div className="voice-hint">{voiceHint}</div>}
+                {voiceError && <div className="voice-error">{voiceError}</div>}
+              </div>
+            )}
+
+            {/* Layout filter elements updated inside layout to request pattern: Language -> Genre -> Year */}
+            <div className="filter-bar search-filter-gap" role="group" aria-label="Filter content">
+              
+              {/* 1. Language Trigger */}
+              <button
+                className={`fp-trigger ${languageFilter.length > 0 ? "fp-trigger--active-teal" : ""}`}
+                onClick={() => {
+                  setFilterTab("language");
+                  setFilterOpen(true);
+                }}
+                aria-haspopup="dialog"
+                aria-expanded={filterOpen && filterTab === "language"}
+              >
+                <Globe size={16} aria-hidden="true" />
+                <span className="fp-trigger-label-wrap">
+                  <span>{getFilterLabel(languageFilter, "Language")}</span>
+                  {languageFilter.length > 0 && <span className="fp-trigger-hint">Tap to change</span>}
+                </span>
+                {languageFilter.length > 0 && <span className="fp-trigger-dot" aria-hidden="true" />}
+              </button>
+
+              {/* 2. Genre Trigger */}
+              <button
+                className={`fp-trigger ${genreFilter.length > 0 ? "fp-trigger--active-red" : ""}`}
+                onClick={() => {
+                  setFilterTab("genre");
+                  setFilterOpen(true);
+                }}
+                aria-haspopup="dialog"
+                aria-expanded={filterOpen && filterTab === "genre"}
+              >
+                <Film size={16} aria-hidden="true" />
+                <span className="fp-trigger-label-wrap">
+                  <span>
+                    {genreFilter.length === 0
+                      ? "Genre"
+                      : genreFilter.length === 1
+                      ? GENRES.find((g) => g.value === genreFilter[0])?.label || genreFilter[0]
+                      : `${genreFilter.length} Genres`}
+                  </span>
+                  {genreFilter.length > 0 && <span className="fp-trigger-hint">Tap to change</span>}
+                </span>
+                {genreFilter.length > 0 && <span className="fp-trigger-dot" aria-hidden="true" />}
+              </button>
+
+              {/* 3. Year Trigger */}
+              <button
+                className={`fp-trigger ${yearFilter.length > 0 ? "fp-trigger--active-gold" : ""}`}
+                onClick={() => {
+                  setFilterTab("year");
+                  setFilterOpen(true);
+                }}
+                aria-haspopup="dialog"
+                aria-expanded={filterOpen && filterTab === "year"}
+              >
+                <Calendar size={16} aria-hidden="true" />
+                <span className="fp-trigger-label-wrap">
+                  <span>{getFilterLabel(yearFilter, "Year")}</span>
+                  {yearFilter.length > 0 && <span className="fp-trigger-hint">Tap to change</span>}
+                </span>
+                {yearFilter.length > 0 && <span className="fp-trigger-dot" aria-hidden="true" />}
+              </button>
             </div>
           </>
         )}
 
         {!isDataLoaded ? (
-          <section className="content-section" aria-busy="true" aria-label="Loading content">
+          <section className="content-section" aria-busy="true">
             <h2 className="section-title">Loading…</h2>
             <div className="grid" onKeyDown={handleGridKeyDown}>
               {Array.from({ length: 12 }).map((_, i) => <SkeletonCard key={i} />)}
             </div>
           </section>
-
+        ) : selectedSeries ? (
+          <section key="series-view" className="series-view-section slide-in-premium">
+            <div className="series-view-header">
+              <div className="series-view-poster">
+                <img src={firstSeasonImg(selectedSeries.seasons)} alt={selectedSeries.seriesTitle} />
+              </div>
+              <div className="series-view-titles">
+                <h2 className="series-view-title">{selectedSeries.seriesTitle}</h2>
+                <div className="series-view-count">
+                  {Object.keys(selectedSeries.seasons).length} Season{Object.keys(selectedSeries.seasons).length !== 1 ? "s" : ""}
+                </div>
+              </div>
+            </div>
+            <div className="grid" onKeyDown={handleGridKeyDown}>
+              {Object.entries(selectedSeries.seasons)
+                .sort((a, b) => parseInt(a[0]) - parseInt(b[0]))
+                .map(([sNum, eps], i) => {
+                  const lw        = getLastWatchedEp(selectedSeries.seriesTitle, sNum);
+                  const sortedEps = [...eps].sort((a, b) =>
+                    String(a.episode).localeCompare(String(b.episode), undefined, { numeric: true, sensitivity: "base" })
+                  );
+                  return (
+                    <FocusCard key={sNum} className="card is-collection season-card-v2" style={{ "--i": i }}
+                      data-card-id={cardId(`sv_${selectedSeries.titleKey}`, sNum)}
+                      onClick={(e) => handleClick(e, () => handleOpenSeason(selectedSeries.seriesTitle, sNum, eps))}>
+                      <PosterImg src={randomImg(eps)} alt={`Season ${sNum}`} loading="eager" />
+                      <div className="season-num-badge">Season {sNum}</div>
+                      <div className="collection-badge">{eps.length} Ep{eps.length !== 1 ? "s" : ""}</div>
+                      {lw && (
+                        <button className="continue-play-btn"
+                          aria-label={`Continue from episode ${lw.episodeNum}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const epToPlay = sortedEps.find(ep => ep.id === lw.episodeId)
+                              || sortedEps.find(ep => String(ep.episode) === String(lw.episodeNum))
+                              || sortedEps[0];
+                            if (epToPlay) {
+                              const idx = sortedEps.findIndex(ep => ep.id === epToPlay.id);
+                              playMovie(epToPlay, sortedEps, idx >= 0 ? idx : 0);
+                            }
+                          }}>
+                          <span className="continue-play-icon" aria-hidden="true">▶</span>
+                          <span className="continue-play-label">EP {lw.episodeNum}</span>
+                        </button>
+                      )}
+                      <div className="card-info">
+                        <h3>Season {sNum}</h3>
+                        <p>{lw ? `Continue · EP ${lw.episodeNum}` : `${eps.length} Episode${eps.length !== 1 ? "s" : ""}`}</p>
+                      </div>
+                    </FocusCard>
+                  );
+                })}
+            </div>
+          </section>
         ) : selectedSeason ? (
           <section key="episode-list" className="collection-view slide-in-premium">
             <div className="season-header">
@@ -1058,13 +1244,12 @@ export default function Home({ type = "all" }) {
                 <span className="season-breadcrumb-season">Season {selectedSeason.seasonNum}</span>
               </div>
               {(() => {
-                const lw = getLastWatchedEp(selectedSeason.seriesTitle, selectedSeason.seasonNum);
+                const lw        = getLastWatchedEp(selectedSeason.seriesTitle, selectedSeason.seasonNum);
                 const sortedEps = [...selectedSeason.episodes].sort((a, b) =>
                   String(a.episode).localeCompare(String(b.episode), undefined, { numeric: true, sensitivity: "base" })
                 );
                 return lw ? (
-                  <button
-                    className="season-continue-pill season-continue-pill--btn"
+                  <button className="season-continue-pill season-continue-pill--btn"
                     aria-label={`Continue from episode ${lw.episodeNum}`}
                     onClick={() => {
                       const epToPlay = sortedEps.find(ep => ep.id === lw.episodeId)
@@ -1074,15 +1259,13 @@ export default function Home({ type = "all" }) {
                         const idx = sortedEps.findIndex(ep => ep.id === epToPlay.id);
                         playMovie(epToPlay, sortedEps, idx >= 0 ? idx : 0);
                       }
-                    }}
-                  >
+                    }}>
                     <span className="scp-play" aria-hidden="true">▶</span>
                     <span>Continue · EP&nbsp;{lw.episodeNum}</span>
                   </button>
                 ) : null;
               })()}
             </div>
-
             <div className="grid" onKeyDown={handleGridKeyDown}>
               {(() => {
                 const sorted = [...selectedSeason.episodes].sort(
@@ -1098,9 +1281,7 @@ export default function Home({ type = "all" }) {
                       style={{ "--i": i }} data-card-id={cid}
                       onClick={(e) => handleClick(e, () => playMovie(ep, sorted, i))}>
                       <PosterImg src={ep.img} alt={ep.title} loading="eager" />
-                      <div className="ep-num-badge" aria-hidden="true">
-                        EP {ep.episode || "S"}
-                      </div>
+                      <div className="ep-num-badge" aria-hidden="true">EP {ep.episode || "S"}</div>
                       {isLastSeen && (
                         <div className="last-seen-banner" aria-label="Continue watching">
                           <span className="lsb-play" aria-hidden="true">▶</span> Continue
@@ -1118,7 +1299,6 @@ export default function Home({ type = "all" }) {
               })()}
             </div>
           </section>
-
         ) : selectedCollection ? (
           <section key="collection-view" className="collection-view slide-in-premium">
             <div className="season-header">
@@ -1139,9 +1319,12 @@ export default function Home({ type = "all" }) {
               ))}
             </div>
           </section>
-
         ) : (
           <div key="home-browse">
+            {type === "movie"  && renderRecentSection("Recently Watched", recentWatched.movies,  "movies")}
+            {type === "series" && renderRecentSection("Recently Watched", recentWatched.series,  "series")}
+            {type === "anime"  && renderRecentSection("Recently Watched", recentWatched.anime,   "anime")}
+
             {(type === "all" || type === "movie") && movieGroups.length > 0 && (
               <section className="content-section">
                 <h2 className="section-title">
@@ -1156,7 +1339,9 @@ export default function Home({ type = "all" }) {
                 <h2 className="section-title">
                   <img src={seriIcon} alt="" className="section-icon" aria-hidden="true" /> Series
                 </h2>
-                {seriesGroups.map(([title, data]) => renderSeriesSection(title, data))}
+                <div className="grid" onKeyDown={handleGridKeyDown}>
+                  {seriesGroups.map(([title, data], i) => renderSeriesCard(title, data, i))}
+                </div>
               </section>
             )}
 
@@ -1174,7 +1359,9 @@ export default function Home({ type = "all" }) {
                 <h2 className="section-title">
                   <img src={animeIcon} alt="" className="section-icon" aria-hidden="true" /> Anime Series
                 </h2>
-                {animeSeriesGroups.map(([title, data]) => renderSeriesSection(title, data))}
+                <div className="grid" onKeyDown={handleGridKeyDown}>
+                  {animeSeriesGroups.map(([title, data], i) => renderSeriesCard(title, data, i))}
+                </div>
               </section>
             )}
 

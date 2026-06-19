@@ -1,2045 +1,2419 @@
 package com.harimovies.app;
 
-    import androidx.activity.OnBackPressedCallback;
-    import androidx.appcompat.app.AppCompatActivity;
-    import androidx.media3.common.util.UnstableApi;
-    import android.content.Context;
-    import android.content.Intent;
-    import android.content.SharedPreferences;
-    import android.content.pm.ActivityInfo;
-    import android.content.res.Configuration;
-    import android.media.AudioManager;
-    import android.graphics.Bitmap;
-    import android.media.MediaMetadataRetriever;
-    import android.net.Uri;
-    import android.os.Build;
-    import android.os.Bundle;
-    import android.os.Handler;
-    import android.os.HandlerThread;
-    import android.os.Looper;
-    import android.provider.Settings;
-    import android.util.Log;
-    import android.view.Gravity;
-    import android.view.KeyEvent;
-    import android.view.MotionEvent;
-    import android.view.View;
-    import android.view.ViewGroup;
-    import android.view.WindowManager;
-    import android.view.animation.AccelerateDecelerateInterpolator;
-    import android.view.animation.OvershootInterpolator;
-    import android.widget.Button;
-    import android.widget.FrameLayout;
-    import android.widget.HorizontalScrollView;
-    import android.widget.ImageButton;
-    import android.widget.ImageView;
-    import android.widget.LinearLayout;
-    import android.widget.ProgressBar;
-    import android.widget.SeekBar;
-    import android.widget.TextView;
-    import android.widget.Toast;
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.media3.common.util.UnstableApi;
 
-    import androidx.media3.common.C;
-    import androidx.media3.common.MediaItem;
-    import androidx.media3.common.PlaybackException;
-    import androidx.media3.common.Player;
-    import androidx.media3.common.TrackSelectionParameters;
-    import androidx.media3.datasource.DefaultHttpDataSource;
-    import androidx.media3.exoplayer.ExoPlayer;
-    import androidx.media3.exoplayer.SeekParameters;
-    import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
-    import androidx.media3.exoplayer.source.MediaSource;
-    import androidx.media3.ui.AspectRatioFrameLayout;
-    import androidx.media3.ui.DefaultTimeBar;
-    import androidx.media3.ui.PlayerView;
-    import androidx.media3.ui.TimeBar;
+import android.app.NotificationManager;
+import android.text.TextUtils;
+import android.content.Context;
+import android.content.Intent;
+import android.content.SharedPreferences;
+import android.content.pm.ActivityInfo;
+import android.content.res.Configuration;
+import android.media.AudioManager;
+import android.graphics.Bitmap;
+import android.media.MediaMetadataRetriever;
+import android.net.Uri;
+import android.os.Build;
+import android.os.Bundle;
+import android.os.Handler;
+import android.os.HandlerThread;
+import android.os.Looper;
+import android.provider.Settings;
+import android.util.Log;
+import android.view.Gravity;
+import android.view.KeyEvent;
+import android.view.MotionEvent;
+import android.view.View;
+import android.view.ViewGroup;
+import android.view.WindowManager;
+import android.view.animation.AccelerateDecelerateInterpolator;
+import android.widget.Button;
+import android.widget.FrameLayout;
+import android.widget.HorizontalScrollView;
+import android.widget.ImageButton;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
+import android.widget.SeekBar;
+import android.widget.TextView;
+import android.widget.Toast;
 
-    import org.json.JSONArray;
-    import org.json.JSONObject;
+import androidx.media3.common.audio.AudioProcessor;
+import androidx.media3.common.C;
+import androidx.media3.common.MediaItem;
+import androidx.media3.common.PlaybackException;
+import androidx.media3.common.Player;
+import androidx.media3.common.TrackSelectionParameters;
+import androidx.media3.datasource.DefaultHttpDataSource;
+import androidx.media3.exoplayer.DefaultRenderersFactory;
+import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.exoplayer.SeekParameters;
+import androidx.media3.exoplayer.audio.AudioSink;
+import androidx.media3.exoplayer.audio.DefaultAudioSink;
+import androidx.media3.exoplayer.dash.DashMediaSource;
+import androidx.media3.exoplayer.hls.HlsMediaSource;
+import androidx.media3.exoplayer.source.MediaSource;
+import androidx.media3.exoplayer.source.ProgressiveMediaSource;
+import androidx.media3.ui.AspectRatioFrameLayout;
+import androidx.media3.ui.DefaultTimeBar;
+import androidx.media3.ui.PlayerView;
+import androidx.media3.ui.TimeBar;
 
-    import java.util.ArrayList;
-    import java.util.HashMap;
-    import java.util.List;
-    import java.util.Locale;
-    import java.util.Map;
+import kotlin.Unit;
 
-    @UnstableApi
-    public class PlayerActivity extends AppCompatActivity {
+import org.json.JSONArray;
+import org.json.JSONObject;
 
-        public static final String EXTRA_URL   = "url";
-        public static final String EXTRA_TITLE = "title";
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.io.IOException;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import okhttp3.Call;
+import okhttp3.Callback;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
 
-        private static final String PREFS_NAME    = "hm_watch_pos";
-        private static final long   SAVE_EVERY_MS = 5_000L;
-        private static final long   MIN_RESUME_MS = 10_000L;
+@UnstableApi
+public class PlayerActivity extends AppCompatActivity {
 
-        private ExoPlayer  player;
-        private PlayerView playerView;
+    public static final String EXTRA_URL   = "url";
+    public static final String EXTRA_TITLE = "title";
 
-        private String  videoTitle   = "";
-        private String  seriesTitle  = "";
-        private String  videoUrl     = "";
-        private boolean isMuted      = false;
-        private boolean isFullscreen = false;
-        private int     resizeModeIndex = 0;
-        private boolean resumeChecked = false;
+    private static final String PREFS_NAME    = "hm_watch_pos";
+    private static final long   SAVE_EVERY_MS = 5_000L;
+    private static final long   MIN_RESUME_MS = 10_000L;
 
-        // ── Playlist for series ──────────────────────────────────────────────────
-        private List<JSONObject> playlist = new ArrayList<>();
-        private int currentIndex = 0;
-        private TextView tvEpBadge;
-        private LinearLayout episodeContainer;
-        private View episodeBar;
-        private TextView tvTitle;
+    // ── AUTO-HIDE: 8s (idle), never hides while paused/seeking/navigating ────
+    private static final long AUTO_HIDE_MS  = 8_000L;
+    private static final long LOCK_UI_MS    = 3_000L;
 
-        // ── A/V Sync ──────────────────────────────────────────────────────────────
-        private long audioOffsetUs = 0L;
+    private ExoPlayer  player;
+    private PlayerView playerView;
+    private DelayAudioProcessor delayAudioProcessor;
 
-        private static final int[] RESIZE_MODES = {
-            AspectRatioFrameLayout.RESIZE_MODE_FILL,
-            AspectRatioFrameLayout.RESIZE_MODE_FIT,
-            AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
-            AspectRatioFrameLayout.RESIZE_MODE_FIXED_WIDTH
-        };
-        private static final String[] RESIZE_LABELS = { "Fill", "Fit", "Zoom", "Stretch" };
+    private String  videoTitle   = "";
+    private String  seriesTitle  = "";
+    private String  videoUrl     = "";
+    private boolean isFullscreen = false;
+    private int     resizeModeIndex = 0;
+    private boolean resumeChecked = false;
 
-        // ── Controls visibility ───────────────────────────────────────────────────
-        private boolean controlsVisible = false;
-        private boolean isLocked        = false;
-        private boolean lockUiVisible   = false;
-        private boolean resumeShowing   = false;
-        private boolean episodesVisible = false;
+    // ── Playlist ──────────────────────────────────────────────────────────────
+    private final List<JSONObject> playlist = new ArrayList<>();
+    private int currentIndex = 0;
+    private TextView tvEpBadge;
+    private LinearLayout episodeContainer;
+    private View episodeBar;
+    private TextView tvTitle;
 
-        // ── Focus tracking ────────────────────────────────────────────────────────
-        private int     focusRow      = 1;
-        private int     focusCol      = 1;
-        private int     episodeFocusIndex = 0;
-        private int     resumeFocusCol = 0;
+    // ── A/V Sync ──────────────────────────────────────────────────────────────
+    private long audioOffsetUs = 0L;
 
-        private final Handler  autoHideHandler    = new Handler(Looper.getMainLooper());
-        private final Runnable autoHideRunnable   = this::hideControls;
-        private final Runnable hideLockUiRunnable = this::hideLockUI;
-        private final Runnable savePositionRunnable = this::saveCurrentPosition;
-        private static final long AUTO_HIDE_MS  = 4_000L;
-        private static final long LOCK_UI_MS    = 3_000L;
+    private static final int[] RESIZE_MODES = {
+        AspectRatioFrameLayout.RESIZE_MODE_FILL,
+        AspectRatioFrameLayout.RESIZE_MODE_FIT,
+        AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+        AspectRatioFrameLayout.RESIZE_MODE_FIXED_WIDTH
+    };
+    private static final String[] RESIZE_LABELS = { "Fill", "Fit", "Zoom", "Stretch" };
 
-        // ── Gesture state ─────────────────────────────────────────────────────────
-        private float   downRawX = 0f, downRawY = 0f;
-        private boolean downInLeft = false, downInRight = false;
-        private int     gestureStartValue = 0;
-        private boolean dirLocked = false, isVertical = false, isHorizontal = false;
-        private static final float GESTURE_THRESHOLD = 18f;
-        private static final float SEEK_PX_PER_SEC   = 8f;
+    // ── Controls visibility ───────────────────────────────────────────────────
+    private boolean controlsVisible = false;
+    private boolean isLocked        = false;
+    private boolean lockUiVisible   = false;
+    private boolean resumeShowing   = false;
+    private boolean isSeeking       = false; // track seeking to pause auto-hide
+    private int previousInterruptionFilter = 1; // Default to INTERRUPTION_FILTER_ALL
 
-        private long lastTapTime = 0L;
-        private int  lastTapSide = 0;
-        private static final long DOUBLE_TAP_MS = 300L;
+    // ── TV Focus tracking (rows: 0=top, 1=center, 2=seekbar, 3=episodes) ─────
+    private int     focusRow          = 1;
+    private int     focusCol          = 2; // default: play/pause
+    private int     lastFocusRow      = 1;
+    private int     lastFocusCol      = 2;
+    private int     episodeFocusIndex = 0;
+    private int     resumeFocusCol    = 0;
 
-        // ── Touch Hold ──────────────────────────────────────────────────────────
-        private int touchHoldSide = 0;
-        private int touchHoldCount = 0;
-        private Runnable touchHoldRunnable;
-        private Runnable startTouchHoldRunnable;
+    // ── Seek acceleration for hold ────────────────────────────────────────────
+    private static final long[] SEEK_HOLD_STEPS    = { 1000L, 5000L, 10000L, 30000L };
+    private static final int[]  SEEK_HOLD_THRESHOLDS = { 0, 8, 20, 40 }; // repeat counts
 
-        // ── Audio ─────────────────────────────────────────────────────────────────
-        private AudioManager audioManager;
-        private int          maxVolume;
+    private final Handler  autoHideHandler    = new Handler(Looper.getMainLooper());
+    private final Runnable autoHideRunnable   = this::hideControls;
+    private final Runnable hideLockUiRunnable = this::hideLockUI;
+    private final Runnable savePositionRunnable = this::saveCurrentPosition;
 
-        // ── Controller views ──────────────────────────────────────────────────────
-        private LinearLayout brightnessIndicator, volumeIndicator;
-        private View         viewBrightnessFill, viewVolumeFill;
-        private TextView     tvBrightnessValue, tvVolumeValue;
-        private LinearLayout seekIndicator;
-        private ImageView    seekIcon;
-        private TextView     tvSeekDelta;
-        private View         topBar, centerControls, bottomBar, scrimTop, scrimBottom;
-        private ImageButton  btnLock;
-        private TextView     tvLockHint, tvTitleSep;
+    // ── Gesture state ─────────────────────────────────────────────────────────
+    private float   downRawX = 0f, downRawY = 0f;
+    private boolean downInLeft = false, downInRight = false;
+    private int     gestureStartValue = 0;
+    private boolean dirLocked = false, isVertical = false, isHorizontal = false;
+    private static final float GESTURE_THRESHOLD = 18f;
+    private static final float SEEK_PX_PER_SEC   = 8f;
 
-        // ── Button refs ───────────────────────────────────────────────────────────
-        private ImageButton btnBack, btnPictureMode, btnFullscreen, btnSync, btnSettings, btnNextEp, btnPrevEp;
-        private View        btnRew, btnPP, btnFfwd, progressBar;
+    private long lastTapTime = 0L;
+    private int  lastTapSide = 0;
+    private static final long DOUBLE_TAP_MS = 300L;
 
-        // ── Resume overlay ────────────────────────────────────────────────────────
-        private View   resumeOverlay;
-        private Button btnResume, btnStartOver;
-        private TextView tvResumeTime;
-        private long forcedResumePos = 0;
-        private long currentSavedPos = 0;
+    // ── Touch Hold ─────────────────────────────────────────────────────────────
+    private int touchHoldSide = 0;
+    private int touchHoldCount = 0;
+    private Runnable touchHoldRunnable;
+    private Runnable startTouchHoldRunnable;
 
-        // ── Preview ──────────────────────────────────────────────────────────────
-        private View         previewContainer;
-        private ImageView    previewImage;
-        private TextView     previewTimeText;
-        private MediaMetadataRetriever retriever;
-        private HandlerThread previewThread;
-        private Handler       previewHandler;
-        private final Map<String, String> requestHeaders = new HashMap<>();
+    // ── Audio ──────────────────────────────────────────────────────────────────
+    private AudioManager audioManager;
+    private int          maxVolume;
 
-        private boolean isPreviewLoading = false;
-        private long    lastPreviewPos   = -1;
+    // ── Controller views ───────────────────────────────────────────────────────
+    private LinearLayout brightnessIndicator, volumeIndicator;
+    private View         viewBrightnessFill, viewVolumeFill;
+    private TextView     tvBrightnessValue, tvVolumeValue;
+    private LinearLayout seekIndicator;
+    private ImageView    seekIcon;
+    private TextView     tvSeekDelta;
+    private View         topBar, centerControls, bottomBar, scrimTop, scrimBottom;
+    private ImageButton  btnLock;
+    private TextView     tvLockHint, tvTitleSep;
 
-        // ══════════════════════════════════════════════════════════════════════════
-        //  Helper: check if a URL is a direct streamable media file
-        // ══════════════════════════════════════════════════════════════════════════
-        private boolean isDirectVideoUrl(String url) {
-            if (url == null || url.isEmpty()) return false;
-            String lower = url.toLowerCase();
-            return lower.matches(".*\\.(mp4|m3u8|mkv|webm|mpd)(\\?.*)?$")
-                    || lower.contains("?stream=1")
-                    || lower.contains("&stream=1")
-                    || lower.contains("/hls/")
-                    || lower.contains("/dash/")
-                    || lower.contains("/manifest/")
-                    || lower.contains(".m3u8")
-                    || lower.contains(".mpd");
-        }
+    // ── Time labels ───────────────────────────────────────────────────────────
+    private TextView tvCurrentTime, tvRemainingTime;
+    private final Handler timeUpdateHandler = new Handler(Looper.getMainLooper());
+    private final Runnable timeUpdateRunnable = this::updateTimestamps;
 
-        // ══════════════════════════════════════════════════════════════════════════
-        //  onCreate
-        // ══════════════════════════════════════════════════════════════════════════
+    // ── Button refs ───────────────────────────────────────────────────────────
+    private ImageButton btnBack, btnPictureMode, btnFullscreen, btnSync, btnSettings, btnNextEp, btnPrevEp;
+    private View        btnRew, btnPP, btnFfwd, progressBar;
+
+    // Row button arrays for focus tracking
+    private View[] topRowButtons;
+    private View[] centerRowButtons;
+
+    // ── Resume overlay ────────────────────────────────────────────────────────
+    private View   resumeOverlay;
+    private Button btnResume, btnStartOver;
+    private TextView tvResumeTime;
+    private long forcedResumePos = 0;
+    private long currentSavedPos = 0;
+
+    // ── Preview ───────────────────────────────────────────────────────────────
+    private View         previewContainer;
+    private ImageView    previewImage;
+    private TextView     previewTimeText;
+    private MediaMetadataRetriever retriever;
+    private HandlerThread previewThread;
+    private Handler       previewHandler;
+    private final Map<String, String> requestHeaders = new HashMap<>();
+
+    private boolean isPreviewLoading = false;
+    private long    lastPreviewPos   = -1;
+
+    private final TelegramRepository telegramRepository = new TelegramRepository();
+    private final OkHttpClient okHttpClient = new OkHttpClient();
+
+    // ── Continuous Seek ───────────────────────────────────────────────────────
+    private final Handler continuousSeekHandler = new Handler(Looper.getMainLooper());
+    private int continuousSeekDirection = 0; // -1 for rewind, 1 for forward
+    private final Runnable continuousSeekRunnable = new Runnable() {
         @Override
-        protected void onCreate(Bundle savedInstanceState) {
-            super.onCreate(savedInstanceState);
-            Log.d("PLAYER", "onCreate started");
-            try {
-                overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
-
-                getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-                hideSystemUI();
-                setContentView(R.layout.activity_player);
-
-                getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
-                    @Override
-                    public void handleOnBackPressed() {
-                        if (resumeShowing) {
-                            performBackAction();
-                        } else if (controlsVisible) {
-                            hideControls();
-                        } else {
-                            performBackAction();
-                        }
-                    }
-                });
-
-                audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
-                maxVolume    = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
-
-                playerView = findViewById(R.id.player_view);
-
-                videoUrl   = getIntent().getStringExtra(EXTRA_URL);   if (videoUrl == null) videoUrl = "";
-                videoTitle = getIntent().getStringExtra(EXTRA_TITLE);
-                if (videoTitle == null) videoTitle = "";
-                seriesTitle = cleanSeriesTitle(videoTitle);
-
-                forcedResumePos = getIntent().getLongExtra("resume_pos", 0);
-
-                Log.d("SERIES_DEBUG", "Activity: Initial URL: " + videoUrl);
-                Log.d("SERIES_DEBUG", "Activity: Initial Title: " + videoTitle);
-
-                // Parse playlist if available
-                String playlistJson = getIntent().getStringExtra("playlist");
-                Log.d("SERIES_DEBUG", "Activity: playlistJson extra: " + (playlistJson != null ? "Length " + playlistJson.length() : "NULL"));
-
-                if (playlistJson != null && !playlistJson.isEmpty() && !playlistJson.equals("[]") && !playlistJson.equals("null")) {
-                    try {
-                        JSONArray array = new JSONArray(playlistJson);
-                        playlist.clear();
-                        for (int j = 0; j < array.length(); j++) {
-                            playlist.add(array.getJSONObject(j));
-                        }
-                        currentIndex = getIntent().getIntExtra("index", 0);
-
-                        Log.d("PLAYER", "Playlist size: " + playlist.size() + ", Start Index: " + currentIndex);
-
-                        // Sync current video info with the index
-                        if (currentIndex >= 0 && currentIndex < playlist.size()) {
-                            JSONObject ep = playlist.get(currentIndex);
-                            // Only override videoUrl from playlist if it wasn't already set by WebPlayerActivity
-                            // WebPlayerActivity passes the REAL extracted mp4/m3u8 URL as EXTRA_URL,
-                            // so we only fall back to playlist link if videoUrl is empty.
-                            if (videoUrl == null || videoUrl.isEmpty()) {
-                                videoUrl = ep.optString("link", "");
-                                Log.d("SERIES_DEBUG", "videoUrl was empty, using playlist link: " + videoUrl);
-                            } else {
-                                Log.d("SERIES_DEBUG", "videoUrl already set by caller: " + videoUrl);
-                            }
-                            String epTitle = ep.optString("title", "");
-                            if (!epTitle.isEmpty()) {
-                                videoTitle = epTitle;
-                            } else {
-                                String epNum = ep.optString("episode", "");
-                                String seasonNum = ep.optString("season", "");
-                                if (!seasonNum.isEmpty() && !epNum.isEmpty()) {
-                                    videoTitle = seriesTitle + " - Season " + seasonNum + " . Episode " + epNum;
-                                } else if (!epNum.isEmpty()) {
-                                    videoTitle = seriesTitle + " - Episode " + epNum;
-                                } else {
-                                    videoTitle = seriesTitle + " - Episode " + (currentIndex + 1);
-                                }
-                            }
-                        }
-                    } catch (Exception e) {
-                        Log.e("PLAYER", "Playlist parse error", e);
-                    }
-                }
-
-                player = new ExoPlayer.Builder(this).build();
-                player.setSeekParameters(SeekParameters.EXACT);
-                applySavedTrackPreferences();
-                playerView.setPlayer(player);
-                playerView.setControllerShowTimeoutMs(-1);
-                playerView.setControllerAutoShow(false);
-                playerView.setUseController(true);
-
-                player.addListener(new Player.Listener() {
-                    @Override
-public void onPlayerError(PlaybackException e) {
-    Log.e("PLAYER_ERROR", "CODE=" + e.errorCode);
-    Log.e("PLAYER_ERROR", "NAME=" + e.getErrorCodeName());
-
-    // ExoPlayer failed → open WebPlayer
-    Intent intent = new Intent(PlayerActivity.this, WebPlayerActivity.class);
-
-    intent.putExtra("url", videoUrl);
-    intent.putExtra("title", videoTitle);
-
-    if (!playlist.isEmpty()) {
-        JSONArray arr = new JSONArray();
-        for (JSONObject item : playlist) {
-            arr.put(item);
-        }
-        intent.putExtra("playlist", arr.toString());
-        intent.putExtra("index", currentIndex);
-    }
-saveLastWatchedEpisode();
-    startActivity(intent);
-    finish();
-}
-
-                    @Override
-                    public void onPlaybackStateChanged(int state) {
-                        Log.d("PLAYER", "State: " + state);
-                        if (state == Player.STATE_ENDED) {
-                            clearSavedPosition();
-                            // Auto-play next episode
-                            if (!playlist.isEmpty() && currentIndex < playlist.size() - 1) {
-                                playEpisode(currentIndex + 1);
-                            }
-                        }
-                        if (state == Player.STATE_READY && !resumeChecked) {
-                            saveLastWatchedEpisode();
-                    resumeChecked = true;
-                    if (forcedResumePos > 0) {
-                        player.seekTo(forcedResumePos);
-                        player.play();
-                        forcedResumePos = 0;
-                        return;
-                    }
-                    checkResumePosition();
-                    
-                    // NEW: Ensure current episode is centered when playback starts
-                    if (controlsVisible) {
-                        episodeBar.post(() -> scrollEpisodeIntoView(currentIndex));
-                    }
-                }
-                    }
-                });
-
-                findControllerViews();
-                syncFullscreenIcon();
-                updateSeriesUI();
-                buildResumeOverlay();
-                wireButtons();
-                setupGestures();
-                setupLockButton();
-                setupPreviewRetriever();
-
-                hideControls();
-                Log.d("PLAYER_DEBUG", "FINAL_VIDEO_URL=" + videoUrl);
-                loadCurrentEpisode();
-                Log.d("PLAYER", "onCreate completed");
-            } catch (Exception e) {
-                Log.e("PLAYER", "CRASH IN ONCREATE", e);
-                Toast.makeText(this, "Player Error: " + e.getMessage(), Toast.LENGTH_LONG).show();
-                finish();
+        public void run() {
+            if (continuousSeekDirection != 0) {
+                fastSeek(continuousSeekDirection * 5000L); // 5s steps during hold
+                continuousSeekHandler.postDelayed(this, 200);
             }
         }
+    };
 
-        private void loadCurrentEpisode() {
-            Log.d("PLAYER_DEBUG", "PLAYING_URL=" + videoUrl);
-            if (player == null || videoUrl == null || videoUrl.isEmpty()) {
-                Log.e("PLAYER", "Aborting load: videoUrl is empty");
-                return;
-            }
+    // ══════════════════════════════════════════════════════════════════════════
+// ── onCreate ──────────────────────────────────────────────────────────────
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        // 1. Kill window animations completely BEFORE layout initialization
+        getWindow().setWindowAnimations(0);
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
 
-            resumeChecked = false;
+        super.onCreate(savedInstanceState);
+        Log.d("PLAYER", "onCreate started");
+        try {
+            // 2. Disable default window slide/fade transitions
+            overridePendingTransition(0, 0);
 
-            // Reset preview retriever for the new URL
-            if (previewHandler != null) {
-                previewHandler.post(() -> {
-                    try {
-                        if (retriever != null) retriever.release();
-                        retriever = new MediaMetadataRetriever();
-                        retriever.setDataSource(videoUrl, requestHeaders);
-                    } catch (Exception e) {
-                        Log.e("PREVIEW", "Retriever update error: " + e.getMessage());
-                    }
-                });
-            }
+            getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            hideSystemUI();
+            setContentView(R.layout.activity_player);
 
-            DefaultHttpDataSource.Factory dsFactory =
-                    new DefaultHttpDataSource.Factory()
-                            .setUserAgent(
-                                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
-                                "AppleWebKit/537.36 (KHTML, like Gecko) " +
-                                "Chrome/148.0.0.0 Safari/537.36");
+            audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+            maxVolume    = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
 
-            Map<String, String> headers = new HashMap<>();
-            headers.put("Referer", "https://dub.onestream.today/");
-            headers.put("Cookie",  "cache_2685d8fa2727bff6=1781032689");
-            requestHeaders.putAll(headers);
-            dsFactory.setDefaultRequestProperties(headers);
+            // Initialize Telegram Manager
+            String tdlibPath = getFilesDir().getAbsolutePath() + "/tdlib";
+            TelegramManager.INSTANCE.init(tdlibPath);
 
-            MediaSource mediaSource =
-                    new DefaultMediaSourceFactory(this)
-                            .setDataSourceFactory(dsFactory)
-                            .createMediaSource(MediaItem.fromUri(Uri.parse(videoUrl)));
+            playerView = findViewById(R.id.player_view);
 
-            player.setMediaSource(mediaSource);
-            player.prepare();
-            player.play();
+            videoUrl   = getIntent().getStringExtra(EXTRA_URL);   if (videoUrl == null) videoUrl = "";
+            videoTitle = getIntent().getStringExtra(EXTRA_TITLE);
+            if (videoTitle == null) videoTitle = "";
+            seriesTitle = cleanSeriesTitle(videoTitle);
 
-            updateSeriesUI();
-        }
+            forcedResumePos = getIntent().getLongExtra("resume_pos", 0);
 
-        private void updateSeriesUI() {
-            Log.d("EP_DEBUG", "Current episode index = " + currentIndex);
-            Log.d("SERIES_DEBUG", "updateSeriesUI: playlist size = " + playlist.size() + ", currentIndex = " + currentIndex);
+            Log.d("SERIES_DEBUG", "Activity: Initial URL: " + videoUrl);
+            Log.d("SERIES_DEBUG", "Activity: Initial Title: " + videoTitle);
 
-            // 1. Calculate Badge (only for series)
-            String badge = "";
-            if (!playlist.isEmpty()) {
+            // Parse playlist
+            String playlistJson = getIntent().getStringExtra("playlist");
+            if (playlistJson != null && !playlistJson.isEmpty() && !playlistJson.equals("[]") && !playlistJson.equals("null")) {
                 try {
+                    JSONArray array = new JSONArray(playlistJson);
+                    playlist.clear();
+                    for (int j = 0; j < array.length(); j++) {
+                        playlist.add(array.getJSONObject(j));
+                    }
+                    currentIndex = getIntent().getIntExtra("index", 0);
+
                     if (currentIndex >= 0 && currentIndex < playlist.size()) {
-                        JSONObject current = playlist.get(currentIndex);
-                        String epNum = current.optString("episode", "");
-                        String seasonNum = current.optString("season", "");
-
-                        if (!seasonNum.isEmpty() && !epNum.isEmpty()) {
-                            badge = String.format(Locale.US, "Season %s . Episode %s", seasonNum, epNum);
-                        } else if (!epNum.isEmpty()) {
-                            try {
-                                int num = Integer.parseInt(epNum);
-                                badge = String.format(Locale.US, "Episode %02d", num);
-                            } catch (Exception e) {
-                                badge = "Episode " + epNum;
-                            }
+                        JSONObject ep = playlist.get(currentIndex);
+                        if (videoUrl == null || videoUrl.isEmpty()) {
+                            videoUrl = ep.optString("link", "");
+                        }
+                        String epTitle = ep.optString("title", "");
+                        if (!epTitle.isEmpty()) {
+                            videoTitle = epTitle;
                         } else {
-                            badge = String.format(Locale.US, "Episode %02d", currentIndex + 1);
+                            String epNum = ep.optString("episode", "");
+                            String seasonNum = ep.optString("season", "");
+                            if (!seasonNum.isEmpty() && !epNum.isEmpty()) {
+                                videoTitle = seriesTitle + " - Season " + seasonNum + " . Episode " + epNum;
+                            } else if (!epNum.isEmpty()) {
+                                videoTitle = seriesTitle + " - Episode " + epNum;
+                            } else {
+                                videoTitle = seriesTitle + " - Episode " + (currentIndex + 1);
+                            }
                         }
                     }
-                } catch (Exception ignored) {}
-            }
-
-            // 2. Update Title (Common for both)
-            if (tvTitle != null) {
-                // For series, we prefer the "Series Name". For movies, we want the full title.
-                if (!playlist.isEmpty() && !seriesTitle.isEmpty()) {
-                    tvTitle.setText(seriesTitle);
-                } else {
-                    tvTitle.setText(videoTitle);
+                } catch (Exception e) {
+                    Log.e("PLAYER", "Playlist parse error", e);
                 }
             }
 
-            // 3. Update Separator and Badge visibility
-            if (tvTitleSep != null) {
-                tvTitleSep.setVisibility(!badge.isEmpty() ? View.VISIBLE : View.GONE);
-            }
-
-            if (tvEpBadge != null) {
-                if (!badge.isEmpty()) {
-                    tvEpBadge.setText(badge);
-                    tvEpBadge.setVisibility(View.VISIBLE);
-                    tvEpBadge.setTextColor(0xAAFFFFFF);
-                } else {
-                    tvEpBadge.setVisibility(View.GONE);
+            delayAudioProcessor = new DelayAudioProcessor();
+            DefaultRenderersFactory renderersFactory = new DefaultRenderersFactory(this) {
+                @Override
+                protected AudioSink buildAudioSink(@androidx.annotation.NonNull Context context, boolean enableFloatOutput, boolean enableAudioTrackPlaybackParams) {
+                    return new DefaultAudioSink.Builder(context)
+                            .setAudioProcessors(new AudioProcessor[] { delayAudioProcessor })
+                            .build();
                 }
-            }
+            };
+            player = new ExoPlayer.Builder(this, renderersFactory).build();
+            player.setSeekParameters(SeekParameters.EXACT);
+            applySavedTrackPreferences();
+            playerView.setPlayer(player);
+            playerView.setControllerShowTimeoutMs(-1);
+            playerView.setControllerAutoShow(false);
+            playerView.setUseController(true);
 
-            // 4. Handle Series-only UI elements
-            Log.d("VISIBILITY_DEBUG", "Playlist size: " + playlist.size() + ", currentIndex: " + currentIndex);
-            if (playlist.size() <= 1) {
-                Log.d("VISIBILITY_DEBUG", "Single item or empty playlist, hiding next/prev");
-                if (btnNextEp != null) btnNextEp.setVisibility(View.GONE);
-                if (btnPrevEp != null) btnPrevEp.setVisibility(View.GONE);
-                if (episodeBar != null) episodeBar.setVisibility(View.GONE);
-                return;
-            }
-
-            boolean hasNext = currentIndex < playlist.size() - 1;
-            boolean hasPrev = currentIndex > 0;
-            Log.d("VISIBILITY_DEBUG", "hasNext: " + hasNext + ", hasPrev: " + hasPrev);
-
-            if (btnNextEp != null) btnNextEp.setVisibility(hasNext ? View.VISIBLE : View.GONE);
-            if (btnPrevEp != null) btnPrevEp.setVisibility(hasPrev ? View.VISIBLE : View.GONE);
-
-            if (episodeBar != null) {
-                if (controlsVisible) {
-                    episodeBar.setVisibility(View.VISIBLE);
-                    episodeBar.setAlpha(1.0f);
-                    episodeBar.bringToFront();
-                } else {
-                    episodeBar.setVisibility(View.GONE);
-                }
-            }
-            buildEpisodeList();
-        }
-
-        private void buildEpisodeList() {
-            if (episodeContainer == null) return;
-            episodeContainer.removeAllViews();
-
-            for (int i = 0; i < playlist.size(); i++) {
-                final int index = i;
-                Button btn = new Button(this);
-
-                String label = String.valueOf(i + 1);
-                btn.setText(label);
-                btn.setTextColor(0xFFFFFFFF);
-                btn.setFocusable(true);
-                btn.setTextSize(11);
-                LinearLayout.LayoutParams lp =
-                        new LinearLayout.LayoutParams(dp(56), dp(28));
-                lp.setMargins(dp(2), 0, dp(2), 0);
-                btn.setLayoutParams(lp);
-                btn.setHeight(dp(28));
-                btn.setPadding(dp(8), 0, dp(8), 0);
-                btn.setAllCaps(false);
-
-                if (i == currentIndex) {
-    btn.setBackgroundResource(R.drawable.bg_episode_active);
-    btn.setTextColor(0xFF000000);
-    btn.setTypeface(android.graphics.Typeface.DEFAULT);
-} else {
-    btn.setBackgroundResource(R.drawable.bg_segmented_item);
-    btn.setTextColor(0xFFFFFFFF);
-}
-
-                btn.setOnClickListener(v -> playEpisode(index));
-
-                btn.setOnFocusChangeListener((v, hasFocus) -> {
-                    if (hasFocus) {
-                        btn.setTextColor(0xFF000000);
-                        btn.setScaleX(1.1f); btn.setScaleY(1.1f);
+            player.addListener(new Player.Listener() {
+                @Override
+                public void onPlayerError(@androidx.annotation.NonNull PlaybackException e) {
+                    Log.e("STREAM_FAILED", "CODE=" + e.errorCode + " MSG=" + e.getMessage());
+                    
+                    // Fallback: if ExoPlayer fails, try WebPlayerActivity again
+                    if (videoUrl != null && !getIntent().getBooleanExtra("is_fallback", false)) {
+                        Intent intent = new Intent(PlayerActivity.this, WebPlayerActivity.class);
+                        intent.putExtra("url", videoUrl);
+                        intent.putExtra("title", videoTitle);
+                        intent.putExtra("is_fallback", true);
+                        if (!playlist.isEmpty()) {
+                            JSONArray arr = new JSONArray();
+                            for (JSONObject item : playlist) arr.put(item);
+                            intent.putExtra("playlist", arr.toString());
+                            intent.putExtra("index", currentIndex);
+                        }
+                        saveLastWatchedEpisode(currentIndex);
+                        startActivity(intent);
+                        finish();
                     } else {
-    if (index == currentIndex) {
-        btn.setBackgroundResource(R.drawable.bg_episode_active);
-        btn.setTextColor(0xFF000000);
-    } else {
-        btn.setBackgroundResource(R.drawable.bg_segmented_item);
-        btn.setTextColor(0xFFFFFFFF);
-    }
-
-    btn.setScaleX(1.0f);
-    btn.setScaleY(1.0f);
-}
-                });
-
-                episodeContainer.addView(btn);
-            }
-        }
-
-        // ══════════════════════════════════════════════════════════════════════════
-        //  FIX: playEpisode — routes iframe URLs through WebPlayerActivity,
-        //       direct video URLs straight to PlayerActivity
-        // ══════════════════════════════════════════════════════════════════════════
-        private void playEpisode(int index) {
-            if (index < 0 || index >= playlist.size()) return;
-
-            try {
-                JSONObject ep = playlist.get(index);
-                String epUrl   = ep.optString("link", "");
-                String epTitle = ep.optString("title", "");
-
-                // Build episode title fallback
-                if (epTitle.isEmpty()) {
-                    String epNum = ep.optString("episode", "");
-                    String seasonNum = ep.optString("season", "");
-                    if (!seasonNum.isEmpty() && !epNum.isEmpty()) {
-                        epTitle = seriesTitle + " - Season " + seasonNum + " . Episode " + epNum;
-                    } else if (!epNum.isEmpty()) {
-                        epTitle = seriesTitle + " - Episode " + epNum;
-                    } else {
-                        epTitle = seriesTitle + " - Episode " + (index + 1);
+                        Toast.makeText(PlayerActivity.this, "Stream playback failed after all attempts.", Toast.LENGTH_LONG).show();
+                        finish();
                     }
                 }
 
-                // Serialize full playlist so the next activity can navigate further
-                JSONArray arr = new JSONArray();
-                for (JSONObject item : playlist) arr.put(item);
-                String playlistStr = arr.toString();
-
-                Log.d("SERIES_DEBUG", "playEpisode: index=" + index + " url=" + epUrl);
-                Log.d("SERIES_DEBUG", "playEpisode: isDirect=" + isDirectVideoUrl(epUrl));
-
-                Intent intent;
-                if (isDirectVideoUrl(epUrl)) {
-                    // Direct mp4/m3u8/etc → go straight to PlayerActivity
-                    Log.d("SERIES_DEBUG", "Route: DIRECT → PlayerActivity");
-                    intent = new Intent(this, PlayerActivity.class);
-                    intent.putExtra(PlayerActivity.EXTRA_URL, epUrl);
-                    intent.putExtra(PlayerActivity.EXTRA_TITLE, epTitle);
-                } else {
-                    // Iframe/embed page → go through WebPlayerActivity to extract the real URL
-                    Log.d("SERIES_DEBUG", "Route: IFRAME → WebPlayerActivity");
-                    intent = new Intent(this, WebPlayerActivity.class);
-                    intent.putExtra("url", epUrl);
-                    intent.putExtra("title", epTitle);
-
-                    // YouTube adblock flag
-                    if (epUrl.contains("youtube.com") || epUrl.contains("youtu.be")) {
-                        intent.putExtra("adblock", true);
+                @Override
+                public void onIsPlayingChanged(boolean isPlaying) {
+                    // Keep controls visible while paused; restart hide timer when playing
+                    if (!isPlaying) {
+                        autoHideHandler.removeCallbacks(autoHideRunnable);
+                    } else {
+                        if (controlsVisible) scheduleHide();
                     }
+                    updatePlayPauseAccessibility();
                 }
 
-                // Always pass playlist + index so series navigation survives the round-trip
-               currentIndex = index;
-saveLastWatchedEpisode();
+                @Override
+                public void onPlaybackStateChanged(int state) {
+                    Log.d("PLAYER", "State: " + state);
+                    if (state == Player.STATE_ENDED) {
+                        clearSavedPosition();
+                        if (!playlist.isEmpty() && currentIndex < playlist.size() - 1) {
+                            playEpisode(currentIndex + 1);
+                        }
+                    }
+                    if (state == Player.STATE_READY && !resumeChecked) {
+                        saveLastWatchedEpisode(currentIndex);
+                        resumeChecked = true;
+                        if (forcedResumePos > 0) {
+                            player.seekTo(forcedResumePos);
+                            player.play();
+                            forcedResumePos = 0;
+                            return;
+                        }
+                        checkResumePosition();
+                        if (controlsVisible) {
+                            episodeBar.post(() -> scrollEpisodeIntoView(currentIndex));
+                        }
+                    }
+                }
+            });
 
-intent.putExtra("playlist", playlistStr);
-intent.putExtra("index", index);
+            findControllerViews();
+            buildRowArrays();
+            syncFullscreenIcon();
+            updateSeriesUI();
+            buildResumeOverlay();
+            wireButtons();
+            setupGestures();
+            setupLockButton();
+            setupPreviewRetriever();
+            startTimeUpdates();
 
-startActivity(intent);
-finish();
-
-            } catch (Exception e) {
-                Log.e("SERIES_DEBUG", "Episode switch failed", e);
-            }
+            hideControls();
+            Log.d("PLAYER_DEBUG", "FINAL_VIDEO_URL=" + videoUrl);
+            loadCurrentEpisode();
+            Log.d("PLAYER", "onCreate completed");
+        } catch (Exception e) {
+            Log.e("PLAYER", "CRASH IN ONCREATE", e);
+            Toast.makeText(this, "Player Error: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            finish();
         }
-private void saveLastWatchedEpisode() {
-    try {
-        if (playlist.isEmpty()) return;
-
-        JSONObject ep = playlist.get(currentIndex);
-
-        // Normalise season: treat missing/"0" as "1" — must match JS String(season || "1")
-        String season = ep.optString("season", "").trim();
-        if (season.isEmpty() || season.equals("0")) season = "1";
-
-        String episode   = ep.optString("episode", "");
-        String episodeId = ep.optString("id", "");
-
-        // Key must exactly match Home.js lwKey():
-        // `${normalize(seriesTitle)}_s${seasonNum}`
-        // normalize() = .toLowerCase().trim()
-        String normalizedTitle = seriesTitle.toLowerCase().trim();
-        String key = normalizedTitle + "_s" + season;
-
-        JSONObject data = new JSONObject();
-        data.put("episodeNum", episode);
-        data.put("episodeId", episodeId);
-        String dataStr = data.toString();
-
-        // Write to SharedPreferences — read by window.HariMovies.getSharedPrefAll()
-        getSharedPreferences("hm_last_watched", MODE_PRIVATE)
-                .edit()
-                .putString(key, dataStr)
-                .apply();
-
-        Log.d("LASTWATCH", "Saved key=" + key + " episode=" + episode);
-
-    } catch (Exception e) {
-        Log.e("LASTWATCH", "Save failed", e);
     }
-}
-        // ══════════════════════════════════════════════════════════════════════════
-        //  Resume position storage
-        // ══════════════════════════════════════════════════════════════════════════
-        private String posKey() {
-            String base = (seriesTitle != null && !seriesTitle.isEmpty()) ? seriesTitle : videoUrl;
 
-            if (!playlist.isEmpty() && currentIndex >= 0 && currentIndex < playlist.size()) {
-                try {
-                    JSONObject current = playlist.get(currentIndex);
-                    String epRef = current.optString("id",
-                                current.optString("link",
-                                current.optString("episode", String.valueOf(currentIndex))));
-                    return "pos_" + Math.abs(base.hashCode()) + "_ep_" + epRef;
-                } catch (Exception ignored) {}
-            }
+    // ══════════════════════════════════════════════════════════════════════════
+    //  Build row button arrays for focus management
+    // ══════════════════════════════════════════════════════════════════════════
+    private void buildRowArrays() {
+        // TOP ROW: Back(0) PictureMode(1) Fullscreen(2) Sync(3) Settings(4)
+        topRowButtons    = new View[]{ btnBack, btnPictureMode, btnFullscreen, btnSync, btnSettings };
+        // CENTER ROW: PrevEp(0) Rew(1) PlayPause(2) Ffwd(3) NextEp(4)
+        centerRowButtons = new View[]{ btnPrevEp, btnRew, btnPP, btnFfwd, btnNextEp };
+    }
 
-            return "pos_" + Math.abs(base.hashCode());
-        }
+    // ══════════════════════════════════════════════════════════════════════════
+    //  Time labels: current position + remaining
+    // ══════════════════════════════════════════════════════════════════════════
+    private void startTimeUpdates() {
+        timeUpdateHandler.removeCallbacks(timeUpdateRunnable);
+        timeUpdateHandler.post(timeUpdateRunnable);
+    }
 
-        private void saveCurrentPosition() {
-            if (player == null || resumeShowing) return;
+    private void updateTimestamps() {
+        if (player != null && tvCurrentTime != null && tvRemainingTime != null) {
             long pos = player.getCurrentPosition();
             long dur = player.getDuration();
-            if (dur > 0 && pos >= dur - 5_000) {
-                clearSavedPosition();
-            } else if (pos > MIN_RESUME_MS) {
-                getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
-                        .edit().putLong(posKey(), pos).apply();
-            }
-            scheduleSavePosition();
-        }
-
-        private void scheduleSavePosition() {
-            autoHideHandler.removeCallbacks(savePositionRunnable);
-            autoHideHandler.postDelayed(savePositionRunnable, SAVE_EVERY_MS);
-        }
-
-        private long getSavedPosition() {
-            return getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
-                    .getLong(posKey(), 0L);
-        }
-
-        private void clearSavedPosition() {
-            getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
-                    .edit().remove(posKey()).apply();
-        }
-
-        private void checkResumePosition() {
-            long saved = getSavedPosition();
-            Log.d("RESUME", "TITLE = " + videoTitle);
-            Log.d("RESUME", "URL = " + videoUrl);
-            Log.d("RESUME", "SAVED = " + saved);
-            if (saved > 10000) {
-                player.pause();
-                showResumeOverlay(saved);
-            } else {
-                clearSavedPosition();
-                player.play();
+            tvCurrentTime.setText(fmt(pos / 1000));
+            if (dur > 0) {
+                long rem = dur - pos;
+                tvRemainingTime.setText(String.format(Locale.US, "-%s", fmt(rem / 1000)));
             }
         }
+        timeUpdateHandler.postDelayed(timeUpdateRunnable, 500);
+    }
 
-        // ══════════════════════════════════════════════════════════════════════════
-        //  Build resume overlay
-        // ══════════════════════════════════════════════════════════════════════════
-        private void buildResumeOverlay() {
-            FrameLayout root = findViewById(android.R.id.content);
+    // ══════════════════════════════════════════════════════════════════════════
+    //  Accessibility helpers
+    // ══════════════════════════════════════════════════════════════════════════
+    private void updatePlayPauseAccessibility() {
+        if (btnPP == null) return;
+        boolean playing = player != null && player.isPlaying();
+        btnPP.setContentDescription(playing ? "Pause" : "Play");
+        btnPP.announceForAccessibility(playing ? "Paused" : "Playing");
+    }
 
-            LinearLayout card = new LinearLayout(this);
-            card.setOrientation(LinearLayout.VERTICAL);
-            card.setGravity(Gravity.CENTER);
-            card.setBackgroundColor(0xEE1A1A2E);
-            card.setPadding(dp(32), dp(28), dp(32), dp(28));
+    private void setButtonAccessibility(View btn, String desc) {
+        if (btn == null) return;
+        btn.setContentDescription(desc);
+        btn.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
+    }
 
-            FrameLayout.LayoutParams cardLp = new FrameLayout.LayoutParams(
-                    dp(340), FrameLayout.LayoutParams.WRAP_CONTENT);
-            cardLp.gravity = Gravity.CENTER;
-            card.setLayoutParams(cardLp);
-            card.setElevation(dp(8));
+    private void setupButtonAccessibility() {
+        setButtonAccessibility(btnBack,        "Back");
+        setButtonAccessibility(btnPictureMode, "Picture mode");
+        setButtonAccessibility(btnFullscreen,  "Fullscreen");
+        setButtonAccessibility(btnSync,        "Audio sync");
+        setButtonAccessibility(btnSettings,    "Settings");
+        setButtonAccessibility(btnRew,         "Rewind 5 seconds");
+        setButtonAccessibility(btnPP,          "Play Pause");
+        setButtonAccessibility(btnFfwd,        "Fast forward 10 seconds");
+        setButtonAccessibility(btnPrevEp,      "Previous episode");
+        setButtonAccessibility(btnNextEp,      "Next episode");
+        if (progressBar != null) {
+            progressBar.setContentDescription("Seek bar");
+            progressBar.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
+        }
+    }
 
-            TextView tvTitle = new TextView(this);
-            tvTitle.setText("Continue Watching?");
-            tvTitle.setTextColor(0xFFFFFFFF);
-            tvTitle.setTextSize(18);
-            tvTitle.setTypeface(null, android.graphics.Typeface.BOLD);
-            tvTitle.setGravity(Gravity.CENTER);
-            card.addView(tvTitle);
-
-            tvResumeTime = new TextView(this);
-            tvResumeTime.setTextColor(0xAAFFFFFF);
-            tvResumeTime.setTextSize(13);
-            tvResumeTime.setGravity(Gravity.CENTER);
-            LinearLayout.LayoutParams subLp = new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT);
-            subLp.setMargins(0, dp(8), 0, dp(20));
-            tvResumeTime.setLayoutParams(subLp);
-            card.addView(tvResumeTime);
-
-            TextView tvHint = new TextView(this);
-            tvHint.setText("◀ ▶ navigate  •  OK select");
-            tvHint.setTextColor(0x88FFFFFF);
-            tvHint.setTextSize(11);
-            tvHint.setGravity(Gravity.CENTER);
-            LinearLayout.LayoutParams hintLp = new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT);
-            hintLp.setMargins(0, 0, 0, dp(16));
-            tvHint.setLayoutParams(hintLp);
-            card.addView(tvHint);
-
-            LinearLayout btnRow = new LinearLayout(this);
-            btnRow.setOrientation(LinearLayout.HORIZONTAL);
-            btnRow.setGravity(Gravity.CENTER);
-
-            btnResume    = makeDialogButton("▶  Resume", true);
-            btnStartOver = makeDialogButton("↺  Start Over", false);
-
-            LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(0,
-                    LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
-            btnLp.setMargins(0, 0, dp(8), 0);
-            btnResume.setLayoutParams(btnLp);
-
-            LinearLayout.LayoutParams btnLp2 = new LinearLayout.LayoutParams(0,
-                    LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
-            btnStartOver.setLayoutParams(btnLp2);
-
-            btnRow.addView(btnResume);
-            btnRow.addView(btnStartOver);
-            card.addView(btnRow);
-
-            FrameLayout overlayContainer = new FrameLayout(this);
-            overlayContainer.setBackgroundColor(0xAA000000);
-            overlayContainer.setVisibility(View.GONE);
-            overlayContainer.addView(card);
-            resumeOverlay = overlayContainer;
-
-            root.addView(resumeOverlay, new FrameLayout.LayoutParams(
-                    FrameLayout.LayoutParams.MATCH_PARENT,
-                    FrameLayout.LayoutParams.MATCH_PARENT));
-
-            btnResume.setOnClickListener(v -> doResume());
-            btnStartOver.setOnClickListener(v -> doStartOver());
+    // ══════════════════════════════════════════════════════════════════════════
+    //  loadCurrentEpisode (unchanged logic)
+    // ══════════════════════════════════════════════════════════════════════════
+    private void loadCurrentEpisode() {
+        Log.d("STREAM_FOUND", "URL: " + videoUrl);
+        if (player == null || videoUrl == null || videoUrl.isEmpty()) {
+            Log.e("PLAYER", "Aborting: videoUrl is empty");
+            return;
         }
 
-        private Button makeDialogButton(String text, boolean primary) {
-            Button btn = new Button(this);
-            btn.setText(text);
-            btn.setTextColor(0xFFFFFFFF);
-            btn.setTextSize(13);
-            btn.setPadding(dp(16), dp(12), dp(16), dp(12));
-            btn.setBackgroundColor(primary ? 0xFFE50914 : 0xFF333355);
-            return btn;
+        // Detect Telegram links
+        if (videoUrl.contains("t.me/") || videoUrl.contains("telegram.me/")) {
+            resolveAndPlayTelegram();
+            return;
         }
 
-        private void showResumeOverlay(long savedMs) {
-            this.currentSavedPos = savedMs;
-            resumeShowing  = true;
-            resumeFocusCol = 0;
-            resumeOverlay.setVisibility(View.VISIBLE);
-            btnResume.setFocusable(true);
-            btnResume.setFocusableInTouchMode(true);
-            btnStartOver.setFocusable(true);
-            btnStartOver.setFocusableInTouchMode(true);
-            btnResume.requestFocus();
-            if (tvResumeTime != null) tvResumeTime.setText("Paused at " + fmt(savedMs / 1000));
-            updateResumeHighlight();
+        String resolvedUrl = StreamResolver.resolveStreamUrl(videoUrl);
+        Log.d("STREAM_RESOLVED", "URL: " + resolvedUrl);
+        setupPlayerWithUrl(resolvedUrl);
+    }
+
+    private void resolveAndPlayTelegram() {
+        if (progressBar != null) progressBar.setVisibility(View.VISIBLE);
+
+        // KEY INSIGHT: t.me/s/channel/postId exposes the CDN mp4 URL directly in HTML
+        // Convert: https://t.me/harimovie2830/11 → https://t.me/s/harimovie2830/11
+        String webPreviewUrl = videoUrl
+                .replace("https://t.me/", "https://t.me/s/")
+                .replace("http://t.me/", "https://t.me/s/");
+
+        // If already has /s/ don't double-add
+        if (!webPreviewUrl.contains("t.me/s/")) {
+            webPreviewUrl = videoUrl.replace("t.me/", "t.me/s/");
         }
 
-        private void hideResumeOverlay() {
-            resumeShowing = false;
-            resumeOverlay.setVisibility(View.GONE);
-        }
+        Log.d("TELEGRAM_RESOLVE", "Fetching: " + webPreviewUrl);
 
-        private void updateResumeHighlight() {
-            if (resumeFocusCol == 0) {
-                btnResume.requestFocus();
-                btnResume.setScaleX(1.1f);   btnResume.setScaleY(1.1f);
-                btnStartOver.setScaleX(1f);  btnStartOver.setScaleY(1f);
-            } else {
-                btnStartOver.requestFocus();
-                btnStartOver.setScaleX(1.1f); btnStartOver.setScaleY(1.1f);
-                btnResume.setScaleX(1f);      btnResume.setScaleY(1f);
+        Request request = new Request.Builder()
+                .url(webPreviewUrl)
+                .header("User-Agent",
+                        "Mozilla/5.0 (Linux; Android 12; Pixel 6) " +
+                        "AppleWebKit/537.36 (KHTML, like Gecko) " +
+                        "Chrome/120.0.0.0 Mobile Safari/537.36")
+                .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+                .header("Accept-Language", "en-US,en;q=0.5")
+                .build();
+
+        okHttpClient.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(@androidx.annotation.NonNull Call call, @androidx.annotation.NonNull IOException e) {
+                Log.e("TELEGRAM_RESOLVE", "Network error: " + e.getMessage());
+                runOnUiThread(() -> {
+                    if (progressBar != null) progressBar.setVisibility(View.GONE);
+                    Toast.makeText(PlayerActivity.this,
+                            "Network error loading video", Toast.LENGTH_SHORT).show();
+                });
             }
-        }
 
-        private void doResume() {
-            hideResumeOverlay();
-            if (player != null) {
-                player.seekTo(currentSavedPos);
-                player.play();
-            }
-            showControls();
-        }
-
-        private void doStartOver() {
-            clearSavedPosition();
-            hideResumeOverlay();
-            if (player != null) {
-                player.seekTo(0);
-                player.play();
-            }
-            showControls();
-        }
-
-        // ══════════════════════════════════════════════════════════════════════════
-        //  A/V Sync Dialog
-        // ══════════════════════════════════════════════════════════════════════════
-        private void showSyncDialog() {
-            FrameLayout root = findViewById(android.R.id.content);
-
-            FrameLayout overlay = new FrameLayout(this);
-            overlay.setBackgroundColor(0xAA000000);
-
-            LinearLayout card = new LinearLayout(this);
-            card.setOrientation(LinearLayout.VERTICAL);
-            card.setGravity(Gravity.CENTER_HORIZONTAL);
-            card.setBackgroundColor(0xEE1A1A2E);
-            card.setPadding(dp(28), dp(24), dp(28), dp(24));
-
-            FrameLayout.LayoutParams cardLp = new FrameLayout.LayoutParams(
-                    dp(320), FrameLayout.LayoutParams.WRAP_CONTENT);
-            cardLp.gravity = Gravity.CENTER;
-            card.setLayoutParams(cardLp);
-            card.setElevation(dp(8));
-
-            TextView tvTitle = new TextView(this);
-            tvTitle.setText("A/V Sync Adjust");
-            tvTitle.setTextColor(0xFFFFFFFF);
-            tvTitle.setTextSize(17);
-            tvTitle.setTypeface(null, android.graphics.Typeface.BOLD);
-            tvTitle.setGravity(Gravity.CENTER);
-            card.addView(tvTitle);
-
-            final TextView tvOffset = new TextView(this);
-            tvOffset.setTextColor(0xAAFFFFFF);
-            tvOffset.setTextSize(13);
-            tvOffset.setGravity(Gravity.CENTER);
-            LinearLayout.LayoutParams offLp = new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT);
-            offLp.setMargins(0, dp(8), 0, dp(4));
-            tvOffset.setLayoutParams(offLp);
-
-            TextView tvHint = new TextView(this);
-            tvHint.setTextColor(0x88FFFFFF);
-            tvHint.setTextSize(11);
-            tvHint.setGravity(Gravity.CENTER);
-            tvHint.setText("Audio early → drag left (−)  •  Audio late → drag right (+)");
-            LinearLayout.LayoutParams hintLp = new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT);
-            hintLp.setMargins(0, 0, 0, dp(14));
-            tvHint.setLayoutParams(hintLp);
-
-            final SeekBar seekBar = new SeekBar(this);
-            seekBar.setMax(4000);
-            int currentProgress = (int)(audioOffsetUs / 1000L) + 2000;
-            seekBar.setProgress(currentProgress);
-            seekBar.getProgressDrawable().setColorFilter(
-                    0xFFE50914, android.graphics.PorterDuff.Mode.SRC_IN);
-            seekBar.getThumb().setColorFilter(
-                    0xFFE50914, android.graphics.PorterDuff.Mode.SRC_IN);
-
-            LinearLayout.LayoutParams sbLp = new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT);
-            sbLp.setMargins(0, 0, 0, dp(6));
-            seekBar.setLayoutParams(sbLp);
-
-            LinearLayout rangeRow = new LinearLayout(this);
-            rangeRow.setOrientation(LinearLayout.HORIZONTAL);
-            rangeRow.setLayoutParams(new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT));
-
-            TextView tvMin = new TextView(this);
-            tvMin.setText("−2000ms");
-            tvMin.setTextColor(0x88FFFFFF);
-            tvMin.setTextSize(10);
-            rangeRow.addView(tvMin, new LinearLayout.LayoutParams(
-                    0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-
-            TextView tvMid = new TextView(this);
-            tvMid.setText("0");
-            tvMid.setTextColor(0x88FFFFFF);
-            tvMid.setTextSize(10);
-            tvMid.setGravity(Gravity.CENTER);
-            rangeRow.addView(tvMid, new LinearLayout.LayoutParams(
-                    0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-
-            TextView tvMax = new TextView(this);
-            tvMax.setText("+2000ms");
-            tvMax.setTextColor(0x88FFFFFF);
-            tvMax.setTextSize(10);
-            tvMax.setGravity(Gravity.END);
-            LinearLayout.LayoutParams maxLp = new LinearLayout.LayoutParams(
-                    0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
-            maxLp.setMargins(0, 0, 0, dp(14));
-            rangeRow.addView(tvMax, maxLp);
-
-            Runnable updateLabel = () -> {
-                long ms = seekBar.getProgress() - 2000;
-                tvOffset.setText("Offset: " + (ms >= 0 ? "+" : "") + ms + " ms");
-            };
-            updateLabel.run();
-
-            seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-                @Override public void onProgressChanged(SeekBar sb, int progress, boolean fromUser) {
-                    updateLabel.run();
+            @Override
+            public void onResponse(@androidx.annotation.NonNull Call call, @androidx.annotation.NonNull Response response) throws IOException {
+                if (!response.isSuccessful()) {
+                    runOnUiThread(() -> attemptFallback(videoUrl));
+                    return;
                 }
-                @Override public void onStartTrackingTouch(SeekBar sb) {}
-                @Override public void onStopTrackingTouch(SeekBar sb) {}
-            });
+                okhttp3.ResponseBody body = response.body();
+                if (body == null) {
+                    runOnUiThread(() -> attemptFallback(videoUrl));
+                    return;
+                }
+                String html = body.string();
+                Log.d("TELEGRAM_RESOLVE", "Got HTML, length=" + html.length());
 
-            card.addView(tvOffset);
-            card.addView(tvHint);
-            card.addView(seekBar);
-            card.addView(rangeRow);
+                String cdnUrl = extractTelegramCdnUrl(html);
 
-            LinearLayout btnRow = new LinearLayout(this);
-            btnRow.setOrientation(LinearLayout.HORIZONTAL);
-            btnRow.setGravity(Gravity.CENTER);
-
-            Button btnReset = makeDialogButton("↺  Reset", false);
-            Button btnApply = makeDialogButton("✓  Apply", true);
-
-            LinearLayout.LayoutParams b1 = new LinearLayout.LayoutParams(
-                    0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
-            b1.setMargins(0, 0, dp(8), 0);
-            btnReset.setLayoutParams(b1);
-            btnApply.setLayoutParams(new LinearLayout.LayoutParams(
-                    0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-
-            btnRow.addView(btnReset);
-            btnRow.addView(btnApply);
-            card.addView(btnRow);
-
-            overlay.addView(card);
-            root.addView(overlay, new FrameLayout.LayoutParams(
-                    FrameLayout.LayoutParams.MATCH_PARENT,
-                    FrameLayout.LayoutParams.MATCH_PARENT));
-
-            btnApply.setOnClickListener(v -> {
-                long ms = seekBar.getProgress() - 2000;
-                audioOffsetUs = ms * 1000L;
-                applyAudioOffset();
-                root.removeView(overlay);
-            });
-
-            btnReset.setOnClickListener(v -> {
-                seekBar.setProgress(2000);
-                audioOffsetUs = 0L;
-                applyAudioOffset();
-                root.removeView(overlay);
-            });
-
-            overlay.setOnClickListener(v -> root.removeView(overlay));
-            card.setOnClickListener(v -> { /* consume */ });
-        }
-
-        private void showTrackSelectionDialog() {
-            if (player == null) return;
-            TrackSelectionDialog dialog = TrackSelectionDialog.newInstance(player, null);
-            dialog.show(getSupportFragmentManager(), "TrackSelectionDialog");
-        }
-
-        private void applyAudioOffset() {
-            if (player == null) return;
-            try {
-                String msg = audioOffsetUs == 0
-                        ? "A/V Sync reset"
-                        : "A/V Sync: " + (audioOffsetUs > 0 ? "+" : "") + (audioOffsetUs / 1000) + " ms";
-                Toast.makeText(this, msg, Toast.LENGTH_SHORT).show();
-                Log.d("AVSYNC", "Audio offset: " + audioOffsetUs + " us");
-            } catch (Exception e) {
-                Log.e("AVSYNC", "applyAudioOffset failed: " + e.getMessage());
+                if (cdnUrl != null) {
+                    Log.d("TELEGRAM_RESOLVE", "CDN URL found: " + cdnUrl);
+                    runOnUiThread(() -> {
+                        if (progressBar != null) progressBar.setVisibility(View.GONE);
+                        setupTelegramCdnPlayer(cdnUrl);
+                    });
+                } else {
+                    Log.e("TELEGRAM_RESOLVE", "No CDN URL found in HTML");
+                    runOnUiThread(() -> attemptFallback(videoUrl));
+                }
             }
+        });
+    }
+
+    private String extractTelegramCdnUrl(String html) {
+        // Pattern 1: cdn5.telesco.pe MP4 with token (YOUR CHANNEL'S EXACT FORMAT)
+        // Matches: https://cdn5.telesco.pe/file/xxxxx.mp4?token=...
+        Pattern p1 = Pattern.compile(
+                "(https://cdn\\d*\\.telesco\\.pe/file/[^\\s\"'<>]+\\.mp4[^\\s\"'<>]*)");
+        Matcher m1 = p1.matcher(html);
+        if (m1.find()) {
+            String url = m1.group(1);
+            if (url == null) return null;
+            // Unescape HTML entities like &amp; → &
+            url = url.replace("&amp;", "&");
+            return url;
         }
 
-        private void setupPreviewRetriever() {
-            touchHoldRunnable = new Runnable() {
-                @Override
-                public void run() {
-                    if (touchHoldSide != 0) {
-                        touchHoldCount++;
-                        long delta = 200L;
-                        if (touchHoldCount > 20) delta = 500L;
-                        if (touchHoldCount > 50) delta = 2000L;
-                        fastSeek(touchHoldSide * delta);
-                        autoHideHandler.postDelayed(this, 100);
-                    }
-                }
-            };
-            startTouchHoldRunnable = () -> {
-                if (!dirLocked && !isLocked && !resumeShowing) {
-                    if (downInLeft) touchHoldSide = -1;
-                    else if (downInRight) touchHoldSide = 1;
-                    if (touchHoldSide != 0) {
-                        touchHoldCount = 0;
-                        showControls();
-                        if (previewContainer != null) previewContainer.setVisibility(View.VISIBLE);
-                        autoHideHandler.post(touchHoldRunnable);
-                    }
-                }
-            };
+        // Pattern 2: Any video.telegram.org CDN
+        Pattern p2 = Pattern.compile(
+                "(https://video\\.telegram\\.org/[^\\s\"'<>]+)");
+        Matcher m2 = p2.matcher(html);
+        if (m2.find()) {
+            String g = m2.group(1);
+            return g != null ? g.replace("&amp;", "&") : null;
+        }
 
-            previewThread = new HandlerThread("PreviewFrameThread");
-            previewThread.start();
-            previewHandler = new Handler(previewThread.getLooper());
+        // Pattern 3: <video src="...">
+        Pattern p3 = Pattern.compile("<video[^>]+src=[\"']([^\"']+)[\"']");
+        Matcher m3 = p3.matcher(html);
+        if (m3.find()) {
+            String g = m3.group(1);
+            return g != null ? g.replace("&amp;", "&") : null;
+        }
 
+        // Pattern 4: <source src="...">
+        Pattern p4 = Pattern.compile("<source[^>]+src=[\"']([^\"']+)[\"']");
+        Matcher m4 = p4.matcher(html);
+        if (m4.find()) {
+            String g = m4.group(1);
+            return g != null ? g.replace("&amp;", "&") : null;
+        }
+
+        return null;
+    }
+
+    private void setupTelegramCdnPlayer(String cdnUrl) {
+        resumeChecked = false;
+
+        // Update preview retriever for the resolved URL
+        if (previewHandler != null) {
+            final String url = cdnUrl;
             previewHandler.post(() -> {
                 try {
+                    if (retriever != null) retriever.release();
                     retriever = new MediaMetadataRetriever();
-                    retriever.setDataSource(videoUrl, requestHeaders);
+                    // telesco.pe CDN doesn't need special headers
+                    retriever.setDataSource(url, new HashMap<>());
                 } catch (Exception e) {
                     Log.e("PREVIEW", "Retriever error: " + e.getMessage());
                 }
             });
+        }
 
-            if (progressBar instanceof DefaultTimeBar) {
-                ((DefaultTimeBar) progressBar).addListener(new TimeBar.OnScrubListener() {
-                    @Override
-                    public void onScrubStart(TimeBar timeBar, long position) {
-                        autoHideHandler.removeCallbacks(autoHideRunnable);
-                        if (previewContainer != null) previewContainer.setVisibility(View.VISIBLE);
-                        updatePreviewFrame(position);
-                    }
+        DefaultHttpDataSource.Factory dsFactory = new DefaultHttpDataSource.Factory()
+                .setUserAgent(
+                    "Mozilla/5.0 (Linux; Android 12; Pixel 6) " +
+                    "AppleWebKit/537.36 (KHTML, like Gecko) " +
+                    "Chrome/120.0.0.0 Mobile Safari/537.36")
+                .setAllowCrossProtocolRedirects(true);
 
-                    @Override
-                    public void onScrubMove(TimeBar timeBar, long position) {
-                        autoHideHandler.removeCallbacks(autoHideRunnable);
-                        updatePreviewFrame(position);
-                    }
+        // telesco.pe CDN requires Referer from t.me
+        Map<String, String> headers = new HashMap<>();
+        headers.put("Referer", "https://t.me/");
+        headers.put("Origin", "https://t.me");
+        dsFactory.setDefaultRequestProperties(headers);
+        requestHeaders.putAll(headers);
 
-                    @Override
-                    public void onScrubStop(TimeBar timeBar, long position, boolean canceled) {
-                        if (previewContainer != null) previewContainer.setVisibility(View.GONE);
-                        scheduleHide();
+        // telesco.pe serves plain MP4 files
+        MediaSource mediaSource = new ProgressiveMediaSource.Factory(dsFactory)
+                .createMediaSource(MediaItem.fromUri(Uri.parse(cdnUrl)));
+
+        player.setMediaSource(mediaSource);
+        player.prepare();
+        player.play();
+
+        updateSeriesUI();
+    }
+
+    private void attemptFallback(String url) {
+        if (TelegramManager.INSTANCE.isReady()) {
+            // Only use TDLib if logged in
+            telegramRepository.resolveLinkToFileIdAsync(url, fileId -> {
+                if (fileId != null && fileId != 0) {
+                    runOnUiThread(() -> setupPlayerWithTelegram(fileId));
+                } else {
+                    runOnUiThread(() -> setupPlayerWithUrl(url));
+                }
+                return Unit.INSTANCE;
+            });
+        } else {
+            runOnUiThread(() -> {
+                if (progressBar != null) progressBar.setVisibility(View.GONE);
+                Toast.makeText(PlayerActivity.this,
+                        "Video is private or unavailable", Toast.LENGTH_LONG).show();
+                setupPlayerWithUrl(url);
+            });
+        }
+    }
+
+    private void setupPlayerWithTelegram(int fileId) {
+        TdLibDataSource.Factory factory = new TdLibDataSource.Factory(fileId);
+        ProgressiveMediaSource mediaSource = new ProgressiveMediaSource.Factory(factory)
+                .createMediaSource(MediaItem.fromUri(videoUrl));
+        
+        player.setMediaSource(mediaSource);
+        player.prepare();
+        player.play();
+        updateSeriesUI();
+    }
+
+    private void setupPlayerWithUrl(String resolvedUrl) {
+        resumeChecked = false;
+
+        if (previewHandler != null) {
+            previewHandler.post(() -> {
+                try {
+                    if (retriever != null) retriever.release();
+                    retriever = new MediaMetadataRetriever();
+                    retriever.setDataSource(resolvedUrl, requestHeaders);
+                } catch (Exception e) {
+                    Log.e("PREVIEW", "Retriever update error: " + e.getMessage());
+                }
+            });
+        }
+
+        DefaultHttpDataSource.Factory dsFactory =
+                new DefaultHttpDataSource.Factory()
+                        .setUserAgent(
+                            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+                            "AppleWebKit/537.36 (KHTML, like Gecko) " +
+                            "Chrome/148.0.0.0 Safari/537.36")
+                        .setAllowCrossProtocolRedirects(true);
+
+        Map<String, String> headers = new HashMap<>();
+        headers.put("Referer", "https://dub.onestream.today/");
+        headers.put("Cookie",  "cache_2685d8fa2727bff6=1781032689");
+        requestHeaders.putAll(headers);
+        dsFactory.setDefaultRequestProperties(headers);
+
+        MediaSource mediaSource;
+        if (StreamResolver.isHls(resolvedUrl)) {
+            Log.d("STREAM_TYPE", "HLS Detected");
+            mediaSource = new HlsMediaSource.Factory(dsFactory)
+                    .setAllowChunklessPreparation(true)
+                    .createMediaSource(MediaItem.fromUri(Uri.parse(resolvedUrl)));
+        } else if (StreamResolver.isDash(resolvedUrl)) {
+            Log.d("STREAM_TYPE", "DASH Detected");
+            mediaSource = new DashMediaSource.Factory(dsFactory)
+                    .createMediaSource(MediaItem.fromUri(Uri.parse(resolvedUrl)));
+        } else {
+            Log.d("STREAM_TYPE", "Progressive Detected");
+            mediaSource = new ProgressiveMediaSource.Factory(dsFactory)
+                    .createMediaSource(MediaItem.fromUri(Uri.parse(resolvedUrl)));
+        }
+
+        player.setMediaSource(mediaSource);
+        player.prepare();
+        player.play();
+        Log.d("STREAM_PLAYING", "URL: " + resolvedUrl);
+
+        updateSeriesUI();
+    }
+
+    private void updateSeriesUI() {
+        Log.d("EP_DEBUG", "Current episode index = " + currentIndex);
+
+        String badge = "";
+        if (!playlist.isEmpty()) {
+            try {
+                if (currentIndex >= 0 && currentIndex < playlist.size()) {
+                    JSONObject current = playlist.get(currentIndex);
+                    String epNum = current.optString("episode", "");
+                    String seasonNum = current.optString("season", "");
+                    if (!seasonNum.isEmpty() && !epNum.isEmpty()) {
+                        badge = String.format(Locale.US, "Season %s · Episode %s", seasonNum, epNum);
+                    } else if (!epNum.isEmpty()) {
+                        try {
+                            int num = Integer.parseInt(epNum);
+                            badge = String.format(Locale.US, "Episode %02d", num);
+                        } catch (Exception e) {
+                            badge = "Episode " + epNum;
+                        }
+                    } else {
+                        badge = String.format(Locale.US, "Episode %02d", currentIndex + 1);
                     }
-                });
+                }
+            } catch (Exception ignored) {}
+        }
+
+        if (tvTitle != null) {
+            if (!playlist.isEmpty() && !seriesTitle.isEmpty()) {
+                tvTitle.setText(seriesTitle);
+            } else {
+                tvTitle.setText(videoTitle);
             }
         }
 
-        private void updatePreviewFrame(long positionMs) {
-            if (previewTimeText != null) previewTimeText.setText(fmt(positionMs / 1000));
+        if (tvTitleSep != null) tvTitleSep.setVisibility(!badge.isEmpty() ? View.VISIBLE : View.GONE);
+        if (tvEpBadge != null) {
+            if (!badge.isEmpty()) {
+                tvEpBadge.setText(badge);
+                tvEpBadge.setVisibility(View.VISIBLE);
+                tvEpBadge.setTextColor(0xAAFFFFFF);
+            } else {
+                tvEpBadge.setVisibility(View.GONE);
+            }
+        }
 
-            if (progressBar != null && previewContainer != null) {
-                long duration = player != null ? player.getDuration() : 0;
-                if (duration > 0) {
-                    float progress = (float) positionMs / duration;
-                    int barWidth = progressBar.getWidth();
-                    float rawX = progressBar.getLeft() + (barWidth * progress) - (previewContainer.getWidth() / 2f);
-                    float margin = dp(12);
-                    float finalX = Math.max(margin, Math.min(rawX, playerView.getWidth() - previewContainer.getWidth() - margin));
-                    previewContainer.setX(finalX);
+        if (playlist.size() <= 1) {
+            if (btnNextEp != null) btnNextEp.setVisibility(View.GONE);
+            if (btnPrevEp != null) btnPrevEp.setVisibility(View.GONE);
+            if (episodeBar != null) episodeBar.setVisibility(View.GONE);
+            buildRowArrays();
+            return;
+        }
+
+        boolean hasNext = currentIndex < playlist.size() - 1;
+        boolean hasPrev = currentIndex > 0;
+        if (btnNextEp != null) btnNextEp.setVisibility(hasNext ? View.VISIBLE : View.GONE);
+        if (btnPrevEp != null) btnPrevEp.setVisibility(hasPrev ? View.VISIBLE : View.GONE);
+
+        if (episodeBar != null) {
+            if (controlsVisible) {
+                episodeBar.setVisibility(View.VISIBLE);
+                episodeBar.setAlpha(1.0f);
+                episodeBar.bringToFront();
+            } else {
+                episodeBar.setVisibility(View.GONE);
+            }
+        }
+
+        buildRowArrays();
+        buildEpisodeList();
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    //  Episode list — uses recycler-style view pool to handle 1000+ episodes
+    //  without lag. Uses fixed-size buttons in a HorizontalScrollView.
+    //  For truly large lists (>200), consider switching episodeContainer to
+    //  a horizontal RecyclerView with a LinearLayoutManager.
+    // ══════════════════════════════════════════════════════════════════════════
+    private void buildEpisodeList() {
+        if (episodeContainer == null) return;
+        episodeContainer.removeAllViews();
+
+        for (int i = 0; i < playlist.size(); i++) {
+            final int index = i;
+            Button btn = new Button(this);
+            btn.setText(String.valueOf(i + 1));
+            btn.setFocusable(true);
+            btn.setFocusableInTouchMode(false); // TV: no touch mode focus
+            btn.setTextSize(11);
+            btn.setAllCaps(false);
+            btn.setContentDescription("Episode " + (i + 1));
+            btn.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
+
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(56), dp(28));
+            lp.setMargins(dp(2), 0, dp(2), 0);
+            btn.setLayoutParams(lp);
+            btn.setPadding(dp(8), 0, dp(8), 0);
+
+            applyEpisodeBtnStyle(btn, i);
+
+            btn.setOnClickListener(v -> {
+                btn.announceForAccessibility("Playing episode " + (index + 1));
+                playEpisode(index);
+            });
+
+            btn.setOnFocusChangeListener((v, hasFocus) -> {
+                if (hasFocus) {
+                    episodeFocusIndex = index;
+                    btn.animate().scaleX(1.15f).scaleY(1.15f)
+                            .setDuration(150).setInterpolator(new AccelerateDecelerateInterpolator()).start();
+                    btn.setElevation(dp(4));
+                    scrollEpisodeIntoView(index);
+                    resetAutoHide();
+                } else {
+                    btn.animate().scaleX(1.0f).scaleY(1.0f)
+                            .setDuration(150).setInterpolator(new AccelerateDecelerateInterpolator()).start();
+                    btn.setElevation(0f);
+                    applyEpisodeBtnStyle(btn, index);
+                }
+            });
+
+            episodeContainer.addView(btn);
+        }
+    }
+
+    private void applyEpisodeBtnStyle(Button btn, int index) {
+        if (index == currentIndex) {
+            btn.setBackgroundResource(R.drawable.bg_episode_active);
+            btn.setTextColor(0xFF000000);
+        } else {
+            btn.setBackgroundResource(R.drawable.bg_segmented_item);
+            btn.setTextColor(0xFFFFFFFF);
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    //  playEpisode (unchanged logic, preserved exactly)
+    // ══════════════════════════════════════════════════════════════════════════
+    private void playEpisode(int index) {
+        if (index < 0 || index >= playlist.size()) return;
+        try {
+            JSONObject ep = playlist.get(index);
+            String epUrl   = ep.optString("link", "");
+            String epTitle = ep.optString("title", "");
+
+            if (epTitle.isEmpty()) {
+                String epNum = ep.optString("episode", "");
+                String seasonNum = ep.optString("season", "");
+                if (!seasonNum.isEmpty() && !epNum.isEmpty()) {
+                    epTitle = seriesTitle + " - Season " + seasonNum + " . Episode " + epNum;
+                } else if (!epNum.isEmpty()) {
+                    epTitle = seriesTitle + " - Episode " + epNum;
+                } else {
+                    epTitle = seriesTitle + " - Episode " + (index + 1);
                 }
             }
 
-            lastPreviewPos = positionMs;
-            if (!isPreviewLoading && retriever != null) {
-                fetchNextPreviewFrame();
+            JSONArray arr = new JSONArray();
+            for (JSONObject item : playlist) arr.put(item);
+            String playlistStr = arr.toString();
+
+            Log.d("SERIES_DEBUG", "playEpisode: index=" + index + " url=" + epUrl);
+
+            Intent intent;
+            if (StreamResolver.isDirectStream(epUrl) || StreamResolver.isHls(epUrl) || StreamResolver.isDash(epUrl)) {
+                Log.d("SERIES_DEBUG", "Route: DIRECT → PlayerActivity");
+                intent = new Intent(this, PlayerActivity.class);
+                intent.putExtra(PlayerActivity.EXTRA_URL, epUrl);
+                intent.putExtra(PlayerActivity.EXTRA_TITLE, epTitle);
+            } else {
+                Log.d("SERIES_DEBUG", "Route: IFRAME → WebPlayerActivity");
+                intent = new Intent(this, WebPlayerActivity.class);
+                intent.putExtra("url", epUrl);
+                intent.putExtra("title", epTitle);
+                if (epUrl.contains("youtube.com") || epUrl.contains("youtu.be")) {
+                    intent.putExtra("adblock", true);
+                }
+            }
+
+            saveLastWatchedEpisode(index);
+            intent.putExtra("playlist", playlistStr);
+            intent.putExtra("index", index);
+            startActivity(intent);
+            finish();
+        } catch (Exception e) {
+            Log.e("SERIES_DEBUG", "Episode switch failed", e);
+        }
+    }
+
+    private void saveLastWatchedEpisode(int index) {
+        try {
+            if (playlist.isEmpty() || index < 0 || index >= playlist.size()) return;
+            JSONObject ep = playlist.get(index);
+            String season = ep.optString("season", "").trim();
+            if (season.isEmpty() || season.equals("0")) season = "1";
+            String episode   = ep.optString("episode", "");
+            String episodeId = ep.optString("id", "");
+            String normalizedTitle = seriesTitle.toLowerCase().trim();
+            String key = normalizedTitle + "_s" + season;
+            JSONObject data = new JSONObject();
+            data.put("episodeNum", episode);
+            data.put("episodeId", episodeId);
+            getSharedPreferences("hm_last_watched", MODE_PRIVATE)
+                    .edit().putString(key, data.toString()).apply();
+            Log.d("LASTWATCH", "Saved key=" + key + " episode=" + episode);
+        } catch (Exception e) {
+            Log.e("LASTWATCH", "Save failed", e);
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    //  Resume position storage (unchanged)
+    // ══════════════════════════════════════════════════════════════════════════
+    private String posKey() {
+        if (!playlist.isEmpty() && currentIndex >= 0 && currentIndex < playlist.size()) {
+            try {
+                JSONObject current = playlist.get(currentIndex);
+                String epRef = current.optString("id",
+                            current.optString("link",
+                            current.optString("episode", String.valueOf(currentIndex))));
+                String base = (seriesTitle != null && !seriesTitle.isEmpty()) ? seriesTitle : videoUrl;
+                return "pos_" + Math.abs(base.hashCode()) + "_ep_" + epRef;
+            } catch (Exception ignored) {}
+        }
+        // Fallback for single videos or empty playlists: combine series and full title/URL to ensure uniqueness
+        String base = (seriesTitle != null && !seriesTitle.isEmpty()) ? seriesTitle : "";
+        String unique = (videoTitle != null && !videoTitle.isEmpty()) ? videoTitle : videoUrl;
+        return "pos_" + Math.abs(base.hashCode()) + "_" + Math.abs(unique.hashCode());
+    }
+
+    private void saveCurrentPosition() {
+        if (player == null || resumeShowing) return;
+        long pos = player.getCurrentPosition();
+        long dur = player.getDuration();
+        if (dur > 0 && pos >= dur - 5_000) {
+            clearSavedPosition();
+        } else if (pos > MIN_RESUME_MS) {
+            getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                    .edit().putLong(posKey(), pos).apply();
+        }
+        scheduleSavePosition();
+    }
+
+    private void scheduleSavePosition() {
+        autoHideHandler.removeCallbacks(savePositionRunnable);
+        autoHideHandler.postDelayed(savePositionRunnable, SAVE_EVERY_MS);
+    }
+
+    private long getSavedPosition() {
+        return getSharedPreferences(PREFS_NAME, MODE_PRIVATE).getLong(posKey(), 0L);
+    }
+
+    private void clearSavedPosition() {
+        getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit().remove(posKey()).apply();
+    }
+
+    private void checkResumePosition() {
+        long saved = getSavedPosition();
+        if (saved > 10000) {
+            player.pause();
+            showResumeOverlay(saved);
+        } else {
+            clearSavedPosition();
+            player.play();
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    //  Resume overlay (TV-optimized focus)
+    // ══════════════════════════════════════════════════════════════════════════
+    private void buildResumeOverlay() {
+        FrameLayout root = findViewById(android.R.id.content);
+
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setGravity(Gravity.CENTER);
+        card.setBackgroundColor(0xEE1A1A2E);
+        card.setPadding(dp(32), dp(28), dp(32), dp(28));
+        card.setFocusable(false);
+
+        FrameLayout.LayoutParams cardLp = new FrameLayout.LayoutParams(dp(340), FrameLayout.LayoutParams.WRAP_CONTENT);
+        cardLp.gravity = Gravity.CENTER;
+        card.setLayoutParams(cardLp);
+        card.setElevation(dp(8));
+
+        TextView tvDialogTitle = new TextView(this);
+        tvDialogTitle.setText(R.string.continue_watching);
+        tvDialogTitle.setTextColor(0xFFFFFFFF);
+        tvDialogTitle.setTextSize(18);
+        tvDialogTitle.setTypeface(null, android.graphics.Typeface.BOLD);
+        tvDialogTitle.setGravity(Gravity.CENTER);
+        card.addView(tvDialogTitle);
+
+        tvResumeTime = new TextView(this);
+        tvResumeTime.setTextColor(0xAAFFFFFF);
+        tvResumeTime.setTextSize(13);
+        tvResumeTime.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams subLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        subLp.setMargins(0, dp(8), 0, dp(20));
+        tvResumeTime.setLayoutParams(subLp);
+        card.addView(tvResumeTime);
+
+        TextView tvHint = new TextView(this);
+        tvHint.setText(R.string.resume_hint);
+        tvHint.setTextColor(0x88FFFFFF);
+        tvHint.setTextSize(11);
+        tvHint.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams hintLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        hintLp.setMargins(0, 0, 0, dp(16));
+        tvHint.setLayoutParams(hintLp);
+        card.addView(tvHint);
+
+        LinearLayout btnRow = new LinearLayout(this);
+        btnRow.setOrientation(LinearLayout.HORIZONTAL);
+        btnRow.setGravity(Gravity.CENTER);
+
+        btnResume    = makeDialogButton("▶  Resume", true);
+        btnStartOver = makeDialogButton("↺  Start Over", false);
+
+        btnResume.setContentDescription("Resume from saved position");
+        btnStartOver.setContentDescription("Start over from beginning");
+        btnResume.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
+        btnStartOver.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
+
+        LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+        btnLp.setMargins(0, 0, dp(8), 0);
+        btnResume.setLayoutParams(btnLp);
+        btnStartOver.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+
+        btnRow.addView(btnResume);
+        btnRow.addView(btnStartOver);
+        card.addView(btnRow);
+
+        FrameLayout overlayContainer = new FrameLayout(this);
+        overlayContainer.setBackgroundColor(0xAA000000);
+        overlayContainer.setVisibility(View.GONE);
+        overlayContainer.addView(card);
+        resumeOverlay = overlayContainer;
+
+        root.addView(resumeOverlay, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+
+        btnResume.setOnClickListener(v -> doResume());
+        btnStartOver.setOnClickListener(v -> doStartOver());
+    }
+
+    private Button makeDialogButton(String text, boolean primary) {
+        Button btn = new Button(this);
+        btn.setText(text);
+        btn.setTextColor(0xFFFFFFFF);
+        btn.setTextSize(13);
+        btn.setPadding(dp(16), dp(12), dp(16), dp(12));
+        btn.setBackgroundColor(primary ? 0xFFE50914 : 0xFF333355);
+        btn.setFocusable(true);
+        btn.setFocusableInTouchMode(true);
+        return btn;
+    }
+
+    private void showResumeOverlay(long savedMs) {
+        this.currentSavedPos = savedMs;
+        resumeShowing  = true;
+        resumeFocusCol = 0;
+        resumeOverlay.setVisibility(View.VISIBLE);
+        btnResume.requestFocus();
+        if (tvResumeTime != null) tvResumeTime.setText(getString(R.string.paused_at, fmt(savedMs / 1000)));
+        updateResumeHighlight();
+        resumeOverlay.announceForAccessibility("Continue watching dialog. Paused at " + fmt(savedMs / 1000));
+    }
+
+    private void hideResumeOverlay() {
+        resumeShowing = false;
+        resumeOverlay.setVisibility(View.GONE);
+    }
+
+    private void updateResumeHighlight() {
+        if (resumeFocusCol == 0) {
+            btnResume.requestFocus();
+            btnResume.setScaleX(1.1f);   btnResume.setScaleY(1.1f);
+            btnStartOver.setScaleX(1f);  btnStartOver.setScaleY(1f);
+        } else {
+            btnStartOver.requestFocus();
+            btnStartOver.setScaleX(1.1f); btnStartOver.setScaleY(1.1f);
+            btnResume.setScaleX(1f);      btnResume.setScaleY(1f);
+        }
+    }
+
+    private void doResume() {
+        hideResumeOverlay();
+        if (player != null) { player.seekTo(currentSavedPos); player.play(); }
+        showControls();
+    }
+
+    private void doStartOver() {
+        clearSavedPosition();
+        hideResumeOverlay();
+        if (player != null) { player.seekTo(0); player.play(); }
+        showControls();
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    //  A/V Sync Dialog (unchanged)
+    // ══════════════════════════════════════════════════════════════════════════
+    private void showSyncDialog() {
+        FrameLayout root = findViewById(android.R.id.content);
+        FrameLayout overlay = new FrameLayout(this);
+        overlay.setBackgroundColor(0xAA000000);
+
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setGravity(Gravity.CENTER_HORIZONTAL);
+        card.setBackgroundColor(0xEE1A1A2E);
+        card.setPadding(dp(28), dp(24), dp(28), dp(24));
+
+        FrameLayout.LayoutParams cardLp = new FrameLayout.LayoutParams(dp(320), FrameLayout.LayoutParams.WRAP_CONTENT);
+        cardLp.gravity = Gravity.CENTER;
+        card.setLayoutParams(cardLp);
+        card.setElevation(dp(8));
+
+        TextView tvDialogTitle = new TextView(this);
+        tvDialogTitle.setText(R.string.sync_adjust);
+        tvDialogTitle.setTextColor(0xFFFFFFFF);
+        tvDialogTitle.setTextSize(17);
+        tvDialogTitle.setTypeface(null, android.graphics.Typeface.BOLD);
+        tvDialogTitle.setGravity(Gravity.CENTER);
+        card.addView(tvDialogTitle);
+
+        final TextView tvOffset = new TextView(this);
+        tvOffset.setTextColor(0xAAFFFFFF);
+        tvOffset.setTextSize(13);
+        tvOffset.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams offLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        offLp.setMargins(0, dp(8), 0, dp(4));
+        tvOffset.setLayoutParams(offLp);
+
+        TextView tvHint = new TextView(this);
+        tvHint.setTextColor(0x88FFFFFF);
+        tvHint.setTextSize(11);
+        tvHint.setGravity(Gravity.CENTER);
+        tvHint.setText(R.string.sync_hint);
+        LinearLayout.LayoutParams hintLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        hintLp.setMargins(0, 0, 0, dp(14));
+        tvHint.setLayoutParams(hintLp);
+
+        final SeekBar seekBar = new SeekBar(this);
+        seekBar.setMax(4000);
+        int currentProgress = (int)(audioOffsetUs / 1000L) + 2000;
+        seekBar.setProgress(currentProgress);
+        seekBar.getProgressDrawable().setColorFilter(0xFFE50914, android.graphics.PorterDuff.Mode.SRC_IN);
+        seekBar.getThumb().setColorFilter(0xFFE50914, android.graphics.PorterDuff.Mode.SRC_IN);
+
+        LinearLayout.LayoutParams sbLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        sbLp.setMargins(0, 0, 0, dp(6));
+        seekBar.setLayoutParams(sbLp);
+
+        LinearLayout rangeRow = new LinearLayout(this);
+        rangeRow.setOrientation(LinearLayout.HORIZONTAL);
+        rangeRow.setLayoutParams(new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+
+        TextView tvMin = new TextView(this); tvMin.setText(R.string.sync_min); tvMin.setTextColor(0x88FFFFFF); tvMin.setTextSize(10);
+        TextView tvMid = new TextView(this); tvMid.setText(R.string.sync_mid);       tvMid.setTextColor(0x88FFFFFF); tvMid.setTextSize(10); tvMid.setGravity(Gravity.CENTER);
+        TextView tvMax2 = new TextView(this); tvMax2.setText(R.string.sync_max); tvMax2.setTextColor(0x88FFFFFF); tvMax2.setTextSize(10); tvMax2.setGravity(Gravity.END);
+        LinearLayout.LayoutParams maxLp = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+        maxLp.setMargins(0, 0, 0, dp(14));
+        rangeRow.addView(tvMin,  new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        rangeRow.addView(tvMid,  new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        rangeRow.addView(tvMax2, maxLp);
+
+        Runnable updateLabel = () -> {
+            long ms = seekBar.getProgress() - 2000;
+            tvOffset.setText(getString(R.string.sync_offset, ms >= 0 ? "+" : "", ms));
+        };
+        updateLabel.run();
+        seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar sb, int progress, boolean fromUser) { updateLabel.run(); }
+            @Override public void onStartTrackingTouch(SeekBar sb) {}
+            @Override public void onStopTrackingTouch(SeekBar sb) {}
+        });
+
+        card.addView(tvOffset);
+        card.addView(tvHint);
+        card.addView(seekBar);
+        card.addView(rangeRow);
+
+        LinearLayout btnRow = new LinearLayout(this);
+        btnRow.setOrientation(LinearLayout.HORIZONTAL);
+        btnRow.setGravity(Gravity.CENTER);
+
+        Button btnReset = makeDialogButton("↺  Reset", false);
+        Button btnApply = makeDialogButton("✓  Apply", true);
+
+        LinearLayout.LayoutParams b1 = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+        b1.setMargins(0, 0, dp(8), 0);
+        btnReset.setLayoutParams(b1);
+        btnApply.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        btnRow.addView(btnReset);
+        btnRow.addView(btnApply);
+        card.addView(btnRow);
+        overlay.addView(card);
+
+        root.addView(overlay, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+
+        btnApply.setOnClickListener(v -> {
+            long ms = seekBar.getProgress() - 2000;
+            audioOffsetUs = ms * 1000L;
+            applyAudioOffset();
+            root.removeView(overlay);
+            // Restore focus after dialog dismissed
+            if (controlsVisible) restoreLastFocus();
+        });
+        btnReset.setOnClickListener(v -> {
+            seekBar.setProgress(2000);
+            audioOffsetUs = 0L;
+            applyAudioOffset();
+            root.removeView(overlay);
+            if (controlsVisible) restoreLastFocus();
+        });
+        overlay.setOnClickListener(v -> {
+            root.removeView(overlay);
+            if (controlsVisible) restoreLastFocus();
+        });
+        card.setOnClickListener(v -> { /* consume */ });
+
+        btnApply.requestFocus();
+    }
+
+    private void showTrackSelectionDialog() {
+        if (player == null) return;
+        TrackSelectionDialog dialog = TrackSelectionDialog.newInstance(player, null);
+        dialog.show(getSupportFragmentManager(), "TrackSelectionDialog");
+    }
+
+    private void applyAudioOffset() {
+        if (player == null || delayAudioProcessor == null) return;
+        try {
+            delayAudioProcessor.setDelayUs(audioOffsetUs);
+            player.seekTo(player.getCurrentPosition());
+
+            String msg = audioOffsetUs == 0
+                    ? "A/V Sync reset"
+                    : "A/V Sync: " + (audioOffsetUs > 0 ? "+" : "") + (audioOffsetUs / 1000) + " ms";
+            Toast.makeText(this, msg, Toast.LENGTH_SHORT).show();
+        } catch (Exception e) {
+            Log.e("AVSYNC", "applyAudioOffset failed: " + e.getMessage());
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    //  Preview retriever (unchanged logic)
+    // ══════════════════════════════════════════════════════════════════════════
+    private void setupPreviewRetriever() {
+        touchHoldRunnable = new Runnable() {
+            @Override
+            public void run() {
+                if (touchHoldSide != 0) {
+                    touchHoldCount++;
+                    long delta = 200L;
+                    if (touchHoldCount > 20) delta = 500L;
+                    if (touchHoldCount > 50) delta = 2000L;
+                    fastSeek(touchHoldSide * delta);
+                    autoHideHandler.postDelayed(this, 100);
+                }
+            }
+        };
+        startTouchHoldRunnable = () -> {
+            if (!dirLocked && !isLocked && !resumeShowing) {
+                if (downInLeft) touchHoldSide = -1;
+                else if (downInRight) touchHoldSide = 1;
+                if (touchHoldSide != 0) {
+                    touchHoldCount = 0;
+                    showControls();
+                    if (previewContainer != null) previewContainer.setVisibility(View.VISIBLE);
+                    autoHideHandler.post(touchHoldRunnable);
+                }
+            }
+        };
+
+        previewThread = new HandlerThread("PreviewFrameThread");
+        previewThread.start();
+        previewHandler = new Handler(previewThread.getLooper());
+
+        previewHandler.post(() -> {
+            try {
+                retriever = new MediaMetadataRetriever();
+                retriever.setDataSource(videoUrl, requestHeaders);
+            } catch (Exception e) {
+                Log.e("PREVIEW", "Retriever error: " + e.getMessage());
+            }
+        });
+
+        if (progressBar instanceof DefaultTimeBar) {
+            ((DefaultTimeBar) progressBar).addListener(new TimeBar.OnScrubListener() {
+                @Override
+                public void onScrubStart(@androidx.annotation.NonNull TimeBar timeBar, long position) {
+                    isSeeking = true;
+                    autoHideHandler.removeCallbacks(autoHideRunnable); // don't hide while seeking
+                    if (previewContainer != null) previewContainer.setVisibility(View.VISIBLE);
+                    updatePreviewFrame(position);
+                }
+                @Override
+                public void onScrubMove(@androidx.annotation.NonNull TimeBar timeBar, long position) {
+                    updatePreviewFrame(position);
+                }
+                @Override
+                public void onScrubStop(@androidx.annotation.NonNull TimeBar timeBar, long position, boolean canceled) {
+                    isSeeking = false;
+                    if (previewContainer != null) previewContainer.setVisibility(View.GONE);
+                    scheduleHide();
+                }
+            });
+        }
+    }
+
+    private void updatePreviewFrame(long positionMs) {
+        if (previewTimeText != null) {
+            long dur = player != null ? player.getDuration() : 0;
+            String current = fmt(positionMs / 1000);
+            if (dur > 0) {
+                previewTimeText.setText(getString(R.string.preview_time_format, current, fmt(dur / 1000)));
+            } else {
+                previewTimeText.setText(current);
             }
         }
 
-        private void fetchNextPreviewFrame() {
-            if (lastPreviewPos == -1 || retriever == null || previewHandler == null) return;
+        if (progressBar != null && previewContainer != null) {
+            long duration = player != null ? player.getDuration() : 0;
+            if (duration > 0) {
+                float progress = (float) positionMs / duration;
+                int barWidth = progressBar.getWidth();
+                float rawX = progressBar.getLeft() + (barWidth * progress) - (previewContainer.getWidth() / 2f);
+                float margin = dp(12);
+                float finalX = Math.max(margin, Math.min(rawX, playerView.getWidth() - previewContainer.getWidth() - margin));
+                previewContainer.setX(finalX);
+            }
+        }
 
-            final long posUs = lastPreviewPos * 1000L;
-            isPreviewLoading = true;
+        lastPreviewPos = positionMs;
+        if (!isPreviewLoading && retriever != null) fetchNextPreviewFrame();
+    }
 
-            previewHandler.post(() -> {
-                try {
-                    Bitmap bmp;
-                    // Use OPTION_CLOSEST_SYNC (2) instead of OPTION_CLOSEST (3) for speed and reliability on remote streams
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-                        bmp = retriever.getScaledFrameAtTime(posUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC, 240, 135);
-                    } else {
-                        bmp = retriever.getFrameAtTime(posUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC);
-                    }
-
-                    if (bmp != null) {
-                        runOnUiThread(() -> {
-                            if (previewImage != null) {
-                                previewImage.setImageBitmap(bmp);
-                                previewImage.setAlpha(1.0f);
-                            }
-                        });
-                    } else {
-                        Log.w("PREVIEW", "Retrieved null frame at " + posUs + " us");
-                    }
-                } catch (Exception e) {
-                    Log.e("PREVIEW", "Frame fetch error at " + posUs + " us: " + e.getMessage());
-                } finally {
-                    isPreviewLoading = false;
+    private void fetchNextPreviewFrame() {
+        if (lastPreviewPos == -1 || retriever == null || previewHandler == null) return;
+        final long posUs = lastPreviewPos * 1000L;
+        isPreviewLoading = true;
+        previewHandler.post(() -> {
+            try {
+                Bitmap bmp;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                    bmp = retriever.getScaledFrameAtTime(posUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC, 240, 135);
+                } else {
+                    bmp = retriever.getFrameAtTime(posUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC);
+                }
+                if (bmp != null) {
                     runOnUiThread(() -> {
-                        // If the scrub position moved significantly while we were fetching, fetch again
-                        if (Math.abs(lastPreviewPos * 1000L - posUs) > 1000000L) {
-                            fetchNextPreviewFrame();
+                        if (previewImage != null) {
+                            previewImage.setImageBitmap(bmp);
+                            previewImage.setAlpha(1.0f);
                         }
                     });
                 }
-            });
-        }
-
-        // ══════════════════════════════════════════════════════════════════════════
-        //  Formatters / utils
-        // ══════════════════════════════════════════════════════════════════════════
-        private String fmt(long secs) {
-            long h = secs / 3600, m = (secs % 3600) / 60, s = secs % 60;
-            if (h > 0) return h + ":" + pad(m) + ":" + pad(s);
-            return m + ":" + pad(s);
-        }
-
-        private String pad(long n) { return n < 10 ? "0" + n : String.valueOf(n); }
-
-        private int dp(int val) {
-            return (int)(val * getResources().getDisplayMetrics().density);
-        }
-
-        private String cleanSeriesTitle(String title) {
-            if (title == null || title.isEmpty()) return "";
-
-            // 1. Look for common metadata keywords and cut before them
-            String lower = title.toLowerCase();
-            int epIdx = lower.indexOf(" episode");
-            int seaIdx = lower.indexOf(" season");
-
-            int cutIdx = -1;
-            if (epIdx != -1 && seaIdx != -1) cutIdx = Math.min(epIdx, seaIdx);
-            else if (epIdx != -1) cutIdx = epIdx;
-            else if (seaIdx != -1) cutIdx = seaIdx;
-
-            if (cutIdx != -1) {
-                String prefix = title.substring(0, cutIdx);
-                // Clean trailing separators like " · ", " - ", " | " from the prefix
-                return prefix.replaceAll("\\s*[\\u00B7\\u2022\\u2013\\u2014\\-|:]\\s*$", "").trim();
+            } catch (Exception e) {
+                Log.e("PREVIEW", "Frame fetch error: " + e.getMessage());
+            } finally {
+                isPreviewLoading = false;
+                runOnUiThread(() -> {
+                    if (Math.abs(lastPreviewPos * 1000L - posUs) > 1000000L) fetchNextPreviewFrame();
+                });
             }
+        });
+    }
 
-            // 2. Fallback: split by common separators if they look like metadata dividers
-            String[] separators = {" · ", " - ", " | ", " — ", " – "};
-            for (String sep : separators) {
-                int idx = title.indexOf(sep);
-                if (idx != -1) {
-                    return title.substring(0, idx).trim();
-                }
+    // ══════════════════════════════════════════════════════════════════════════
+    //  Formatters / utils
+    // ══════════════════════════════════════════════════════════════════════════
+    private String fmt(long secs) {
+        long h = secs / 3600, m = (secs % 3600) / 60, s = secs % 60;
+        if (h > 0) return h + ":" + pad(m) + ":" + pad(s);
+        return m + ":" + pad(s);
+    }
+
+    private String pad(long n) { return n < 10 ? "0" + n : String.valueOf(n); }
+
+    private int dp(int val) {
+        return (int)(val * getResources().getDisplayMetrics().density);
+    }
+
+    private String cleanSeriesTitle(String title) {
+        if (title == null || title.isEmpty()) return "";
+        String lower = title.toLowerCase();
+        int epIdx = lower.indexOf(" episode");
+        int seaIdx = lower.indexOf(" season");
+        int cutIdx = -1;
+        if (epIdx != -1 && seaIdx != -1) cutIdx = Math.min(epIdx, seaIdx);
+        else if (epIdx != -1) cutIdx = epIdx;
+        else if (seaIdx != -1) cutIdx = seaIdx;
+        if (cutIdx != -1) {
+            return title.substring(0, cutIdx).replaceAll("\\s*[\\u00B7\\u2022\\u2013\\u2014\\-|:]\\s*$", "").trim();
+        }
+        String[] separators = {" · ", " - ", " | ", " — ", " – "};
+        for (String sep : separators) {
+            int idx = title.indexOf(sep);
+            if (idx != -1) return title.substring(0, idx).trim();
+        }
+        return title;
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    //  Find views + accessibility setup
+    // ══════════════════════════════════════════════════════════════════════════
+    private void findControllerViews() {
+        brightnessIndicator = playerView.findViewById(R.id.gesture_brightness_indicator);
+        tvBrightnessValue   = playerView.findViewById(R.id.tv_brightness_value);
+        volumeIndicator     = playerView.findViewById(R.id.gesture_volume_indicator);
+        viewBrightnessFill  = playerView.findViewById(R.id.view_brightness_fill);
+        viewVolumeFill      = playerView.findViewById(R.id.view_volume_fill);
+        tvVolumeValue       = playerView.findViewById(R.id.tv_volume_value);
+        seekIndicator       = playerView.findViewById(R.id.seek_indicator);
+        seekIcon            = playerView.findViewById(R.id.seek_icon);
+        tvSeekDelta         = playerView.findViewById(R.id.tv_seek_delta);
+        topBar              = playerView.findViewById(R.id.top_bar);
+        centerControls      = playerView.findViewById(R.id.center_controls);
+        bottomBar           = playerView.findViewById(R.id.bottom_bar);
+        scrimTop            = playerView.findViewById(R.id.scrim_top);
+        scrimBottom         = playerView.findViewById(R.id.scrim_bottom);
+        btnLock             = findViewById(R.id.btn_lock);
+        tvLockHint          = findViewById(R.id.tv_lock_hint);
+
+        btnBack             = playerView.findViewById(R.id.btn_back);
+        btnPictureMode      = playerView.findViewById(R.id.btn_picture_mode);
+        btnFullscreen       = playerView.findViewById(R.id.btn_fullscreen);
+        btnSync             = playerView.findViewById(R.id.btn_sync);
+        btnSettings         = playerView.findViewById(R.id.btn_settings);
+
+        btnRew              = playerView.findViewById(R.id.exo_rew);
+        btnPP               = playerView.findViewById(R.id.exo_play_pause);
+        btnFfwd             = playerView.findViewById(R.id.exo_ffwd);
+        btnNextEp           = playerView.findViewById(R.id.btn_next_ep);
+        btnPrevEp           = playerView.findViewById(R.id.btn_prev_ep);
+
+        tvEpBadge           = playerView.findViewById(R.id.mp_ep_badge);
+        episodeBar          = playerView.findViewById(R.id.episode_bar);
+        episodeContainer    = playerView.findViewById(R.id.episode_container);
+        tvTitle             = playerView.findViewById(R.id.tv_title);
+        tvTitleSep          = playerView.findViewById(R.id.tv_title_sep);
+
+        progressBar         = playerView.findViewById(R.id.exo_progress);
+        previewContainer    = playerView.findViewById(R.id.preview_container);
+        previewImage        = playerView.findViewById(R.id.preview_image);
+        previewTimeText     = playerView.findViewById(R.id.preview_time);
+
+        // Optional: current/remaining time labels (add to layout if desired)
+        tvCurrentTime       = playerView.findViewById(R.id.tv_current_time);
+        tvRemainingTime     = playerView.findViewById(R.id.tv_remaining_time);
+
+        // Disable system focus traversal — we manage it manually for TV
+        disableSystemFocusTraversal();
+        setupButtonAccessibility();
+    }
+
+    /**
+     * Disable Android's automatic focus traversal on all player controls.
+     * We drive focus entirely through onKeyDown() so the remote never gets
+     * "lost" between buttons or jumps to unexpected views.
+     */
+    private void disableSystemFocusTraversal() {
+        View[] allButtons = { btnBack, btnPictureMode, btnFullscreen, btnSync, btnSettings,
+                              btnRew, btnPP, btnFfwd, btnNextEp, btnPrevEp };
+        for (View v : allButtons) {
+            if (v == null) continue;
+            v.setFocusable(true);
+            v.setFocusableInTouchMode(false);
+            // Remove next-focus IDs so system doesn't traverse; we handle it
+            v.setNextFocusUpId(v.getId());
+            v.setNextFocusDownId(v.getId());
+            v.setNextFocusLeftId(v.getId());
+            v.setNextFocusRightId(v.getId());
+        }
+        if (progressBar != null) {
+            progressBar.setFocusable(true);
+            progressBar.setFocusableInTouchMode(false);
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    //  Fullscreen icon sync
+    // ══════════════════════════════════════════════════════════════════════════
+    private void syncFullscreenIcon() {
+        int orientation = getResources().getConfiguration().orientation;
+        isFullscreen = (orientation == Configuration.ORIENTATION_LANDSCAPE);
+        if (btnFullscreen != null) {
+            btnFullscreen.setImageResource(
+                    isFullscreen ? R.drawable.ic_fullscreen_exit : R.drawable.ic_fullscreen);
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    //  FOCUS MANAGEMENT — Netflix-style, no overshoot, no focus loss
+    // ══════════════════════════════════════════════════════════════════════════
+
+    /** Save current position before opening a dialog or overlay */
+    private void saveLastFocus() {
+        lastFocusRow = focusRow;
+        lastFocusCol = focusCol;
+    }
+
+    /** Restore focus after a dialog/overlay is dismissed */
+    private void restoreLastFocus() {
+        focusRow = lastFocusRow;
+        focusCol = lastFocusCol;
+        updateFocusHighlight();
+    }
+
+    /** Reset auto-hide timer on any remote interaction */
+    private void resetAutoHide() {
+        if (player != null && player.isPlaying()) {
+            scheduleHide();
+        }
+    }
+
+    private void updateFocusHighlight() {
+        // Clear all highlights first
+        View[] allButtons = { btnBack, btnPictureMode, btnFullscreen, btnSync, btnSettings,
+                              btnRew, btnPP, btnFfwd, btnNextEp, btnPrevEp };
+        for (View v : allButtons) clearHighlight(v);
+
+        // Seekbar state
+        if (progressBar != null) {
+            if (focusRow == 2) {
+                progressBar.setScaleY(2.2f);
+                progressBar.setAlpha(1f);
+                if (previewContainer != null) previewContainer.setVisibility(View.VISIBLE);
+                updatePreviewFrame(player != null ? player.getCurrentPosition() : 0);
+            } else {
+                progressBar.setScaleY(1f);
+                progressBar.setAlpha(0.6f);
+                if (!isSeeking && previewContainer != null) previewContainer.setVisibility(View.GONE);
             }
-
-            return title;
         }
 
-        // ══════════════════════════════════════════════════════════════════════════
-        //  Find views
-        // ══════════════════════════════════════════════════════════════════════════
-        private void findControllerViews() {
-            brightnessIndicator = playerView.findViewById(R.id.gesture_brightness_indicator);
-            tvBrightnessValue   = playerView.findViewById(R.id.tv_brightness_value);
-            volumeIndicator     = playerView.findViewById(R.id.gesture_volume_indicator);
-            viewBrightnessFill  = playerView.findViewById(R.id.view_brightness_fill);
-            viewVolumeFill      = playerView.findViewById(R.id.view_volume_fill);
-            tvVolumeValue       = playerView.findViewById(R.id.tv_volume_value);
-            seekIndicator       = playerView.findViewById(R.id.seek_indicator);
-            seekIcon            = playerView.findViewById(R.id.seek_icon);
-            tvSeekDelta         = playerView.findViewById(R.id.tv_seek_delta);
-            topBar              = playerView.findViewById(R.id.top_bar);
-            centerControls      = playerView.findViewById(R.id.center_controls);
-            bottomBar           = playerView.findViewById(R.id.bottom_bar);
-            scrimTop            = playerView.findViewById(R.id.scrim_top);
-            scrimBottom         = playerView.findViewById(R.id.scrim_bottom);
-            btnLock             = findViewById(R.id.btn_lock);
-            tvLockHint          = findViewById(R.id.tv_lock_hint);
-
-            btnBack             = playerView.findViewById(R.id.btn_back);
-            btnPictureMode      = playerView.findViewById(R.id.btn_picture_mode);
-            btnFullscreen       = playerView.findViewById(R.id.btn_fullscreen);
-            btnSync             = playerView.findViewById(R.id.btn_sync);
-            btnSettings         = playerView.findViewById(R.id.btn_settings);
-
-            btnRew              = playerView.findViewById(R.id.exo_rew);
-            btnPP               = playerView.findViewById(R.id.exo_play_pause);
-            btnFfwd             = playerView.findViewById(R.id.exo_ffwd);
-            btnNextEp           = playerView.findViewById(R.id.btn_next_ep);
-            btnPrevEp           = playerView.findViewById(R.id.btn_prev_ep);
-
-            tvEpBadge           = playerView.findViewById(R.id.mp_ep_badge);
-            episodeBar          = playerView.findViewById(R.id.episode_bar);
-            episodeContainer    = playerView.findViewById(R.id.episode_container);
-            tvTitle             = playerView.findViewById(R.id.tv_title);
-            tvTitleSep          = playerView.findViewById(R.id.tv_title_sep);
-
-            progressBar         = playerView.findViewById(R.id.exo_progress);
-            previewContainer    = playerView.findViewById(R.id.preview_container);
-            previewImage        = playerView.findViewById(R.id.preview_image);
-            previewTimeText     = playerView.findViewById(R.id.preview_time);
-        }
-
-        // ══════════════════════════════════════════════════════════════════════════
-        //  FIX: Fullscreen icon state
-        //  The layout XML's btn_fullscreen `src` is just a placeholder and may not
-        //  match the activity's *actual* current orientation (e.g. after a config
-        //  change / rotation recreated the activity while already in landscape).
-        //  This keeps `isFullscreen` AND the icon in sync with reality on launch:
-        //    - portrait  → ic_fullscreen        (tapping ENTERS fullscreen)
-        //    - landscape → ic_fullscreen_exit   (tapping EXITS fullscreen)
-        //  Without this, the button could show the "enter fullscreen" icon while
-        //  already fullscreen, then flip to the "exit" icon only after the first
-        //  tap — which is what looked like "wrong icon until clicked".
-        // ══════════════════════════════════════════════════════════════════════════
-        private void syncFullscreenIcon() {
-            int orientation = getResources().getConfiguration().orientation;
-            isFullscreen = (orientation == Configuration.ORIENTATION_LANDSCAPE);
-            if (btnFullscreen != null) {
-                btnFullscreen.setImageResource(
-                        isFullscreen ? R.drawable.ic_fullscreen_exit : R.drawable.ic_fullscreen);
-            }
-        }
-
-        // ══════════════════════════════════════════════════════════════════════════
-        //  Focus helpers
-        // ══════════════════════════════════════════════════════════════════════════
-        private void updateFocusHighlight() {
-            clearHighlight(btnBack);
-            clearHighlight(btnPictureMode);
-            clearHighlight(btnFullscreen);
-            clearHighlight(btnSync);
-            clearHighlight(btnSettings);
-
-            clearHighlight(btnRew);
-            clearHighlight(btnPP);
-            clearHighlight(btnFfwd);
-            clearHighlight(btnNextEp);
-            clearHighlight(btnPrevEp);
-
-            if (episodeContainer != null) {
-                for (int i = 0; i < episodeContainer.getChildCount(); i++) {
-                    View child = episodeContainer.getChildAt(i);
-                    if (child instanceof Button) {
-                        Button b = (Button) child;
-                        boolean isCurrent = (i == currentIndex);
-                        
-                        if (focusRow == 3 && i == episodeFocusIndex) {
-                            b.setScaleX(1.15f);
-                            b.setScaleY(1.15f);
-                            b.setElevation(dp(4));
-                            if (isCurrent) {
-                                b.setBackgroundResource(R.drawable.bg_episode_active);
-                                b.setTextColor(0xFF000000);
-                            } else {
-                                b.setBackgroundResource(R.drawable.bg_segmented_item);
-                                b.setTextColor(0xFFFFFFFF);
-                            }
-                        } else {
-                            if (isCurrent) {
-                                b.setBackgroundResource(R.drawable.bg_episode_active);
-                                b.setTextColor(0xFF000000);
-                            } else {
-                                b.setBackgroundResource(R.drawable.bg_segmented_item);
-                                b.setTextColor(0xFFFFFFFF);
-                            }
-                            b.setScaleX(1.0f);
-                            b.setScaleY(1.0f);
-                            b.setElevation(0);
-                        }
-                    }
-                }
-            }
-
-            if (progressBar != null) {
-                if (focusRow == 2) {
-                    progressBar.setScaleY(2.2f);
-                    progressBar.setAlpha(1f);
-                    progressBar.requestFocus();
-                    if (previewContainer != null) previewContainer.setVisibility(View.VISIBLE);
-                    updatePreviewFrame(player != null ? player.getCurrentPosition() : 0);
+        // Episode row
+        if (episodeContainer != null) {
+            for (int i = 0; i < episodeContainer.getChildCount(); i++) {
+                View child = episodeContainer.getChildAt(i);
+                if (!(child instanceof Button b)) continue;
+                if (focusRow == 3 && i == episodeFocusIndex) {
+                    b.animate().scaleX(1.15f).scaleY(1.15f).setDuration(150).start();
+                    b.setElevation(dp(4));
                 } else {
-                    progressBar.setScaleY(1f);
-                    progressBar.setAlpha(0.6f);
-                    if (previewContainer != null) previewContainer.setVisibility(View.GONE);
-                }
-            }
-
-            if (focusRow == 0) {
-                switch (focusCol) {
-                    case 0: applyHighlight(btnBack);        break;
-                    case 1: applyHighlight(btnPictureMode); break;
-                    case 2: applyHighlight(btnFullscreen);  break;
-                    case 3: applyHighlight(btnSync);        break;
-                    case 4: applyHighlight(btnSettings);    break;
-                }
-            } else if (focusRow == 1) {
-                // Adjust focusCol if target is hidden
-                if (focusCol == 0 && (btnPrevEp == null || btnPrevEp.getVisibility() != View.VISIBLE)) {
-                    focusCol = 1;
-                }
-                if (focusCol == 4 && (btnNextEp == null || btnNextEp.getVisibility() != View.VISIBLE)) {
-                    focusCol = 3;
-                }
-
-                switch (focusCol) {
-                    case 0: applyHighlight(btnPrevEp);  break;
-                    case 1: applyHighlight(btnRew);     break;
-                    case 2: applyHighlight(btnPP);      break;
-                    case 3: applyHighlight(btnFfwd);    break;
-                    case 4: applyHighlight(btnNextEp);  break;
+                    b.animate().scaleX(1f).scaleY(1f).setDuration(150).start();
+                    b.setElevation(0f);
+                    applyEpisodeBtnStyle(b, i);
                 }
             }
         }
 
-        private void applyHighlight(View v) {
-            if (v == null) return;
-            v.animate().scaleX(1.18f).scaleY(1.18f).alpha(1.0f).setDuration(200)
-                    .setInterpolator(new OvershootInterpolator()).start();
+        // Apply highlight to active button
+        if (focusRow == 0) {
+            View target = safeGet(topRowButtons, focusCol);
+            applyHighlight(target);
+            if (target != null) announceButtonFocus(target);
+        } else if (focusRow == 1) {
+            // Clamp focusCol to visible buttons
+            focusCol = clampCenterCol(focusCol);
+            View target = safeGet(centerRowButtons, focusCol);
+            applyHighlight(target);
+            if (target != null) announceButtonFocus(target);
+        }
+    }
+
+    private void announceButtonFocus(View v) {
+        if (v == null) return;
+        CharSequence desc = v.getContentDescription();
+        if (!TextUtils.isEmpty(desc)) {
+            v.announceForAccessibility(desc);
+        }
+    }
+
+    /** Returns row 1 focusCol clamped to visible buttons */
+    private int clampCenterCol(int col) {
+        if (col == 0 && (btnPrevEp == null || btnPrevEp.getVisibility() != View.VISIBLE)) col = 1;
+        if (col == 4 && (btnNextEp == null || btnNextEp.getVisibility() != View.VISIBLE)) col = 3;
+        return Math.max(0, Math.min(4, col));
+    }
+
+    private View safeGet(View[] arr, int idx) {
+        if (arr == null || idx < 0 || idx >= arr.length) return null;
+        return arr[idx];
+    }
+
+    /**
+     * Netflix-style focus: scale 1.12, alpha 1.0, elevation up.
+     * No OvershootInterpolator — smooth and fast at 150ms.
+     */
+    private void applyHighlight(View v) {
+        if (v == null || v.getVisibility() != View.VISIBLE) return;
+        v.animate().cancel();
+        v.animate()
+                .scaleX(1.12f).scaleY(1.12f)
+                .alpha(1.0f)
+                .setDuration(150)
+                .setInterpolator(new AccelerateDecelerateInterpolator())
+                .start();
+        v.setElevation(dp(6));
+    }
+
+    private void clearHighlight(View v) {
+        if (v == null) return;
+        v.animate().cancel();
+        v.animate()
+                .scaleX(1f).scaleY(1f)
+                .alpha(0.75f)
+                .setDuration(150)
+                .setInterpolator(new AccelerateDecelerateInterpolator())
+                .start();
+        v.setElevation(0f);
+    }
+
+    private void activateFocused() {
+        scheduleHide();
+        if (focusRow == 0) {
+            switch (focusCol) {
+                case 0: performBackAction(); break;
+                case 1: if (btnPictureMode != null) btnPictureMode.performClick(); break;
+                case 2: if (btnFullscreen  != null) btnFullscreen.performClick();  break;
+                case 3: if (btnSync        != null) { saveLastFocus(); btnSync.performClick(); } break;
+                case 4: if (btnSettings    != null) { saveLastFocus(); btnSettings.performClick(); } break;
+            }
+        } else if (focusRow == 1) {
+            switch (clampCenterCol(focusCol)) {
+                case 0: if (btnPrevEp != null) btnPrevEp.performClick(); break;
+                case 1: fastSeek(-5_000); break;
+                case 2:
+                    if (player != null) { if (player.isPlaying()) player.pause(); else player.play(); }
+                    animatePlayPause();
+                    updatePlayPauseAccessibility();
+                    break;
+                case 3: fastSeek(10_000); break;
+                case 4: if (btnNextEp != null) btnNextEp.performClick(); break;
+            }
+        } else if (focusRow == 2) {
+            // Center on seekbar: seek to preview position
+            if (player != null && lastPreviewPos >= 0) player.seekTo(lastPreviewPos);
+        } else if (focusRow == 3) {
+            playEpisode(episodeFocusIndex);
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    //  TV Remote / D-pad — fixed hierarchy, never loses focus
+    // ══════════════════════════════════════════════════════════════════════════
+    @Override
+    public boolean onKeyUp(int keyCode, KeyEvent event) {
+        if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
+            continuousSeekDirection = 0;
+            continuousSeekHandler.removeCallbacks(continuousSeekRunnable);
+        }
+        return super.onKeyUp(keyCode, event);
+    }
+
+    @Override
+    public boolean onKeyLongPress(int keyCode, KeyEvent event) {
+        if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
+            continuousSeekDirection = -1;
+            continuousSeekHandler.post(continuousSeekRunnable);
+            return true;
+        }
+        if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
+            continuousSeekDirection = 1;
+            continuousSeekHandler.post(continuousSeekRunnable);
+            return true;
+        }
+        return super.onKeyLongPress(keyCode, event);
+    }
+
+    @Override
+    @android.annotation.SuppressLint("GestureBackNavigation")
+    public boolean onKeyDown(int keyCode, KeyEvent event) {
+        if (player == null) return super.onKeyDown(keyCode, event);
+
+        // Volume keys (blocked in lock mode)
+        if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
+            if (isLocked) { showLockUI(); return true; }
+            audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC,
+                    AudioManager.ADJUST_RAISE, AudioManager.FLAG_SHOW_UI); return true;
+        }
+        if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
+            if (isLocked) { showLockUI(); return true; }
+            audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC,
+                    AudioManager.ADJUST_LOWER, AudioManager.FLAG_SHOW_UI); return true;
         }
 
-        private void clearHighlight(View v) {
-            if (v == null) return;
-            v.animate().scaleX(1f).scaleY(1f).alpha(0.85f).setDuration(200).start();
+        // Media keys
+        if (keyCode == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE || keyCode == KeyEvent.KEYCODE_HEADSETHOOK) {
+            if (isLocked) { showLockUI(); return true; }
+            if (player.isPlaying()) player.pause(); else player.play();
+            animatePlayPause(); updatePlayPauseAccessibility(); return true;
+        }
+        if (keyCode == KeyEvent.KEYCODE_MEDIA_REWIND)       { if (isLocked) { showLockUI(); return true; } fastSeek(-5_000); return true; }
+        if (keyCode == KeyEvent.KEYCODE_MEDIA_FAST_FORWARD) { if (isLocked) { showLockUI(); return true; } fastSeek(10_000);  return true; }
+
+        // Resume overlay intercepts all nav
+        if (resumeShowing) {
+            if (keyCode == KeyEvent.KEYCODE_BACK) return super.onKeyDown(keyCode, event);
+            switch (keyCode) {
+                case KeyEvent.KEYCODE_DPAD_LEFT:  resumeFocusCol = 0; updateResumeHighlight(); return true;
+                case KeyEvent.KEYCODE_DPAD_RIGHT: resumeFocusCol = 1; updateResumeHighlight(); return true;
+                case KeyEvent.KEYCODE_DPAD_CENTER:
+                case KeyEvent.KEYCODE_ENTER:
+                    if (resumeFocusCol == 0) doResume(); else doStartOver(); return true;
+            }
+            return true; // swallow all other keys while resume is showing
         }
 
-        private void activateFocused() {
-            if (focusRow == 2) return; // Progress bar
-            if (focusRow == 0) {
-                switch (focusCol) {
-                    case 0: performBackAction(); break; // Back
-                    case 1: if (btnPictureMode != null) btnPictureMode.performClick(); break;
-                    case 2: if (btnFullscreen  != null) btnFullscreen.performClick();  break;
-                    case 3: if (btnSync        != null) btnSync.performClick();        break;
-                    case 4: if (btnSettings    != null) btnSettings.performClick();    break;
-                }
-            } else if (focusRow == 3) {
-                playEpisode(episodeFocusIndex);
-            } else if (focusRow == 1) {
-                switch (focusCol) {
-                    case 0: if (btnPrevEp != null) btnPrevEp.performClick(); break;
-                    case 1: fastSeek(-10_000); break;
-                    case 2:
-                        if (player != null) {
-                            if (player.isPlaying()) player.pause(); else player.play();
-                        }
-                        animatePlayPause(); break;
-                    case 3: fastSeek(10_000); break;
-                    case 4: if (btnNextEp != null) btnNextEp.performClick(); break;
-                }
-            }
-            scheduleHide();
-        }
+        if (isLocked) return super.onKeyDown(keyCode, event);
 
-        // ══════════════════════════════════════════════════════════════════════════
-        //  TV Remote / D-pad
-        // ══════════════════════════════════════════════════════════════════════════
-        @Override
-        public boolean onKeyDown(int keyCode, KeyEvent event) {
-            if (player == null) return super.onKeyDown(keyCode, event);
-
-            if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
-                audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC,
-                        AudioManager.ADJUST_RAISE, AudioManager.FLAG_SHOW_UI); return true;
-            }
-            if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
-                audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC,
-                        AudioManager.ADJUST_LOWER, AudioManager.FLAG_SHOW_UI); return true;
-            }
-
-            if (resumeShowing) {
-                switch (keyCode) {
-                    case KeyEvent.KEYCODE_DPAD_LEFT:
-                        resumeFocusCol = 0; updateResumeHighlight(); return true;
-                    case KeyEvent.KEYCODE_DPAD_RIGHT:
-                        resumeFocusCol = 1; updateResumeHighlight(); return true;
-                    case KeyEvent.KEYCODE_DPAD_CENTER:
-                    case KeyEvent.KEYCODE_ENTER:
-                        if (resumeFocusCol == 0) doResume(); else doStartOver();
-                        return true;
-                }
-                return true;
-            }
-
-            if (keyCode == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE) {
-                if (player.isPlaying()) player.pause(); else player.play();
-                animatePlayPause(); return true;
-            }
-            if (keyCode == KeyEvent.KEYCODE_MEDIA_REWIND)        { fastSeek(-10_000); return true; }
-            if (keyCode == KeyEvent.KEYCODE_MEDIA_FAST_FORWARD)  { fastSeek(10_000);  return true; }
-
-            if (isLocked) return super.onKeyDown(keyCode, event);
-
-            if (!controlsVisible) {
-                switch (keyCode) {
-                    case KeyEvent.KEYCODE_DPAD_CENTER:
-                    case KeyEvent.KEYCODE_ENTER:
-                        if (player.isPlaying()) player.pause(); else player.play();
-                        animatePlayPause();
-                        showControls();
-                        return true;
-                    case KeyEvent.KEYCODE_DPAD_LEFT:
-                        showControls(); fastSeek(-10_000); return true;
-                    case KeyEvent.KEYCODE_DPAD_RIGHT:
-                        showControls(); fastSeek(10_000);  return true;
-                    case KeyEvent.KEYCODE_DPAD_UP:
-                    case KeyEvent.KEYCODE_DPAD_DOWN:
-                        showControls(); return true;
-                }
-                return super.onKeyDown(keyCode, event);
-            }
-
-            scheduleHide();
-
+        // ── Controls hidden: quick seek + show ───────────────────────────────
+        if (!controlsVisible) {
             switch (keyCode) {
                 case KeyEvent.KEYCODE_DPAD_CENTER:
                 case KeyEvent.KEYCODE_ENTER:
-                    activateFocused(); return true;
-
-                case KeyEvent.KEYCODE_DPAD_UP:
-                    if (focusRow == 3) {
-                        focusRow = 2;
-                    } else if (focusRow == 2) {
-                        focusRow = 1; focusCol = 1;
-                    } else if (focusRow == 1) {
-                        focusRow = 0; focusCol = 0;
-                    }
-                    updateFocusHighlight(); return true;
-
-                case KeyEvent.KEYCODE_DPAD_DOWN:
-                    if (focusRow == 0) {
-                        focusRow = 1; focusCol = 1;
-                    } else if (focusRow == 1) {
-                        focusRow = 2;
-                    } else if (focusRow == 2) {
-                        if (!playlist.isEmpty()) { focusRow = 3; episodeFocusIndex = currentIndex; }
-                    }
-                    updateFocusHighlight(); return true;
-
-                case KeyEvent.KEYCODE_DPAD_LEFT:
-                    if (focusRow == 2) {
-                        int repeat = event.getRepeatCount();
-                        long step = repeat > 30 ? 5000 : repeat > 10 ? 1000 : 500;
-                        fastSeek(-step);
-                    } else if (focusRow == 3) {
-                        if (episodeFocusIndex > 0) {
-                            episodeFocusIndex--;
-                            scrollEpisodeIntoView(episodeFocusIndex);
-                        }
-                        updateFocusHighlight();
-                    } else if (focusRow == 1) {
-                        int targetCol = focusCol - 1;
-                        if (targetCol == 0 && (btnPrevEp == null || btnPrevEp.getVisibility() != View.VISIBLE)) {
-                            // skip to nothing
-                        } else if (targetCol >= 0) {
-                            focusCol = targetCol;
-                        }
-                        updateFocusHighlight();
-                    } else {
-                        if (focusCol > 0) focusCol--;
-                        updateFocusHighlight();
-                    }
+                    // CENTER: play/pause (don't show controls yet)
+                    if (player.isPlaying()) player.pause(); else player.play();
+                    animatePlayPause(); updatePlayPauseAccessibility();
                     return true;
-
+                case KeyEvent.KEYCODE_DPAD_LEFT:
+                    // Quick seek -5s, show skip overlay
+                    fastSeek(-5_000);
+                    return true;
                 case KeyEvent.KEYCODE_DPAD_RIGHT:
-                    if (focusRow == 2) {
-                        int repeat = event.getRepeatCount();
-                        long step = repeat > 30 ? 5000 : repeat > 10 ? 1000 : 500;
-                        fastSeek(step);
-                    } else if (focusRow == 3) {
-                        if (episodeFocusIndex < playlist.size() - 1) {
-                            episodeFocusIndex++;
-                            scrollEpisodeIntoView(episodeFocusIndex);
-                        }
-                        updateFocusHighlight();
-                    } else if (focusRow == 1) {
-                        int targetCol = focusCol + 1;
-                        if (targetCol == 4 && (btnNextEp == null || btnNextEp.getVisibility() != View.VISIBLE)) {
-                            // skip
-                        } else if (targetCol <= 4) {
-                            focusCol = targetCol;
-                        }
-                        updateFocusHighlight();
+                    // Quick seek +10s, show skip overlay
+                    fastSeek(10_000);
+                    return true;
+                case KeyEvent.KEYCODE_DPAD_UP:
+                    // Show controls, focus play/pause
+                    showControls();
+                    focusRow = 1; focusCol = 2;
+                    updateFocusHighlight();
+                    return true;
+                case KeyEvent.KEYCODE_DPAD_DOWN:
+                    // Show controls, focus episode list if exists
+                    showControls();
+                    if (!playlist.isEmpty()) {
+                        focusRow = 3;
+                        episodeFocusIndex = currentIndex;
                     } else {
-                        int max = 0;
-                        if (focusRow == 0) max = 4;
-                        else if (focusRow == 1) {
-                            max = 4;
-                            if (btnNextEp == null || btnNextEp.getVisibility() != View.VISIBLE) max = 3;
-                            if (btnFfwd == null || btnFfwd.getVisibility() != View.VISIBLE) max = 2; // extreme fallback
-                        }
-                        if (focusCol < max) focusCol++;
-                        updateFocusHighlight();
+                        focusRow = 2;
                     }
+                    updateFocusHighlight();
                     return true;
             }
-
             return super.onKeyDown(keyCode, event);
         }
 
-        private void scrollEpisodeIntoView(int index) {
-            if (episodeContainer == null || episodeBar == null) return;
-            View child = episodeContainer.getChildAt(index);
-            if (child != null && episodeBar instanceof HorizontalScrollView) {
-                HorizontalScrollView hsv = (HorizontalScrollView) episodeBar;
-                // Calculate centering: Child's left relative to parent - (parent width / 2) + (child width / 2)
-                int scrollX = child.getLeft() - (hsv.getWidth() / 2) + (child.getWidth() / 2);
-                hsv.smoothScrollTo(scrollX, 0);
-            } else if (child != null && episodeBar instanceof ViewGroup) {
-                // Fallback for custom view hierarchies
-                View hsvChild = ((ViewGroup) episodeBar).getChildAt(0);
-                if (hsvChild instanceof HorizontalScrollView) {
-                    HorizontalScrollView hsv = (HorizontalScrollView) hsvChild;
-                    int scrollX = child.getLeft() - (hsv.getWidth() / 2) + (child.getWidth() / 2);
-                    hsv.smoothScrollTo(scrollX, 0);
+        // Controls are visible — reset hide timer on every key
+        resetAutoHide();
+
+        switch (keyCode) {
+            case KeyEvent.KEYCODE_DPAD_CENTER:
+            case KeyEvent.KEYCODE_ENTER:
+                activateFocused();
+                return true;
+
+            // ── UP: move up one row ──────────────────────────────────────────
+            case KeyEvent.KEYCODE_DPAD_UP:
+                if (focusRow == 3) {
+                    focusRow = 2;
+                } else if (focusRow == 2) {
+                    focusRow = 1; focusCol = clampCenterCol(2); // back to play/pause
+                } else if (focusRow == 1) {
+                    focusRow = 0; focusCol = 2; // top bar: fullscreen default
                 }
-            }
-        }
+                // row 0: already at top, do nothing
+                updateFocusHighlight();
+                return true;
 
-        // ══════════════════════════════════════════════════════════════════════════
-        //  Show / Hide controls
-        // ══════════════════════════════════════════════════════════════════════════
-        private void showControls() {
-            if (isLocked) return;
-            controlsVisible = true;
-            playerView.showController();
-            View[] targets = { topBar, centerControls, bottomBar, scrimTop, scrimBottom, episodeBar };
-            for (View v : targets) {
-                if (v == null) continue;
-                v.animate().cancel();
-                if (v == episodeBar && playlist.isEmpty()) {
-                    v.setVisibility(View.GONE);
-                    continue;
+            // ── DOWN: move down one row ──────────────────────────────────────
+            case KeyEvent.KEYCODE_DPAD_DOWN:
+                if (focusRow == 0) {
+                    focusRow = 1; focusCol = clampCenterCol(2);
+                } else if (focusRow == 1) {
+                    focusRow = 2;
+                } else if (focusRow == 2) {
+                    if (!playlist.isEmpty() && episodeBar != null && episodeBar.getVisibility() == View.VISIBLE) {
+                        focusRow = 3;
+                        episodeFocusIndex = currentIndex;
+                    }
                 }
-                v.setVisibility(View.VISIBLE);
-                v.animate().alpha(1f).setDuration(220)
-                        .setInterpolator(new AccelerateDecelerateInterpolator()).start();
-            }
-            if (btnLock != null) {
-                btnLock.animate().cancel();
-                btnLock.setVisibility(View.VISIBLE);
-                btnLock.animate().alpha(1f).setDuration(220).start();
-            }
+                // row 3: already at bottom
+                updateFocusHighlight();
+                return true;
 
-            // Fix episode scroll on show
-            if (!playlist.isEmpty()) {
-                episodeFocusIndex = currentIndex;
-                episodeBar.post(() -> scrollEpisodeIntoView(currentIndex));
-            }
-
-            updateFocusHighlight();
-            scheduleHide();
-        }
-
-        private void hideControls() {
-            controlsVisible = false;
-            playerView.hideController();
-            clearHighlight(btnBack);
-            clearHighlight(btnPictureMode);
-            clearHighlight(btnFullscreen);
-            clearHighlight(btnSync);
-            clearHighlight(btnSettings);
-            clearHighlight(btnRew);
-            clearHighlight(btnPP);
-            clearHighlight(btnFfwd);
-            clearHighlight(btnNextEp);
-            clearHighlight(btnPrevEp);
-            View[] targets = { topBar, centerControls, bottomBar, scrimTop, scrimBottom, episodeBar };
-            for (View v : targets) {
-                if (v == null) continue;
-                v.animate().cancel();
-                v.animate().alpha(0f).setDuration(300)
-                        .setInterpolator(new AccelerateDecelerateInterpolator())
-                        .withEndAction(() -> v.setVisibility(View.GONE)).start();
-            }
-            if (btnLock != null) {
-                btnLock.animate().cancel();
-                btnLock.animate().alpha(0f).setDuration(300)
-                        .withEndAction(() -> btnLock.setVisibility(View.GONE)).start();
-            }
-        }
-
-        private void scheduleHide() {
-            autoHideHandler.removeCallbacks(autoHideRunnable);
-            autoHideHandler.postDelayed(autoHideRunnable, AUTO_HIDE_MS);
-        }
-
-        // ══════════════════════════════════════════════════════════════════════════
-        //  Lock UI
-        // ══════════════════════════════════════════════════════════════════════════
-        private void showLockUI() {
-            lockUiVisible = true;
-            autoHideHandler.removeCallbacks(hideLockUiRunnable);
-            if (btnLock != null) {
-                btnLock.animate().cancel();
-                btnLock.setAlpha(0f); btnLock.setVisibility(View.VISIBLE);
-                btnLock.bringToFront();
-                btnLock.animate().alpha(1f).setDuration(200).start();
-            }
-            if (tvLockHint != null) {
-                tvLockHint.animate().cancel();
-                tvLockHint.setAlpha(0f); tvLockHint.setVisibility(View.VISIBLE);
-                tvLockHint.bringToFront();
-                tvLockHint.animate().alpha(1f).setDuration(200).start();
-            }
-            autoHideHandler.postDelayed(hideLockUiRunnable, LOCK_UI_MS);
-        }
-
-        private void hideLockUI() {
-            lockUiVisible = false;
-            autoHideHandler.removeCallbacks(hideLockUiRunnable);
-            if (btnLock != null) {
-                btnLock.animate().cancel();
-                btnLock.animate().alpha(0f).setDuration(300)
-                        .withEndAction(() -> btnLock.setVisibility(View.GONE)).start();
-            }
-            if (tvLockHint != null) {
-                tvLockHint.animate().cancel();
-                tvLockHint.animate().alpha(0f).setDuration(300)
-                        .withEndAction(() -> tvLockHint.setVisibility(View.GONE)).start();
-            }
-        }
-
-        // ══════════════════════════════════════════════════════════════════════════
-        //  Lock / Unlock
-        // ══════════════════════════════════════════════════════════════════════════
-        private void setupLockButton() {
-            if (btnLock == null) return;
-            btnLock.setOnTouchListener((v, event) -> {
-                if (event.getAction() == MotionEvent.ACTION_UP) {
-                    if (isLocked) unlock(); else lock();
+            // ── LEFT: move left in row, or seek/scroll ───────────────────────
+            case KeyEvent.KEYCODE_DPAD_LEFT:
+                if (focusRow == 2) {
+                    // Seekbar: accelerating seek on hold
+                    long stepL = getSeekHoldStep(event.getRepeatCount());
+                    fastSeek(-stepL);
+                } else if (focusRow == 3) {
+                    if (episodeFocusIndex > 0) {
+                        episodeFocusIndex--;
+                        scrollEpisodeIntoView(episodeFocusIndex);
+                        updateFocusHighlight();
+                    }
+                } else if (focusRow == 1) {
+                    int next = focusCol - 1;
+                    // Skip hidden prev-ep button
+                    if (next >= 0) {
+                        if (next != 0 || (btnPrevEp != null && btnPrevEp.getVisibility() == View.VISIBLE)) {
+                            focusCol = next;
+                            updateFocusHighlight();
+                        }
+                    }
+                } else if (focusRow == 0) {
+                    if (focusCol > 0) { focusCol--; updateFocusHighlight(); }
                 }
                 return true;
-            });
-        }
 
-        private void lock() {
-            isLocked = true; lockUiVisible = false;
-            autoHideHandler.removeCallbacks(autoHideRunnable);
-            autoHideHandler.removeCallbacks(hideLockUiRunnable);
-            playerView.hideController();
-            View[] toHide = { topBar, centerControls, bottomBar, scrimTop, scrimBottom };
-            for (View v : toHide) {
-                if (v == null) continue;
-                v.animate().cancel();
-                v.animate().alpha(0f).setDuration(250)
-                        .withEndAction(() -> v.setVisibility(View.GONE)).start();
-            }
-            if (btnLock != null) {
-                btnLock.setImageResource(R.drawable.ic_lock_closed);
-                btnLock.animate().cancel();
-                btnLock.setVisibility(View.VISIBLE); btnLock.bringToFront(); btnLock.setAlpha(1f);
-                btnLock.animate().scaleX(1.25f).scaleY(1.25f).setDuration(120)
-                        .withEndAction(() ->
-                            btnLock.animate().scaleX(1f).scaleY(1f).setDuration(120).start()).start();
-                lockUiVisible = true;
-            }
-            if (tvLockHint != null) {
-                tvLockHint.setText("Tap 🔒 to unlock");
-                tvLockHint.animate().cancel();
-                tvLockHint.bringToFront(); tvLockHint.setAlpha(1f); tvLockHint.setVisibility(View.VISIBLE);
-            }
-            autoHideHandler.postDelayed(hideLockUiRunnable, LOCK_UI_MS);
-        }
-
-        private void unlock() {
-            isLocked = false; lockUiVisible = false;
-            autoHideHandler.removeCallbacks(hideLockUiRunnable);
-            if (tvLockHint != null) { tvLockHint.animate().cancel(); tvLockHint.setVisibility(View.GONE); }
-            if (btnLock != null) {
-                btnLock.animate().cancel();
-                btnLock.setImageResource(R.drawable.ic_lock_open);
-                btnLock.setVisibility(View.VISIBLE); btnLock.setAlpha(1f);
-            }
-            showControls();
-        }
-
-        // ══════════════════════════════════════════════════════════════════════════
-        //  Gestures
-        // ══════════════════════════════════════════════════════════════════════════
-        private void setupGestures() {
-            playerView.setOnTouchListener((v, e) -> { handleTouch(e); return true; });
-        }
-
-        private void handleTouch(MotionEvent e) {
-            if (resumeShowing) return;
-            final float rawX = e.getRawX(), rawY = e.getRawY();
-            final int w = playerView.getWidth();
-            switch (e.getAction()) {
-                case MotionEvent.ACTION_DOWN:
-                    downRawX = rawX; downRawY = rawY;
-                    downInLeft = rawX < w / 3f; downInRight = rawX > w * 2f / 3f;
-                    dirLocked = false; isVertical = false; isHorizontal = false;
-                    if (downInLeft)  gestureStartValue = getBrightnessPct();
-                    if (downInRight) gestureStartValue = getVolumePct();
-                    autoHideHandler.removeCallbacks(startTouchHoldRunnable);
-                    autoHideHandler.removeCallbacks(touchHoldRunnable);
-                    touchHoldSide = 0;
-                    autoHideHandler.postDelayed(startTouchHoldRunnable, 500);
-                    break;
-                case MotionEvent.ACTION_MOVE:
-                    float dx = rawX - downRawX, dy = rawY - downRawY;
-                    if (!dirLocked) {
-                        if (Math.abs(dx) > GESTURE_THRESHOLD || Math.abs(dy) > GESTURE_THRESHOLD) {
-                            dirLocked = true;
-                            autoHideHandler.removeCallbacks(startTouchHoldRunnable);
-                            isVertical = Math.abs(dy) >= Math.abs(dx);
-                            isHorizontal = !isVertical;
-                            if (!isLocked) {
-                                if (isVertical && downInLeft)  showGestureIndicator(true);
-                                if (isVertical && downInRight) showGestureIndicator(false);
-                                showControls();
-                            }
+            // ── RIGHT: move right in row, or seek/scroll ─────────────────────
+            case KeyEvent.KEYCODE_DPAD_RIGHT:
+                if (focusRow == 2) {
+                    long stepR = getSeekHoldStep(event.getRepeatCount());
+                    fastSeek(stepR);
+                } else if (focusRow == 3) {
+                    if (episodeFocusIndex < playlist.size() - 1) {
+                        episodeFocusIndex++;
+                        scrollEpisodeIntoView(episodeFocusIndex);
+                        updateFocusHighlight();
+                    }
+                } else if (focusRow == 1) {
+                    int next = focusCol + 1;
+                    if (next <= 4) {
+                        if (next != 4 || (btnNextEp != null && btnNextEp.getVisibility() == View.VISIBLE)) {
+                            focusCol = next;
+                            updateFocusHighlight();
                         }
                     }
-                    if (isLocked) break;
-                    if (isVertical || isHorizontal) autoHideHandler.removeCallbacks(autoHideRunnable);
-                    if (isVertical) {
-                        int pct = Math.max(0, Math.min(100,
-                                (int)(gestureStartValue - dy / playerView.getHeight() * 100)));
-                        if (downInLeft) {
-                            setBrightness(pct);
-                            if (viewBrightnessFill != null) viewBrightnessFill.setScaleY(pct / 100f);
-                            if (tvBrightnessValue  != null) tvBrightnessValue.setText(pct + "%");
-                        } else if (downInRight) {
-                            setVolume(pct);
-                            if (viewVolumeFill != null) viewVolumeFill.setScaleY(pct / 100f);
-                            if (tvVolumeValue  != null) tvVolumeValue.setText(pct + "%");
-                        }
-                    }
-                    if (isHorizontal) {
-                        long delta = (long)(dx / SEEK_PX_PER_SEC) * 1000L;
-                        updateSeekIndicator(delta);
-                        if (player != null && previewContainer != null) {
-                            previewContainer.setVisibility(View.VISIBLE);
-                            updatePreviewFrame(player.getCurrentPosition() + delta);
-                        }
-                    }
-                    break;
-                case MotionEvent.ACTION_UP:
-                case MotionEvent.ACTION_CANCEL:
-                    autoHideHandler.removeCallbacks(startTouchHoldRunnable);
-                    autoHideHandler.removeCallbacks(touchHoldRunnable);
-                    if (touchHoldSide != 0) {
-                        touchHoldSide = 0;
-                        if (previewContainer != null) previewContainer.setVisibility(View.GONE);
-                        scheduleHide();
-                        dirLocked = false; isVertical = false; isHorizontal = false;
-                        break;
-                    }
-                    if (isLocked) {
-                        if (!dirLocked) { if (lockUiVisible) hideLockUI(); else showLockUI(); }
-                        dirLocked = false; isVertical = false; isHorizontal = false; break;
-                    }
-                    if (isVertical) {
-                        hideGestureIndicator(downInLeft); scheduleHide();
-                    } else if (isHorizontal) {
-                        long ms = (long)((rawX - downRawX) / SEEK_PX_PER_SEC) * 1000L;
-                        fastSeek(ms); hideSeekIndicator(); scheduleHide();
-                    } else { handleTap(downRawX); }
-                    dirLocked = false; isVertical = false; isHorizontal = false;
-                    break;
-            }
-        }
-
-        private void handleTap(float x) {
-            long now = System.currentTimeMillis();
-            int side = (x < playerView.getWidth() / 2f) ? -1 : 1;
-            if (now - lastTapTime < DOUBLE_TAP_MS && side == lastTapSide) {
-                long ms = side == -1 ? -10_000L : 10_000L;
-                fastSeek(ms); lastTapTime = 0;
-            } else {
-                lastTapTime = now; lastTapSide = side;
-                if (controlsVisible) hideControls();
-                else { focusRow = 1; focusCol = 1; showControls(); }
-            }
-        }
-
-        // ══════════════════════════════════════════════════════════════════════════
-        //  Wire buttons
-        // ══════════════════════════════════════════════════════════════════════════
-        private void wireButtons() {
-            if (btnBack != null) btnBack.setOnClickListener(v -> performBackAction());
-
-            if (btnPictureMode != null) btnPictureMode.setOnClickListener(v -> {
-                resizeModeIndex = (resizeModeIndex + 1) % RESIZE_MODES.length;
-                playerView.setResizeMode(RESIZE_MODES[resizeModeIndex]);
-                Toast.makeText(this, RESIZE_LABELS[resizeModeIndex], Toast.LENGTH_SHORT).show();
-                scheduleHide();
-            });
-
-            if (btnFullscreen != null) btnFullscreen.setOnClickListener(v -> {
-                isFullscreen = !isFullscreen;
-                if (isFullscreen) {
-                    hideSystemUI();
-                    btnFullscreen.setImageResource(R.drawable.ic_fullscreen_exit);
-                    setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
-                } else {
-                    showSystemUI();
-                    btnFullscreen.setImageResource(R.drawable.ic_fullscreen);
-                    setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
+                } else if (focusRow == 0) {
+                    if (focusCol < topRowButtons.length - 1) { focusCol++; updateFocusHighlight(); }
                 }
-                scheduleHide();
-            });
-
-            if (btnSync != null) btnSync.setOnClickListener(v -> {
-                showSyncDialog(); scheduleHide();
-            });
-
-            if (btnSettings != null) btnSettings.setOnClickListener(v -> {
-                showTrackSelectionDialog();
-                scheduleHide();
-            });
-
-            if (btnRew  != null) btnRew.setOnClickListener(v ->  { fastSeek(-10_000); scheduleHide(); });
-            if (btnFfwd != null) btnFfwd.setOnClickListener(v -> { fastSeek(10_000);  scheduleHide(); });
-            if (btnPP   != null) btnPP.setOnClickListener(v -> {
-                if (player != null) { if (player.isPlaying()) player.pause(); else player.play(); }
-                animatePlayPause(); scheduleHide();
-            });
-
-            if (btnPrevEp != null) btnPrevEp.setOnClickListener(v -> {
-                playEpisode(currentIndex - 1); scheduleHide();
-            });
-
-            if (btnNextEp != null) btnNextEp.setOnClickListener(v -> {
-                playEpisode(currentIndex + 1); scheduleHide();
-            });
+                return true;
         }
 
-        // ══════════════════════════════════════════════════════════════════════════
-        //  Seek / indicators
-        // ══════════════════════════════════════════════════════════════════════════
-        private void fastSeek(long delta) {
-            if (player == null) return;
-            long target = Math.max(0, Math.min(player.getDuration(), player.getCurrentPosition() + delta));
-            player.seekTo(target);
-            updatePreviewFrame(target);
-            showSeekIndicatorTimed(delta);
-            animatePlayPause();
-        }
+        return super.onKeyDown(keyCode, event);
+    }
 
-        private void updateSeekIndicator(long ms) {
-            if (seekIndicator == null) return;
-            if (seekIndicator.getVisibility() != View.VISIBLE) {
-                seekIndicator.setAlpha(0f); seekIndicator.setVisibility(View.VISIBLE);
-                seekIndicator.animate().alpha(1f).setDuration(150).start();
+    /**
+     * Accelerating seek steps for D-pad hold on seekbar:
+     * 0-7 repeats   → 1s steps
+     * 8-19 repeats  → 5s steps
+     * 20-39 repeats → 10s steps
+     * 40+ repeats   → 30s steps
+     */
+    private long getSeekHoldStep(int repeatCount) {
+        if (repeatCount >= SEEK_HOLD_THRESHOLDS[3]) return SEEK_HOLD_STEPS[3];
+        if (repeatCount >= SEEK_HOLD_THRESHOLDS[2]) return SEEK_HOLD_STEPS[2];
+        if (repeatCount >= SEEK_HOLD_THRESHOLDS[1]) return SEEK_HOLD_STEPS[1];
+        return SEEK_HOLD_STEPS[0];
+    }
+
+    private void scrollEpisodeIntoView(int index) {
+        if (episodeContainer == null || episodeBar == null) return;
+        View child = episodeContainer.getChildAt(index);
+        if (child != null && episodeBar instanceof HorizontalScrollView hsv) {
+            int scrollX = child.getLeft() - (hsv.getWidth() / 2) + (child.getWidth() / 2);
+            hsv.smoothScrollTo(scrollX, 0);
+        } else if (child != null && episodeBar instanceof ViewGroup) {
+            View hsvChild = ((ViewGroup) episodeBar).getChildAt(0);
+            if (hsvChild instanceof HorizontalScrollView hsv) {
+                int scrollX = child.getLeft() - (hsv.getWidth() / 2) + (child.getWidth() / 2);
+                hsv.smoothScrollTo(scrollX, 0);
             }
-            long secs = Math.abs(ms / 1000);
-            if (tvSeekDelta != null) tvSeekDelta.setText((ms >= 0 ? "+" : "-") + secs + "s");
-            if (seekIcon != null)
-                seekIcon.setImageResource(ms >= 0 ? R.drawable.ic_forward_30 : R.drawable.ic_replay_10);
-        }
-
-        private void showSeekIndicatorTimed(long ms) {
-            updateSeekIndicator(ms);
-            autoHideHandler.postDelayed(this::hideSeekIndicator, 800);
-        }
-
-        private void hideSeekIndicator() {
-            if (seekIndicator == null) return;
-            seekIndicator.animate().alpha(0f).setDuration(200)
-                    .withEndAction(() -> seekIndicator.setVisibility(View.GONE)).start();
-        }
-
-        private void animatePlayPause() {
-            if (btnPP == null) return;
-            btnPP.animate().cancel();
-            
-            // If already at highlight scale, don't snap back to 0.85
-            float currentScale = btnPP.getScaleX();
-            float startScale = (currentScale > 1.0f) ? currentScale * 0.9f : 0.85f;
-            float endScale = (currentScale > 1.0f) ? currentScale : 1.18f;
-
-            btnPP.setScaleX(startScale);
-            btnPP.setScaleY(startScale);
-            btnPP.animate()
-                    .scaleX(endScale).scaleY(endScale).setDuration(400)
-                    .setInterpolator(new OvershootInterpolator(2.0f)).start();
-        }
-
-        private void showGestureIndicator(boolean isBrightness) {
-            LinearLayout v = isBrightness ? brightnessIndicator : volumeIndicator;
-            if (v == null) return;
-            v.setScaleX(0.8f); v.setAlpha(0f); v.setVisibility(View.VISIBLE);
-            v.animate().scaleX(1f).alpha(1f).setDuration(180)
-                    .setInterpolator(new AccelerateDecelerateInterpolator()).start();
-        }
-
-        private void hideGestureIndicator(boolean isBrightness) {
-            LinearLayout v = isBrightness ? brightnessIndicator : volumeIndicator;
-            if (v == null) return;
-            v.animate().alpha(0f).scaleX(0.8f).setDuration(200)
-                    .withEndAction(() -> v.setVisibility(View.GONE)).start();
-        }
-
-        private int getBrightnessPct() {
-            WindowManager.LayoutParams lp = getWindow().getAttributes();
-            if (lp.screenBrightness < 0) {
-                try { return Settings.System.getInt(getContentResolver(),
-                        Settings.System.SCREEN_BRIGHTNESS) * 100 / 255; }
-                catch (Exception e) { return 50; }
-            }
-            return (int)(lp.screenBrightness * 100);
-        }
-
-        private void setBrightness(int pct) {
-            WindowManager.LayoutParams lp = getWindow().getAttributes();
-            lp.screenBrightness = pct / 100f; getWindow().setAttributes(lp);
-        }
-
-        private int getVolumePct() {
-            return audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) * 100 / maxVolume;
-        }
-
-        private void setVolume(int pct) {
-            int steps = Math.max(0, Math.min(maxVolume, pct * maxVolume / 100));
-            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, steps, 0);
-        }
-
-        // ══════════════════════════════════════════════════════════════════════════
-        //  Lifecycle
-        // ══════════════════════════════════════════════════════════════════════════
-        private void performBackAction() {
-            saveCurrentPosition();
-            releasePlayer();
-            Intent i = new Intent(this, MainActivity.class);
-            i.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-            startActivity(i);
-            finish();
-        }
-
-        @Override
-        protected void onResume() {
-            super.onResume();
-            hideSystemUI();
-        }
-
-        @Override protected void onPause() {
-            super.onPause();
-            saveCurrentPosition();
-            if (player != null) player.pause();
-            autoHideHandler.removeCallbacks(autoHideRunnable);
-            autoHideHandler.removeCallbacks(hideLockUiRunnable);
-            autoHideHandler.removeCallbacks(savePositionRunnable);
-        }
-
-        @Override protected void onDestroy() {
-            if (previewThread != null) {
-                previewThread.quitSafely();
-                previewThread = null;
-            }
-            if (retriever != null) {
-                try { retriever.release(); } catch (Exception ignored) {}
-                retriever = null;
-            }
-            autoHideHandler.removeCallbacks(autoHideRunnable);
-            autoHideHandler.removeCallbacks(hideLockUiRunnable);
-            autoHideHandler.removeCallbacks(savePositionRunnable);
-            releasePlayer();
-            super.onDestroy();
-        }
-
-        private void releasePlayer() {
-            if (player != null) { player.stop(); player.release(); player = null; }
-        }
-
-        private void applySavedTrackPreferences() {
-            if (player == null) return;
-            SharedPreferences prefs = getSharedPreferences("hm_player_prefs", MODE_PRIVATE);
-            String audioLang = prefs.getString("pref_lang_audio", null);
-            String textLang = prefs.getString("pref_lang_text", null);
-
-            TrackSelectionParameters.Builder builder = player.getTrackSelectionParameters().buildUpon();
-            
-            // Explicitly ensure audio and text tracks are not disabled
-            builder.setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false);
-            builder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false);
-            
-            if (audioLang != null) builder.setPreferredAudioLanguage(audioLang);
-            if (textLang != null) {
-                builder.setPreferredTextLanguage(textLang);
-                builder.setIgnoredTextSelectionFlags(0);
-                builder.setSelectUndeterminedTextLanguage(true);
-            }
-            player.setTrackSelectionParameters(builder.build());
-        }
-
-        private void hideSystemUI() {
-            getWindow().getDecorView().setSystemUiVisibility(
-                    View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                    | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                    | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_FULLSCREEN);
-        }
-
-        private void showSystemUI() {
-            getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
         }
     }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    //  Show / Hide controls
+    // ══════════════════════════════════════════════════════════════════════════
+    private void showControls() {
+        if (isLocked) return;
+        controlsVisible = true;
+        playerView.showController();
+        View[] targets = { topBar, centerControls, bottomBar, scrimTop, scrimBottom, episodeBar };
+        for (View v : targets) {
+            if (v == null) continue;
+            v.animate().cancel();
+            if (v == episodeBar && playlist.size() <= 1) {
+                v.setVisibility(View.GONE);
+                continue;
+            }
+            v.setVisibility(View.VISIBLE);
+            v.animate().alpha(1f).setDuration(220)
+                    .setInterpolator(new AccelerateDecelerateInterpolator()).start();
+        }
+        if (btnLock != null) {
+            btnLock.animate().cancel();
+            btnLock.setVisibility(View.VISIBLE);
+            btnLock.animate().alpha(1f).setDuration(220).start();
+        }
+
+        // Center episode list on current episode when controls open
+        if (!playlist.isEmpty()) {
+            episodeFocusIndex = currentIndex;
+            if (episodeBar != null) episodeBar.post(() -> scrollEpisodeIntoView(currentIndex));
+        }
+
+        // Always auto-focus play/pause when controls open, unless focus was saved
+        if (focusRow < 0 || focusRow > 3) { focusRow = 1; focusCol = 2; }
+        updateFocusHighlight();
+        scheduleHide();
+    }
+
+    private void hideControls() {
+        controlsVisible = false;
+        isSeeking = false;
+        playerView.hideController();
+
+        View[] allButtons = { btnBack, btnPictureMode, btnFullscreen, btnSync, btnSettings,
+                              btnRew, btnPP, btnFfwd, btnNextEp, btnPrevEp };
+        for (View v : allButtons) clearHighlight(v);
+
+        View[] targets = { topBar, centerControls, bottomBar, scrimTop, scrimBottom, episodeBar };
+        for (View v : targets) {
+            if (v == null) continue;
+            v.animate().cancel();
+            v.animate().alpha(0f).setDuration(300)
+                    .setInterpolator(new AccelerateDecelerateInterpolator())
+                    .withEndAction(() -> v.setVisibility(View.GONE)).start();
+        }
+        if (btnLock != null) {
+            btnLock.animate().cancel();
+            btnLock.animate().alpha(0f).setDuration(300)
+                    .withEndAction(() -> btnLock.setVisibility(View.GONE)).start();
+        }
+        if (previewContainer != null) previewContainer.setVisibility(View.GONE);
+    }
+
+    private void scheduleHide() {
+        autoHideHandler.removeCallbacks(autoHideRunnable);
+        // Don't schedule hide if: paused, seeking, episode row focused
+        if (player != null && !player.isPlaying()) return;
+        if (isSeeking) return;
+        if (focusRow == 3) return; // episode row active
+        autoHideHandler.postDelayed(autoHideRunnable, AUTO_HIDE_MS);
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    //  Lock UI (unchanged logic)
+    // ══════════════════════════════════════════════════════════════════════════
+    private void showLockUI() {
+        lockUiVisible = true;
+        autoHideHandler.removeCallbacks(hideLockUiRunnable);
+        if (btnLock != null) {
+            btnLock.animate().cancel();
+            btnLock.setAlpha(0f); btnLock.setVisibility(View.VISIBLE);
+            btnLock.bringToFront();
+            btnLock.animate().alpha(1f).setDuration(200).start();
+        }
+        if (tvLockHint != null) {
+            tvLockHint.animate().cancel();
+            tvLockHint.setAlpha(0f); tvLockHint.setVisibility(View.VISIBLE);
+            tvLockHint.bringToFront();
+            tvLockHint.animate().alpha(1f).setDuration(200).start();
+        }
+        autoHideHandler.postDelayed(hideLockUiRunnable, LOCK_UI_MS);
+    }
+
+    private void hideLockUI() {
+        lockUiVisible = false;
+        if (btnLock != null) {
+            btnLock.animate().cancel();
+            btnLock.animate().alpha(0f).setDuration(300)
+                    .withEndAction(() -> btnLock.setVisibility(View.GONE)).start();
+        }
+        if (tvLockHint != null) {
+            tvLockHint.animate().cancel();
+            tvLockHint.animate().alpha(0f).setDuration(300)
+                    .withEndAction(() -> tvLockHint.setVisibility(View.GONE)).start();
+        }
+    }
+
+    private void setupLockButton() {
+        if (btnLock == null) return;
+        btnLock.setOnClickListener(v -> {
+            if (isLocked) unlock(); else lock();
+        });
+    }
+
+    private void lock() {
+        isLocked = true; lockUiVisible = false;
+        autoHideHandler.removeCallbacks(autoHideRunnable);
+        autoHideHandler.removeCallbacks(hideLockUiRunnable);
+
+        // Lock orientation to current landscape position
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LOCKED);
+
+        // Enable Do Not Disturb if permission is granted
+        NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && nm != null && nm.isNotificationPolicyAccessGranted()) {
+            previousInterruptionFilter = nm.getCurrentInterruptionFilter();
+            nm.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_PRIORITY);
+        }
+
+        playerView.hideController();
+        View[] toHide = { topBar, centerControls, bottomBar, scrimTop, scrimBottom };
+        for (View v : toHide) {
+            if (v == null) continue;
+            v.animate().cancel();
+            v.animate().alpha(0f).setDuration(250).withEndAction(() -> v.setVisibility(View.GONE)).start();
+        }
+        if (btnLock != null) {
+            btnLock.setImageResource(R.drawable.ic_lock_closed);
+            btnLock.animate().cancel();
+            btnLock.setVisibility(View.VISIBLE); btnLock.bringToFront(); btnLock.setAlpha(1f);
+            btnLock.animate().scaleX(1.25f).scaleY(1.25f).setDuration(120)
+                    .withEndAction(() -> btnLock.animate().scaleX(1f).scaleY(1f).setDuration(120).start()).start();
+            lockUiVisible = true;
+        }
+        if (tvLockHint != null) {
+            tvLockHint.setText(R.string.lock_hint);
+            tvLockHint.animate().cancel();
+            tvLockHint.bringToFront(); tvLockHint.setAlpha(1f); tvLockHint.setVisibility(View.VISIBLE);
+        }
+        autoHideHandler.postDelayed(hideLockUiRunnable, LOCK_UI_MS);
+    }
+
+    private void unlock() {
+        isLocked = false; lockUiVisible = false;
+        autoHideHandler.removeCallbacks(hideLockUiRunnable);
+
+        // Restore sensor-based landscape orientation
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+
+        // Restore Do Not Disturb state - Explicitly set to ALL to ensure volume is restored
+        NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && nm != null && nm.isNotificationPolicyAccessGranted()) {
+            nm.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL);
+        }
+
+        if (tvLockHint != null) { tvLockHint.animate().cancel(); tvLockHint.setVisibility(View.GONE); }
+        if (btnLock != null) {
+            btnLock.animate().cancel();
+            btnLock.setImageResource(R.drawable.ic_lock_open);
+            btnLock.setVisibility(View.VISIBLE); btnLock.setAlpha(1f);
+        }
+        showControls();
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    //  Gestures (unchanged logic)
+    // ══════════════════════════════════════════════════════════════════════════
+    private void setupGestures() {
+        playerView.setOnTouchListener((v, e) -> {
+            if (e.getAction() == MotionEvent.ACTION_UP) {
+                v.performClick();
+            }
+            handleTouch(e);
+            return true;
+        });
+    }
+
+    private void handleTouch(MotionEvent e) {
+        if (resumeShowing) return;
+        final float rawX = e.getRawX(), rawY = e.getRawY();
+        final int w = playerView.getWidth();
+        switch (e.getAction()) {
+            case MotionEvent.ACTION_DOWN:
+                downRawX = rawX; downRawY = rawY;
+                downInLeft = rawX < w / 3f; downInRight = rawX > w * 2f / 3f;
+                dirLocked = false; isVertical = false; isHorizontal = false;
+                if (downInLeft)  gestureStartValue = getBrightnessPct();
+                if (downInRight) gestureStartValue = getVolumePct();
+                autoHideHandler.removeCallbacks(startTouchHoldRunnable);
+                autoHideHandler.removeCallbacks(touchHoldRunnable);
+                touchHoldSide = 0;
+                autoHideHandler.postDelayed(startTouchHoldRunnable, 500);
+                break;
+            case MotionEvent.ACTION_MOVE:
+                float dx = rawX - downRawX, dy = rawY - downRawY;
+                if (!dirLocked) {
+                    if (Math.abs(dx) > GESTURE_THRESHOLD || Math.abs(dy) > GESTURE_THRESHOLD) {
+                        dirLocked = true;
+                        autoHideHandler.removeCallbacks(startTouchHoldRunnable);
+                        isVertical = Math.abs(dy) >= Math.abs(dx);
+                        isHorizontal = !isVertical;
+                        
+                        if (!isLocked) {
+                            if (isVertical) {
+                                if (downInLeft)  showGestureIndicator(true);
+                                if (downInRight) showGestureIndicator(false);
+                            }
+                            showControls();
+                        }
+                    }
+                }
+                
+                if (isLocked) break;
+                if (isVertical || isHorizontal) autoHideHandler.removeCallbacks(autoHideRunnable);
+                if (isVertical) {
+                    int pct = Math.max(0, Math.min(100,
+                            (int)(gestureStartValue - dy / playerView.getHeight() * 100)));
+                    if (downInLeft) {
+                        setBrightness(pct);
+                        if (viewBrightnessFill != null) viewBrightnessFill.setScaleY(pct / 100f);
+                        if (tvBrightnessValue  != null) tvBrightnessValue.setText(getString(R.string.percentage_format, pct));
+                    } else if (downInRight) {
+                        setVolume(pct);
+                        if (viewVolumeFill != null) viewVolumeFill.setScaleY(pct / 100f);
+                        if (tvVolumeValue  != null) tvVolumeValue.setText(getString(R.string.percentage_format, pct));
+                    }
+                }
+                if (isHorizontal) {
+                    long delta = (long)(dx / SEEK_PX_PER_SEC) * 1000L;
+                    updateSeekIndicator(delta);
+                    if (player != null && previewContainer != null) {
+                        previewContainer.setVisibility(View.VISIBLE);
+                        updatePreviewFrame(player.getCurrentPosition() + delta);
+                    }
+                }
+                break;
+            case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_CANCEL:
+                autoHideHandler.removeCallbacks(startTouchHoldRunnable);
+                autoHideHandler.removeCallbacks(touchHoldRunnable);
+                if (touchHoldSide != 0) {
+                    touchHoldSide = 0;
+                    if (previewContainer != null) previewContainer.setVisibility(View.GONE);
+                    scheduleHide();
+                    dirLocked = false; isVertical = false; isHorizontal = false;
+                    break;
+                }
+                if (isLocked) {
+                    if (!dirLocked) { if (lockUiVisible) hideLockUI(); else showLockUI(); }
+                    dirLocked = false; isVertical = false; isHorizontal = false; break;
+                }
+                if (isVertical) {
+                    hideGestureIndicator(downInLeft); scheduleHide();
+                } else if (isHorizontal) {
+                    long ms = (long)((rawX - downRawX) / SEEK_PX_PER_SEC) * 1000L;
+                    fastSeek(ms); hideSeekIndicator(); scheduleHide();
+                } else { handleTap(downRawX); }
+                dirLocked = false; isVertical = false; isHorizontal = false;
+                break;
+        }
+    }
+
+    private void handleTap(float x) {
+        long now = System.currentTimeMillis();
+        int side = (x < playerView.getWidth() / 2f) ? -1 : 1;
+        if (now - lastTapTime < DOUBLE_TAP_MS && side == lastTapSide) {
+            long ms = side == -1 ? -5_000L : 10_000L;
+            fastSeek(ms); lastTapTime = 0;
+        } else {
+            lastTapTime = now; lastTapSide = side;
+            if (controlsVisible) hideControls();
+            else { focusRow = 1; focusCol = 2; showControls(); }
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    //  Wire buttons (unchanged logic, +accessibility)
+    // ══════════════════════════════════════════════════════════════════════════
+    private void wireButtons() {
+        if (btnBack != null) btnBack.setOnClickListener(v -> performBackAction());
+
+        if (btnPictureMode != null) btnPictureMode.setOnClickListener(v -> {
+            resizeModeIndex = (resizeModeIndex + 1) % RESIZE_MODES.length;
+            playerView.setResizeMode(RESIZE_MODES[resizeModeIndex]);
+            Toast.makeText(this, RESIZE_LABELS[resizeModeIndex], Toast.LENGTH_SHORT).show();
+            btnPictureMode.announceForAccessibility("Picture mode: " + RESIZE_LABELS[resizeModeIndex]);
+            scheduleHide();
+        });
+
+        if (btnFullscreen != null) btnFullscreen.setOnClickListener(v -> {
+            isFullscreen = !isFullscreen;
+            if (isFullscreen) {
+                hideSystemUI();
+                btnFullscreen.setImageResource(R.drawable.ic_fullscreen_exit);
+                btnFullscreen.setContentDescription("Exit fullscreen");
+                setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+            } else {
+                showSystemUI();
+                btnFullscreen.setImageResource(R.drawable.ic_fullscreen);
+                btnFullscreen.setContentDescription("Fullscreen");
+                setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
+            }
+            scheduleHide();
+        });
+
+        if (btnSync != null) btnSync.setOnClickListener(v -> {
+            saveLastFocus(); showSyncDialog(); scheduleHide();
+        });
+
+        if (btnSettings != null) btnSettings.setOnClickListener(v -> {
+            saveLastFocus(); showTrackSelectionDialog(); scheduleHide();
+        });
+
+        if (btnRew  != null) btnRew.setOnClickListener(v ->  { fastSeek(-5_000); scheduleHide(); });
+        if (btnFfwd != null) btnFfwd.setOnClickListener(v -> { fastSeek(10_000);  scheduleHide(); });
+        if (btnPP   != null) btnPP.setOnClickListener(v -> {
+            if (player != null) { if (player.isPlaying()) player.pause(); else player.play(); }
+            animatePlayPause(); updatePlayPauseAccessibility(); scheduleHide();
+        });
+
+        if (btnPrevEp != null) btnPrevEp.setOnClickListener(v -> {
+            if (currentIndex > 0) { playEpisode(currentIndex - 1); } scheduleHide();
+        });
+        if (btnNextEp != null) btnNextEp.setOnClickListener(v -> {
+            if (currentIndex < playlist.size() - 1) { playEpisode(currentIndex + 1); } scheduleHide();
+        });
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    //  Seek + skip overlays
+    // ══════════════════════════════════════════════════════════════════════════
+    private void fastSeek(long delta) {
+        if (player == null) return;
+        long target = Math.max(0, Math.min(player.getDuration(), player.getCurrentPosition() + delta));
+        player.seekTo(target);
+        updatePreviewFrame(target);
+        // Netflix-style overlay removed as per user request (was causing emoji display)
+        // showSkipOverlay(delta < 0, delta);
+        // Legacy seek indicator for gesture UI
+        showSeekIndicatorTimed(delta);
+        animatePlayPause();
+    }
+
+    private void updateSeekIndicator(long ms) {
+        if (seekIndicator == null) return;
+        if (seekIndicator.getVisibility() != View.VISIBLE) {
+            seekIndicator.setAlpha(0f); seekIndicator.setVisibility(View.VISIBLE);
+            seekIndicator.animate().alpha(1f).setDuration(150).start();
+        }
+        long secs = Math.abs(ms / 1000);
+        if (tvSeekDelta != null) tvSeekDelta.setText(getString(R.string.seek_delta_format, ms >= 0 ? "+" : "-", secs));
+        if (seekIcon != null)
+            seekIcon.setImageResource(ms >= 0 ? R.drawable.ic_forward_30 : R.drawable.ic_replay_10);
+    }
+
+    private void showSeekIndicatorTimed(long ms) {
+        updateSeekIndicator(ms);
+        autoHideHandler.postDelayed(this::hideSeekIndicator, 800);
+    }
+
+    private void hideSeekIndicator() {
+        if (seekIndicator == null) return;
+        seekIndicator.animate().alpha(0f).setDuration(200)
+                .withEndAction(() -> seekIndicator.setVisibility(View.GONE)).start();
+    }
+
+    private void animatePlayPause() {
+        if (btnPP == null) return;
+        btnPP.animate().cancel();
+        float currentScale = btnPP.getScaleX();
+        float startScale = (currentScale > 1.0f) ? currentScale * 0.9f : 0.85f;
+        float endScale   = (focusRow == 1 && clampCenterCol(focusCol) == 2) ? 1.12f : 1.0f;
+        btnPP.setScaleX(startScale); btnPP.setScaleY(startScale);
+        btnPP.animate().scaleX(endScale).scaleY(endScale).setDuration(200)
+                .setInterpolator(new AccelerateDecelerateInterpolator()).start();
+    }
+
+    private void showGestureIndicator(boolean isBrightness) {
+        LinearLayout v = isBrightness ? brightnessIndicator : volumeIndicator;
+        if (v == null) return;
+        v.setScaleX(0.8f); v.setAlpha(0f); v.setVisibility(View.VISIBLE);
+        v.animate().scaleX(1f).alpha(1f).setDuration(180)
+                .setInterpolator(new AccelerateDecelerateInterpolator()).start();
+    }
+
+    private void hideGestureIndicator(boolean isBrightness) {
+        LinearLayout v = isBrightness ? brightnessIndicator : volumeIndicator;
+        if (v == null) return;
+        v.animate().alpha(0f).scaleX(0.8f).setDuration(200)
+                .withEndAction(() -> v.setVisibility(View.GONE)).start();
+    }
+
+    private int getBrightnessPct() {
+        WindowManager.LayoutParams lp = getWindow().getAttributes();
+        if (lp.screenBrightness < 0) {
+            try { return Settings.System.getInt(getContentResolver(), Settings.System.SCREEN_BRIGHTNESS) * 100 / 255; }
+            catch (Exception e) { return 50; }
+        }
+        return (int)(lp.screenBrightness * 100);
+    }
+
+    private void setBrightness(int pct) {
+        WindowManager.LayoutParams lp = getWindow().getAttributes();
+        lp.screenBrightness = pct / 100f; getWindow().setAttributes(lp);
+    }
+
+    private int getVolumePct() {
+        return audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) * 100 / maxVolume;
+    }
+
+    private void setVolume(int pct) {
+        int steps = Math.max(0, Math.min(maxVolume, pct * maxVolume / 100));
+        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, steps, 0);
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    //  Lifecycle
+    // ══════════════════════════════════════════════════════════════════════════
+    private void performBackAction() {
+        saveCurrentPosition();
+        releasePlayer();
+        Intent i = new Intent(this, MainActivity.class);
+        i.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        startActivity(i);
+        finish();
+        overridePendingTransition(0, 0);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (isLocked) {
+            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LOCKED);
+            NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && nm != null && nm.isNotificationPolicyAccessGranted()) {
+                previousInterruptionFilter = nm.getCurrentInterruptionFilter();
+                nm.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_PRIORITY);
+            }
+        }
+        hideSystemUI();
+        startTimeUpdates();
+    }
+
+    @Override protected void onPause() {
+        super.onPause();
+        if (isLocked) {
+            NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && nm != null && nm.isNotificationPolicyAccessGranted()) {
+                nm.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL);
+            }
+            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+        }
+        saveCurrentPosition();
+        if (player != null) player.pause();
+        autoHideHandler.removeCallbacks(autoHideRunnable);
+        autoHideHandler.removeCallbacks(hideLockUiRunnable);
+        autoHideHandler.removeCallbacks(savePositionRunnable);
+        timeUpdateHandler.removeCallbacks(timeUpdateRunnable);
+    }
+
+    @Override protected void onDestroy() {
+        timeUpdateHandler.removeCallbacks(timeUpdateRunnable);
+        if (previewThread != null) { previewThread.quitSafely(); previewThread = null; }
+        if (retriever != null) { try { retriever.release(); } catch (Exception ignored) {} retriever = null; }
+        autoHideHandler.removeCallbacks(autoHideRunnable);
+        autoHideHandler.removeCallbacks(hideLockUiRunnable);
+        autoHideHandler.removeCallbacks(savePositionRunnable);
+        releasePlayer();
+        super.onDestroy();
+    }
+
+    private void releasePlayer() {
+        if (player != null) { player.stop(); player.release(); player = null; }
+    }
+
+    private void applySavedTrackPreferences() {
+        if (player == null) return;
+        SharedPreferences prefs = getSharedPreferences("hm_player_prefs", MODE_PRIVATE);
+        String audioLang = prefs.getString("pref_lang_audio", null);
+        String textLang  = prefs.getString("pref_lang_text", null);
+        TrackSelectionParameters.Builder builder = player.getTrackSelectionParameters().buildUpon();
+        builder.setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false);
+        builder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false);
+        if (audioLang != null) builder.setPreferredAudioLanguage(audioLang);
+        if (textLang  != null) {
+            builder.setPreferredTextLanguage(textLang);
+            builder.setIgnoredTextSelectionFlags(0);
+            builder.setSelectUndeterminedTextLanguage(true);
+        }
+        player.setTrackSelectionParameters(builder.build());
+    }
+
+    private void hideSystemUI() {
+        getWindow().getDecorView().setSystemUiVisibility(
+                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_FULLSCREEN);
+    }
+
+    private void showSystemUI() {
+        getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
+    }
+}
