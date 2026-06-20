@@ -17,4 +17,5 @@
     <string name="sync_max">+2000ms</string>
     <string name="seek_delta_format">%1$s%2$ds</string>
     <string name="lock_hint">Tap 🔒 to unlock</string>
+    <string name="skip_intro">SKIP INTRO</string>
 </resources>

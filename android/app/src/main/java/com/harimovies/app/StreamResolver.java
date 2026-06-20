@@ -39,6 +39,11 @@ public class StreamResolver {
         return url != null && url.contains("1drv.ms") || url.contains("onedrive.live.com");
     }
 
+    public static boolean isYouTube(String url) {
+        if (url == null) return false;
+        return url.contains("youtube.com") || url.contains("youtu.be");
+    }
+
     public static boolean isEmbedPage(String url) {
         if (url == null) return false;
         String lower = url.toLowerCase();

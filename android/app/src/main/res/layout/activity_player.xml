@@ -17,13 +17,20 @@
         app:show_buffering="when_playing"
         app:surface_type="texture_view" />
 
+    <com.pierfrancescosoffritti.androidyoutubeplayer.core.player.views.YouTubePlayerView
+        android:id="@+id/youtube_player_view"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone"
+        app:enableAutomaticInitialization="false" />
+
     <!-- LOCK BUTTON — outside PlayerView so touch always reaches it -->
     <ImageButton
         android:id="@+id/btn_lock"
         android:layout_width="44dp"
         android:layout_height="44dp"
         android:layout_gravity="center_vertical|end"
-        android:layout_marginEnd="80dp"
+        android:layout_marginEnd="24dp"
         android:background="@drawable/bg_lock_btn"
         android:contentDescription="Lock controls"
         android:src="@drawable/ic_lock_open"
@@ -38,7 +45,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="center_vertical|end"
-        android:layout_marginEnd="136dp"
+        android:layout_marginEnd="80dp"
         android:background="@drawable/bg_seek_pill"
         android:paddingStart="14dp"
         android:paddingEnd="14dp"

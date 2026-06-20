@@ -6,6 +6,8 @@ import android.media.AudioManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.Settings;
 import android.util.Log;
 import android.view.View;
@@ -136,10 +138,8 @@ public class MainActivity extends BridgeActivity {
         super.onResume();
         hideSystemUI();
 
-        // Each time the app resumes (i.e. user returns from PlayerActivity),
-        // push the latest hm_last_watched SharedPreferences into the WebView's
-        // localStorage so Home.js's localStorage fallback is always fresh.
-        syncLastWatchedToLocalStorage();
+        // Small delay to ensure WebView is ready for JS execution
+        new Handler(Looper.getMainLooper()).postDelayed(this::syncLastWatchedToLocalStorage, 500);
     }
 
     @Override
@@ -176,6 +176,8 @@ public class MainActivity extends BridgeActivity {
             // Escape for injection into a JS string literal
             String jsonStr = fullMap.toString().replace("\\", "\\\\").replace("'", "\\'");
 
+            Log.d("LASTWATCH", "Syncing to JS: " + jsonStr);
+
             String js =
                 "(function() {" +
                 "  try {" +
@@ -184,7 +186,11 @@ public class MainActivity extends BridgeActivity {
                 "    try { existing = JSON.parse(localStorage.getItem('ott_last_watched') || '{}'); } catch(e) {}" +
                 "    var merged = Object.assign({}, existing, incoming);" +
                 "    localStorage.setItem('ott_last_watched', JSON.stringify(merged));" +
-                "    console.log('[HariMovies] Synced last_watched to localStorage, keys=' + Object.keys(incoming).length);" +
+                "    console.log('[HariMovies] Synced last_watched to localStorage');" +
+                "    if (window.dispatchEvent) {" +
+                "        window.dispatchEvent(new Event('storage'));" +
+                "        window.dispatchEvent(new CustomEvent('lastWatchedUpdated'));" +
+                "    }" +
                 "  } catch(e) {" +
                 "    console.warn('[HariMovies] sync failed', e);" +
                 "  }" +

@@ -26,23 +26,15 @@ function isDirectUrl(url) {
 }
 
 function getYouTubeId(url) {
-  // Handles: youtu.be/ID, youtube.com/watch?v=ID, /embed/ID, /shorts/ID, /v/ID
   const m = url.match(
     /(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|v\/|shorts\/))([\w-]{11})/
   );
   return m ? m[1] : null;
 }
 
-// Scrape an embed page HTML for a direct stream URL
-// NOTE: this only works if the server allows CORS. Many don't.
-// We wrap it in a try/catch so a CORS failure is silent.
 async function scrapeDirectUrl(pageUrl, signal) {
   try {
-    const resp = await fetch(pageUrl, {
-      signal,
-      mode: "cors",
-      credentials: "omit",
-    });
+    const resp = await fetch(pageUrl, { signal, mode: "cors", credentials: "omit" });
     if (!resp.ok) return null;
     const html = await resp.text();
     const patterns = [
@@ -62,10 +54,78 @@ async function scrapeDirectUrl(pageUrl, signal) {
       if (m) return m[1].replace(/\\/g, "");
     }
     return null;
-  } catch {
-    // CORS block or network error — silent fail, fall through to iframe
-    return null;
-  }
+  } catch { return null; }
+}
+
+// ─── Ad Blocker for iframes ───────────────────────────────────────────────────
+// HONEST LIMITATION: when the embedded page is cross-origin (true for the
+// vast majority of streaming embeds), the browser's same-origin policy makes
+// it IMPOSSIBLE for parent-page JS to read or modify anything inside that
+// iframe. No client-side trick bypasses this — it's not a bug in this code,
+// it's how browsers stop one site from tampering with another. So in-page ad
+// banners inside a cross-origin embed genuinely cannot be stripped from here.
+//
+// What IS controllable from the parent page, and what this hook does:
+//   1. Same-origin injection — works only if the iframe happens to share
+//      origin with the parent. Kept as a real bonus when it applies.
+//   2. The iframe's `sandbox` attribute is the actual effective lever:
+//      dropping `allow-popups` and never granting `allow-top-navigation`
+//      stops most popup/redirect ads at the browser level, regardless of
+//      the embed's origin. That's applied on the <iframe> itself below.
+//   3. Reports real status (injected / cross-origin) instead of an
+//      unconditional green "AD BLOCK" badge — the previous version showed
+//      that badge always, which was misleading since it wasn't blocking
+//      anything for cross-origin embeds (i.e. almost always).
+function useAdBlock(iframeRef) {
+  const [status, setStatus] = useState("pending"); // pending | injected | cross-origin
+
+  useEffect(() => {
+    const frame = iframeRef?.current;
+    if (!frame) return;
+
+    const onLoad = () => {
+      try {
+        const doc = frame.contentDocument || frame.contentWindow?.document;
+        if (!doc) { setStatus("cross-origin"); return; }
+        // Reading contentDocument without throwing means same-origin.
+        const s = doc.createElement("script");
+        s.textContent = `
+          (function(){
+            window.open = function(){ return null; };
+            const adPatterns = /ads|banner|popup|advert|doubleclick|googlesyndication|adnxs|taboola|outbrain|revcontent|mgid|adsystem|adsbygoogle/i;
+            const _appendChild = Element.prototype.appendChild;
+            Element.prototype.appendChild = function(el){
+              if (el && el.tagName) {
+                const tag = el.tagName.toLowerCase();
+                const src = el.src || el.href || "";
+                if ((tag==="script"||tag==="iframe"||tag==="ins") && adPatterns.test(src)) return el;
+              }
+              return _appendChild.call(this, el);
+            };
+            const kill = () => {
+              document.querySelectorAll('iframe,ins,[class*="ad-"],[id*="ad-"],[class*="banner"],[class*="popup"]').forEach(el => {
+                if (el.tagName === "INS" || /adsbygoogle/i.test(el.className) || /ad/i.test(el.id||"")) {
+                  el.style.display = "none";
+                }
+              });
+            };
+            kill();
+            new MutationObserver(kill).observe(document.body || document.documentElement, { childList:true, subtree:true });
+          })();
+        `;
+        doc.head?.appendChild(s);
+        setStatus("injected");
+      } catch {
+        // Cross-origin — expected for nearly all real embeds. Can't inject.
+        setStatus("cross-origin");
+      }
+    };
+
+    frame.addEventListener("load", onLoad);
+    return () => frame.removeEventListener("load", onLoad);
+  }, [iframeRef]);
+
+  return status;
 }
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
@@ -88,7 +148,9 @@ const Icons = {
   Sun:           () => <svg viewBox="0 0 24 24" fill="currentColor" width="1em" height="1em"><path d="M6.76 4.84l-1.8-1.79-1.41 1.41 1.79 1.79 1.42-1.41zM4 10.5H1v2h3v-2zm9-9.95h-2V3.5h2V.55zm7.45 3.91l-1.41-1.41-1.79 1.79 1.41 1.41 1.79-1.79zm-3.21 13.7l1.79 1.8 1.41-1.41-1.8-1.79-1.4 1.4zM20 10.5v2h3v-2h-3zm-8-5c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm-1 16.95h2V19.5h-2v2.95zm-7.45-3.91l1.41 1.41 1.79-1.8-1.41-1.41-1.79 1.8z"/></svg>,
   Warning:       () => <svg viewBox="0 0 24 24" fill="currentColor" width="1em" height="1em"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>,
   Download:      () => <svg viewBox="0 0 24 24" fill="currentColor" width="1em" height="1em"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>,
-  Globe:         () => <svg viewBox="0 0 24 24" fill="currentColor" width="1em" height="1em"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>,
+  Shield:        () => <svg viewBox="0 0 24 24" fill="currentColor" width="1em" height="1em"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>,
+  ChevronLeft:   () => <svg viewBox="0 0 24 24" fill="currentColor" width="1em" height="1em"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>,
+  ChevronRight:  () => <svg viewBox="0 0 24 24" fill="currentColor" width="1em" height="1em"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>,
 };
 
 // ─── Watch position helpers ───────────────────────────────────────────────────
@@ -99,13 +161,13 @@ function clearPos(t) { try { localStorage.removeItem(watchKey(t)); } catch {} }
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // GLOBAL PLAYER
-// Props: url, title, playlist [{link,title,episode,season,id}], startIndex, onClose
 // ═══════════════════════════════════════════════════════════════════════════════
 export default function GlobalPlayer({ url, title, playlist = null, startIndex = 0, onClose }) {
   const videoRef        = useRef(null);
   const containerRef    = useRef(null);
   const progressRef     = useRef(null);
   const hlsRef          = useRef(null);
+  const iframeRef       = useRef(null);
   const controlsTimer   = useRef(null);
   const isScrubbingRef  = useRef(false);
   const lastSaveRef     = useRef(0);
@@ -115,6 +177,7 @@ export default function GlobalPlayer({ url, title, playlist = null, startIndex =
   const countdownRef    = useRef(null);
   const endTriggered    = useRef(false);
   const discoverAbort   = useRef(null);
+  const epScrollRef     = useRef(null);
 
   const isSeries = Array.isArray(playlist) && playlist.length > 1;
 
@@ -125,7 +188,6 @@ export default function GlobalPlayer({ url, title, playlist = null, startIndex =
   const hasNext      = isSeries && currentIndex < playlist.length - 1;
   const hasPrev      = isSeries && currentIndex > 0;
 
-  // ── mode: "discovering" | "direct" | "iframe" | "error"
   const [mode,         setMode]         = useState("discovering");
   const [directUrl,    setDirectUrl]    = useState("");
   const [iframeUrl,    setIframeUrl]    = useState("");
@@ -152,6 +214,7 @@ export default function GlobalPlayer({ url, title, playlist = null, startIndex =
   const [countdown,    setCountdown]    = useState(null);
   const [showResume,   setShowResume]   = useState(false);
   const [resumeTime,   setResumeTime]   = useState(0);
+  const adBlockStatus = useAdBlock(iframeRef); // "pending" | "injected" | "cross-origin"
 
   // ── Controls hide timer ───────────────────────────────────────────────
   const resetControlsTimer = useCallback(() => {
@@ -184,7 +247,6 @@ export default function GlobalPlayer({ url, title, playlist = null, startIndex =
     else            { setShowResume(false); setResumeTime(0); }
 
     const discover = async () => {
-      // 1. YouTube — always iframe, never try to scrape or direct-play
       const ytId = getYouTubeId(rawUrl);
       if (ytId) {
         if (ctrl.signal.aborted) return;
@@ -194,7 +256,6 @@ export default function GlobalPlayer({ url, title, playlist = null, startIndex =
         return;
       }
 
-      // 2. Already a direct stream URL — play immediately
       if (isDirectUrl(rawUrl)) {
         if (ctrl.signal.aborted) return;
         setDirectUrl(rawUrl);
@@ -203,8 +264,6 @@ export default function GlobalPlayer({ url, title, playlist = null, startIndex =
         return;
       }
 
-      // 3. Try fetching the embed page to scrape a stream URL
-      //    (will silently fail if CORS blocks it — that's fine)
       setDiscoverMsg("Extracting stream from page…");
       const scraped = await scrapeDirectUrl(rawUrl, ctrl.signal);
       if (ctrl.signal.aborted) return;
@@ -216,7 +275,6 @@ export default function GlobalPlayer({ url, title, playlist = null, startIndex =
         return;
       }
 
-      // 4. Nothing found — load in iframe as last resort
       setDiscoverMsg("Opening in embedded player…");
       setIframeUrl(rawUrl);
       setEngine("Embed");
@@ -228,7 +286,7 @@ export default function GlobalPlayer({ url, title, playlist = null, startIndex =
     });
 
     return () => { ctrl.abort(); };
-  }, [currentIndex, rawUrl, currentTitle]); // eslint-disable-line
+  }, [currentIndex, rawUrl, currentTitle]);
 
   // ── Init direct video engine ──────────────────────────────────────────
   useEffect(() => {
@@ -269,7 +327,29 @@ export default function GlobalPlayer({ url, title, playlist = null, startIndex =
     }
 
     return () => { try { hlsRef.current?.destroy(); } catch {} hlsRef.current = null; };
-  }, [mode, directUrl]); // eslint-disable-line
+  }, [mode, directUrl]);
+
+  // ── Autoplay countdown ────────────────────────────────────────────────
+  // NOTE: moved above the "Video events" effect below, since that effect
+  // references startCountdown (both as a call inside onEnd and in its
+  // dependency array). Defining it after caused the
+  // "'startCountdown' was used before it was defined" (no-use-before-define) warning.
+  const startCountdown = useCallback(() => {
+    if (!hasNext || countdownRef.current || endTriggered.current) return;
+    endTriggered.current = true;
+    setCountdown(5);
+    countdownRef.current = setInterval(() => {
+      setCountdown(p => {
+        if (p <= 1) { clearInterval(countdownRef.current); countdownRef.current = null; return 0; }
+        return p - 1;
+      });
+    }, 1000);
+  }, [hasNext]);
+
+  const cancelCountdown = useCallback(() => {
+    clearInterval(countdownRef.current); countdownRef.current = null;
+    setCountdown(null); endTriggered.current = false;
+  }, []);
 
   // ── Video events ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -312,7 +392,7 @@ export default function GlobalPlayer({ url, title, playlist = null, startIndex =
       v.removeEventListener("ended",          onEnd);
       v.removeEventListener("error",          onErr);
     };
-  }, [mode, currentTitle]); // eslint-disable-line
+  }, [mode, currentTitle, startCountdown]);
 
   // ── Fullscreen listener ───────────────────────────────────────────────
   useEffect(() => {
@@ -320,6 +400,15 @@ export default function GlobalPlayer({ url, title, playlist = null, startIndex =
     ["fullscreenchange","webkitfullscreenchange"].forEach(e => document.addEventListener(e, onFS));
     return () => ["fullscreenchange","webkitfullscreenchange"].forEach(e => document.removeEventListener(e, onFS));
   }, []);
+
+  // ── Auto-scroll episode bar to active episode ─────────────────────────
+  useEffect(() => {
+    if (!epScrollRef.current || !isSeries) return;
+    const active = epScrollRef.current.querySelector("[data-active='true']");
+    if (active) {
+      active.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+    }
+  }, [currentIndex, isSeries]);
 
   // ── Cleanup ───────────────────────────────────────────────────────────
   useEffect(() => () => {
@@ -331,24 +420,6 @@ export default function GlobalPlayer({ url, title, playlist = null, startIndex =
     discoverAbort.current?.abort();
   }, []);
 
-  // ── Autoplay countdown ────────────────────────────────────────────────
-  const startCountdown = useCallback(() => {
-    if (!hasNext || countdownRef.current || endTriggered.current) return;
-    endTriggered.current = true;
-    setCountdown(5);
-    countdownRef.current = setInterval(() => {
-      setCountdown(p => {
-        if (p <= 1) { clearInterval(countdownRef.current); countdownRef.current = null; return 0; }
-        return p - 1;
-      });
-    }, 1000);
-  }, [hasNext]);
-
-  const cancelCountdown = useCallback(() => {
-    clearInterval(countdownRef.current); countdownRef.current = null;
-    setCountdown(null); endTriggered.current = false;
-  }, []);
-
   const goToEpisode = useCallback((idx) => {
     if (!isSeries || idx < 0 || idx >= playlist.length) return;
     cancelCountdown();
@@ -357,7 +428,7 @@ export default function GlobalPlayer({ url, title, playlist = null, startIndex =
     setShowResume(false); setResumeTime(0);
   }, [isSeries, playlist, cancelCountdown]);
 
-  useEffect(() => { if (countdown === 0) goToEpisode(currentIndex + 1); }, [countdown]); // eslint-disable-line
+  useEffect(() => { if (countdown === 0) goToEpisode(currentIndex + 1); }, [countdown, currentIndex, goToEpisode]);
 
   // ── Playback controls ─────────────────────────────────────────────────
   const showFlash = useCallback((type) => {
@@ -452,7 +523,7 @@ export default function GlobalPlayer({ url, title, playlist = null, startIndex =
   const onGestureStart = useCallback((e) => {
     if (isLocked) return;
     const t = e.target;
-    if (t.closest("button")||t.closest(".gp-track")||t.closest(".gp-ctrl-bar")) return;
+    if (t.closest("button")||t.closest(".gp-track")||t.closest(".gp-ctrl-bar")||t.closest(".gp-ep-bar")) return;
     const touch = e.touches[0];
     const v = videoRef.current;
     gestureRef.current = {
@@ -528,6 +599,9 @@ export default function GlobalPlayer({ url, title, playlist = null, startIndex =
 
   const ctrlVisible = (showControls || isScrubbing) && !isLocked;
 
+  // ── Episode bar height (used for ctrlBar bottom offset) ───────────────
+  const EP_BAR_H = isSeries ? 64 : 0;
+
   // ══════════════════════════════════════════════════════════════════════
   // RENDER
   // ══════════════════════════════════════════════════════════════════════
@@ -544,9 +618,14 @@ export default function GlobalPlayer({ url, title, playlist = null, startIndex =
       {(mode === "direct" || mode === "discovering") && (
         <video
           ref={videoRef}
-          style={{ ...S.video, objectFit: isStretched ? "cover" : "contain",
+          style={{
+            ...S.video,
+            objectFit: isStretched ? "cover" : "contain",
             filter: brightness !== 100 ? `brightness(${brightness/100})` : undefined,
-            display: mode === "direct" ? "block" : "none" }}
+            display: mode === "direct" ? "block" : "none",
+            // Shift up when episode bar is shown so it doesn't overlap
+            bottom: isSeries ? EP_BAR_H : 0,
+          }}
           autoPlay playsInline preload="auto"
           webkit-playsinline="true"
           onClick={togglePlay}
@@ -557,15 +636,22 @@ export default function GlobalPlayer({ url, title, playlist = null, startIndex =
 
       {/* ── IFRAME / EMBED ── */}
       {mode === "iframe" && (
-        <div style={S.iframeWrap}>
-          <div style={{ ...S.adShield, top: 0, height: 64 }} />
-          <div style={{ ...S.adShield, bottom: 0, height: 60 }} />
+        <div style={{ ...S.iframeWrap, bottom: isSeries ? EP_BAR_H : 0 }}>
           <iframe
+            ref={iframeRef}
             src={iframeUrl}
             title={currentTitle}
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
             allowFullScreen
-            sandbox="allow-scripts allow-same-origin allow-presentation allow-forms allow-popups"
+            // allow-popups and allow-top-navigation are deliberately OMITTED.
+            // This is the actual, effective ad-block lever for cross-origin
+            // embeds: without allow-popups the embed cannot call
+            // window.open()/target=_blank to spawn ad tabs, and without
+            // allow-top-navigation it cannot redirect this tab to an ad
+            // landing page. Re-adding either of those will bring popup/
+            // redirect ads back, even though it may also break embeds that
+            // legitimately need a popup (e.g. some login or cast flows).
+            sandbox="allow-scripts allow-same-origin allow-presentation allow-forms"
             style={S.iframe}
             onLoad={() => setError("")}
           />
@@ -599,8 +685,12 @@ export default function GlobalPlayer({ url, title, playlist = null, startIndex =
       )}
 
       {/* ── HEADER ── */}
-      <div style={{ ...S.header, opacity: ctrlVisible || mode === "iframe" ? 1 : 0,
-        pointerEvents: ctrlVisible || mode === "iframe" ? "auto" : "none", transition: "opacity 0.3s" }}>
+      <div style={{
+        ...S.header,
+        opacity: ctrlVisible || mode === "iframe" ? 1 : 0,
+        pointerEvents: ctrlVisible || mode === "iframe" ? "auto" : "none",
+        transition: "opacity 0.3s",
+      }}>
         <button style={S.backBtn} onClick={onClose}>
           <Icons.Back /><span style={{ fontSize:"0.74rem", fontWeight:700, marginLeft:5 }}>Back</span>
         </button>
@@ -610,36 +700,61 @@ export default function GlobalPlayer({ url, title, playlist = null, startIndex =
           {engine && <span style={S.engineBadge}>{engine}</span>}
           {mode === "iframe" && <span style={{ ...S.engineBadge, color:"#ffe082", borderColor:"rgba(255,224,130,0.3)" }}>EMBED</span>}
         </div>
-        {mode === "direct" && (
-          <div style={S.topRight}>
-            <button style={{ ...S.cornerBtn, ...(isStretched ? S.cornerActive : {}) }}
-              onClick={() => { setIsStretched(s => !s); resetControlsTimer(); }} title="Stretch">
-              <Icons.Stretch />
-            </button>
-            <button style={S.cornerBtn} onClick={toggleMute} title={isMuted ? "Unmute" : "Mute"}>
-              {isMuted || volume === 0 ? <Icons.Mute /> : volume < 0.5 ? <Icons.VolumeDown /> : <Icons.VolumeUp />}
-            </button>
-            {isFullscreen && (
-              <button style={{ ...S.cornerBtn, ...(isLocked ? S.cornerLock : {}) }}
-                onClick={() => {
-                  if (isLocked) { setIsLocked(false); resetControlsTimer(); }
-                  else { setIsLocked(true); setShowControls(false); clearTimeout(controlsTimer.current); }
-                }} title={isLocked ? "Unlock" : "Lock"}>
-                {isLocked ? <Icons.Unlock /> : <Icons.Lock />}
+        <div style={S.topRight}>
+          {/* Ad block indicator — reflects what's actually happening, not a fixed claim.
+              Popup/redirect blocking is always active here (it's enforced by the
+              iframe's sandbox attribute, not by JS, so it works regardless of origin).
+              In-page banner stripping only ever applies for same-origin embeds, which
+              is rare — most streaming embeds are cross-origin and that part of the
+              ad blocker genuinely cannot reach inside them. */}
+          {mode === "iframe" && (
+            <div
+              style={{
+                ...S.adBadge,
+                ...(adBlockStatus === "cross-origin" ? S.adBadgePartial : {}),
+              }}
+              title={
+                adBlockStatus === "injected"
+                  ? "Popup/redirect ads blocked, plus in-page ad scripts stripped"
+                  : "Popup/redirect ads blocked. In-page banners inside this embed can't be removed — they're served from a different origin the browser keeps isolated."
+              }
+            >
+              <Icons.Shield />
+              <span style={{ fontSize:"0.55rem", fontWeight:800, letterSpacing:"0.5px" }}>
+                {adBlockStatus === "injected" ? "AD BLOCK" : "POPUPS BLOCKED"}
+              </span>
+            </div>
+          )}
+          {mode === "direct" && (
+            <>
+              <button
+                style={{ ...S.cornerBtn, ...(isStretched ? S.cornerActive : {}) }}
+                onClick={() => { setIsStretched(s => !s); resetControlsTimer(); }}
+                title="Stretch"
+              >
+                <Icons.Stretch />
               </button>
-            )}
-            <button style={S.cornerBtn} onClick={toggleFullscreen} title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}>
-              {isFullscreen ? <Icons.FullscreenExit /> : <Icons.Fullscreen />}
-            </button>
-          </div>
-        )}
-        {mode === "iframe" && (
-          <div style={S.topRight}>
-            <button style={S.cornerBtn} onClick={toggleFullscreen} title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}>
-              {isFullscreen ? <Icons.FullscreenExit /> : <Icons.Fullscreen />}
-            </button>
-          </div>
-        )}
+              <button style={S.cornerBtn} onClick={toggleMute} title={isMuted ? "Unmute" : "Mute"}>
+                {isMuted || volume === 0 ? <Icons.Mute /> : volume < 0.5 ? <Icons.VolumeDown /> : <Icons.VolumeUp />}
+              </button>
+              {isFullscreen && (
+                <button
+                  style={{ ...S.cornerBtn, ...(isLocked ? S.cornerLock : {}) }}
+                  onClick={() => {
+                    if (isLocked) { setIsLocked(false); resetControlsTimer(); }
+                    else { setIsLocked(true); setShowControls(false); clearTimeout(controlsTimer.current); }
+                  }}
+                  title={isLocked ? "Unlock" : "Lock"}
+                >
+                  {isLocked ? <Icons.Unlock /> : <Icons.Lock />}
+                </button>
+              )}
+            </>
+          )}
+          <button style={S.cornerBtn} onClick={toggleFullscreen} title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}>
+            {isFullscreen ? <Icons.FullscreenExit /> : <Icons.Fullscreen />}
+          </button>
+        </div>
       </div>
 
       {/* ── LOCK PEEK ── */}
@@ -651,8 +766,14 @@ export default function GlobalPlayer({ url, title, playlist = null, startIndex =
 
       {/* ── CENTER CONTROLS ── */}
       {mode === "direct" && !isLocked && !showResume && countdown === null && (
-        <div style={{ ...S.centerControls, opacity: showControls ? 1 : 0,
-          pointerEvents: showControls ? "auto" : "none", transition: "opacity 0.25s" }}>
+        <div style={{
+          ...S.centerControls,
+          // Move center controls up a bit when episode bar is shown
+          bottom: isSeries ? EP_BAR_H : 0,
+          opacity: showControls ? 1 : 0,
+          pointerEvents: showControls ? "auto" : "none",
+          transition: "opacity 0.25s",
+        }}>
           {hasPrev && (
             <button style={S.sideBtn} onClick={() => goToEpisode(currentIndex - 1)}>
               <Icons.Prev /><span style={S.ovLabel}>Prev</span>
@@ -682,10 +803,13 @@ export default function GlobalPlayer({ url, title, playlist = null, startIndex =
             {gestureOv.type === "brightness" ? <Icons.Sun /> : gestureOv.value === 0 ? <Icons.Mute /> : <Icons.VolumeUp />}
           </span>
           <div style={S.gestureTrack}>
-            <div style={{ ...S.gestureFill, height:`${gestureBarH}%`,
-              background: gestureOv.type === "brightness" ? "rgba(255,255,255,0.9)" : "#e50914" }} />
+            <div style={{
+              ...S.gestureFill,
+              height:`${gestureBarH}%`,
+              background: gestureOv.type === "brightness" ? "rgba(255,255,255,0.9)" : "#e50914",
+            }} />
           </div>
-          <span style={{ fontSize:"0.58rem", fontWeight:700, fontFamily:"monospace" }}>{gestureOv.value}%</span>
+          <span style={{ fontSize:"0.58rem", fontWeight:700, fontFamily:F.mono }}>{gestureOv.value}%</span>
         </div>
       )}
 
@@ -733,61 +857,121 @@ export default function GlobalPlayer({ url, title, playlist = null, startIndex =
         </div>
       )}
 
-      {/* ── CONTROLS BAR ── */}
+      {/* ══════════════════════════════════════════════════════════════════
+          CONTROLS BAR — sits just ABOVE the episode bar (never overlapping)
+          ══════════════════════════════════════════════════════════════════ */}
       {mode === "direct" && (
-        <div style={{ ...S.ctrlBar, opacity: ctrlVisible ? 1 : 0,
-          pointerEvents: ctrlVisible ? "auto" : "none", transition: "opacity 0.3s" }}>
+        <div
+          className="gp-ctrl-bar"
+          style={{
+            ...S.ctrlBar,
+            // Key fix: push the control bar up above the episode bar
+            bottom: isSeries ? EP_BAR_H : 0,
+            opacity: ctrlVisible ? 1 : 0,
+            pointerEvents: ctrlVisible ? "auto" : "none",
+            transition: "opacity 0.3s",
+          }}
+        >
+          {/* Progress row */}
           <div style={S.progressRow}>
             <span style={S.timeLabel}>{fmt(currentTime)}</span>
-            <div ref={progressRef} style={S.track}
-              onPointerDown={onScrubStart} onPointerMove={onScrubMove}
-              onPointerUp={onScrubEnd}    onPointerCancel={onScrubEnd}>
+            <div
+              ref={progressRef}
+              className="gp-track"
+              style={S.track}
+              onPointerDown={onScrubStart}
+              onPointerMove={onScrubMove}
+              onPointerUp={onScrubEnd}
+              onPointerCancel={onScrubEnd}
+            >
               <div style={S.trackBg} />
               <div style={{ ...S.trackFill, width:`${displayPct}%` }} />
-              <div style={{ ...S.trackThumb, left:`${displayPct}%`,
+              <div style={{
+                ...S.trackThumb,
+                left:`${displayPct}%`,
                 opacity: isScrubbing ? 1 : undefined,
-                transform: isScrubbing ? "translate(-50%,-50%) scale(1.4)" : undefined }} />
+                transform: isScrubbing ? "translate(-50%,-50%) scale(1.4)" : undefined,
+              }} />
             </div>
             <span style={S.timeLabel}>{fmt(duration)}</span>
           </div>
+
+          {/* Volume row */}
           <div style={S.volRow}>
             <span style={{ color:"rgba(255,255,255,0.5)", fontSize:13 }}>
               {isMuted || volume === 0 ? <Icons.Mute /> : <Icons.VolumeUp />}
             </span>
-            <input type="range" min={0} max={1} step={0.01} value={isMuted ? 0 : volume}
-              onChange={e => setVol(parseFloat(e.target.value))} style={S.volSlider} />
+            <input
+              type="range" min={0} max={1} step={0.01} value={isMuted ? 0 : volume}
+              onChange={e => setVol(parseFloat(e.target.value))}
+              className="gp-vol"
+              style={S.volSlider}
+            />
           </div>
         </div>
       )}
 
-      {/* ── EPISODE BAR ── */}
+      {/* ══════════════════════════════════════════════════════════════════
+          EPISODE BAR — always pinned to absolute bottom, never overlapping
+          ══════════════════════════════════════════════════════════════════ */}
       {isSeries && (
-        <div style={{ ...S.epBar, opacity: ctrlVisible || mode === "iframe" ? 1 : 0,
-          pointerEvents: ctrlVisible || mode === "iframe" ? "auto" : "none", transition: "opacity 0.3s" }}>
-          <button style={{ ...S.epNav, opacity: hasPrev ? 1 : 0.2 }}
-            onClick={() => hasPrev && goToEpisode(currentIndex-1)} disabled={!hasPrev}>
-            <Icons.Prev />
+        <div
+          className="gp-ep-bar"
+          style={{
+            ...S.epBar,
+            opacity: ctrlVisible || mode === "iframe" ? 1 : 0,
+            pointerEvents: ctrlVisible || mode === "iframe" ? "auto" : "none",
+            transition: "opacity 0.3s",
+          }}
+        >
+          {/* Prev arrow */}
+          <button
+            style={{ ...S.epNav, opacity: hasPrev ? 1 : 0.25 }}
+            onClick={() => hasPrev && goToEpisode(currentIndex-1)}
+            disabled={!hasPrev}
+          >
+            <Icons.ChevronLeft />
           </button>
-          <div style={S.epScroll}>
-            {playlist.map((ep, idx) => (
-              <button key={ep.id || idx}
-                style={{ ...S.epDot, ...(idx === currentIndex ? S.epDotActive : {}) }}
-                onClick={() => goToEpisode(idx)}
-                title={ep.title || `Episode ${idx+1}`}>
-                {ep.episode || idx+1}
-              </button>
-            ))}
+
+          {/* Episode dot list */}
+          <div ref={epScrollRef} style={S.epScroll}>
+            {playlist.map((ep, idx) => {
+              const isActive = idx === currentIndex;
+              return (
+                <button
+                  key={ep.id || idx}
+                  data-active={isActive}
+                  style={{
+                    ...S.epDot,
+                    ...(isActive ? S.epDotActive : {}),
+                    // Slightly larger active pill
+                    transform: isActive ? "scale(1.08)" : "scale(1)",
+                    transition: "transform 0.18s ease, background 0.18s ease",
+                  }}
+                  onClick={() => goToEpisode(idx)}
+                  title={ep.title || `Episode ${idx+1}`}
+                >
+                  <span style={S.epDotNum}>{ep.episode || idx+1}</span>
+                  {isActive && <span style={S.epDotBar} />}
+                </button>
+              );
+            })}
           </div>
-          <button style={{ ...S.epNav, opacity: hasNext ? 1 : 0.2 }}
-            onClick={() => hasNext && goToEpisode(currentIndex+1)} disabled={!hasNext}>
-            <Icons.Next />
+
+          {/* Next arrow */}
+          <button
+            style={{ ...S.epNav, opacity: hasNext ? 1 : 0.25 }}
+            onClick={() => hasNext && goToEpisode(currentIndex+1)}
+            disabled={!hasNext}
+          >
+            <Icons.ChevronRight />
           </button>
         </div>
       )}
 
       {/* ── ERROR TOAST ── */}
       {error && (
-        <div style={S.errorToast}>
+        <div style={{ ...S.errorToast, bottom: isSeries ? EP_BAR_H + 10 : 88 }}>
           <Icons.Warning />
           <span style={{ flex:1 }}>{error}</span>
           <a href={directUrl || rawUrl} target="_blank" rel="noreferrer" style={S.dlBtn}>
@@ -809,92 +993,151 @@ const CSS = `
 @keyframes gp-flash-ring { 0%{opacity:0;transform:scale(0.4) rotate(-8deg)}14%{opacity:1;transform:scale(1.1) rotate(1deg)}50%{opacity:1;transform:scale(1.02)}100%{opacity:0;transform:scale(1.35)} }
 @keyframes gp-flash-icon { 0%{opacity:0;transform:scale(0.4)}32%{opacity:1;transform:scale(1.2)}55%{transform:scale(0.95)}100%{opacity:0;transform:scale(1.1)} }
 @keyframes gp-text-pulse { 0%,100%{opacity:0.28}50%{opacity:0.72} }
+@keyframes gp-ep-slide  { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
 input[type=range].gp-vol::-webkit-slider-thumb{appearance:none;width:14px;height:14px;border-radius:50%;background:#e50914;cursor:pointer}
 input[type=range].gp-vol::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:#e50914;border:none;cursor:pointer}
+.gp-ep-bar::-webkit-scrollbar{display:none}
 `;
 
 // ─── Style constants ──────────────────────────────────────────────────────────
-const C   = { red:"#e50914", redB:"#ff2535", redD:"rgba(229,9,20,0.20)", redG:"rgba(229,9,20,0.50)",
-              g01:"rgba(10,10,10,0.72)", g02:"rgba(14,14,14,0.88)",
-              gb:"rgba(255,255,255,0.13)", text:"#e8e8e8", dim:"rgba(255,255,255,0.46)",
-              muted:"rgba(255,255,255,0.26)", s:"#0d0d0d", s2:"#141414" };
-const F   = { font:"'Sora','Helvetica Neue',Helvetica,sans-serif", mono:"'JetBrains Mono','SF Mono',monospace" };
-const r   = (v) => ({ borderRadius: v });
+const C = {
+  red:"#e50914", redB:"#ff2535", redD:"rgba(229,9,20,0.20)", redG:"rgba(229,9,20,0.50)",
+  g01:"rgba(10,10,10,0.72)", g02:"rgba(14,14,14,0.88)",
+  gb:"rgba(255,255,255,0.13)", text:"#e8e8e8", dim:"rgba(255,255,255,0.46)",
+  muted:"rgba(255,255,255,0.26)", s:"#0d0d0d", s2:"#141414",
+};
+const F = { font:"'Sora','Helvetica Neue',Helvetica,sans-serif", mono:"'JetBrains Mono','SF Mono',monospace" };
+const r = (v) => ({ borderRadius: v });
 const abs = { position:"absolute" };
 
 const S = {
-  root:          { position:"fixed", inset:0, background:"#000", overflow:"hidden", fontFamily:F.font, zIndex:99999, userSelect:"none", WebkitUserSelect:"none" },
-  video:         { ...abs, inset:0, width:"100%", height:"100%", background:"#000", display:"block", cursor:"pointer" },
-  iframeWrap:    { ...abs, inset:0 },
-  iframe:        { width:"100%", height:"100%", border:"none", background:"#000", display:"block" },
-  adShield:      { ...abs, left:0, right:0, zIndex:10, pointerEvents:"none" },
-  loaderWrap:    { ...abs, inset:0, background:"#000", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:22, zIndex:200 },
-  spinWrap:      { position:"relative", width:60, height:60 },
-  spinRing:      { ...abs, borderRadius:"50%", border:"2px solid transparent" },
-  sr1:           { inset:0,  borderTopColor:C.red, borderRightColor:"rgba(229,9,20,0.18)", animation:"gp-spin 0.82s ease-in-out infinite" },
-  sr2:           { inset:9,  borderTopColor:"rgba(229,9,20,0.42)", animation:"gp-spin-rev 1.08s ease-in-out infinite" },
-  sr3:           { inset:18, borderTopColor:"rgba(229,9,20,0.20)", animation:"gp-spin 1.42s ease-in-out infinite" },
-  spinDot:       { ...abs, width:8, height:8, background:C.red, borderRadius:"50%", top:"50%", left:"50%", animation:"gp-dot 1.1s ease-in-out infinite" },
-  loaderText:    { color:C.muted, fontSize:"0.60rem", fontFamily:F.mono, letterSpacing:"2.5px", fontWeight:500, textTransform:"uppercase", animation:"gp-text-pulse 2.2s ease-in-out infinite", marginTop:4 },
-  bufWrap:       { ...abs, inset:0, display:"flex", alignItems:"center", justifyContent:"center", zIndex:190, pointerEvents:"none" },
-  bufRing:       { width:46, height:46, border:"2px solid rgba(255,255,255,0.06)", borderTopColor:C.red, borderRadius:"50%", animation:"gp-spin 0.68s linear infinite" },
-  flash:         { ...abs, top:"50%", left:"50%", width:96, height:96, marginLeft:-48, marginTop:-48, pointerEvents:"none", zIndex:380 },
-  flashRing:     { ...abs, inset:0, borderRadius:"50%", background:"radial-gradient(ellipse at 36% 28%, rgba(255,68,78,0.97), rgba(225,10,20,0.99), rgba(145,0,8,1))", border:"1px solid rgba(255,255,255,0.55)", animation:"gp-flash-ring 0.78s ease-out forwards", zIndex:3 },
-  flashRingPause:{ background:"radial-gradient(ellipse at 36% 28%, rgba(200,200,210,0.97), rgba(140,140,155,0.99), rgba(80,80,90,1))" },
-  flashIcon:     { ...abs, inset:0, display:"flex", alignItems:"center", justifyContent:"center", color:"#fff", fontSize:28, animation:"gp-flash-icon 0.68s cubic-bezier(0.34,1.56,0.64,1) forwards", zIndex:5 },
-  header:        { ...abs, top:0, left:0, right:0, height:76, display:"flex", alignItems:"center", padding:"0 16px", gap:10, background:"linear-gradient(180deg,rgba(0,0,0,0.97) 0%,rgba(0,0,0,0.7) 52%,transparent 100%)", zIndex:600 },
-  backBtn:       { display:"inline-flex", alignItems:"center", gap:4, background:C.g01, backdropFilter:"blur(20px)", WebkitBackdropFilter:"blur(20px)", color:"#fff", border:"1px solid "+C.gb, padding:"8px 14px 8px 9px", ...r(999), fontSize:"0.74rem", fontWeight:700, cursor:"pointer", flexShrink:0 },
-  titleRow:      { display:"flex", alignItems:"center", gap:7, flex:1, minWidth:0 },
-  titleText:     { color:"#fff", fontSize:"0.96rem", fontWeight:800, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", maxWidth:"min(280px,38vw)", letterSpacing:"-0.3px", textShadow:"0 2px 20px rgba(0,0,0,0.98)" },
-  epBadge:       { background:"linear-gradient(135deg,#e50914,#b0000e)", color:"#fff", fontSize:"0.52rem", fontWeight:800, padding:"3px 7px", ...r(4), textTransform:"uppercase", letterSpacing:"1px", flexShrink:0 },
-  engineBadge:   { background:"rgba(255,255,255,0.05)", color:C.muted, fontSize:"0.48rem", fontWeight:600, fontFamily:F.mono, padding:"2px 6px", ...r(4), textTransform:"uppercase", letterSpacing:"0.7px", border:"1px solid rgba(255,255,255,0.05)", flexShrink:0 },
-  topRight:      { display:"flex", gap:7, flexShrink:0 },
-  cornerBtn:     { display:"inline-flex", alignItems:"center", justifyContent:"center", background:C.g01, backdropFilter:"blur(20px)", WebkitBackdropFilter:"blur(20px)", border:"1px solid "+C.gb, color:C.text, ...r(10), width:42, height:42, cursor:"pointer", fontSize:15 },
-  cornerActive:  { background:"rgba(229,9,20,0.25)", borderColor:"rgba(229,9,20,0.5)", color:"#fff" },
-  cornerLock:    { background:"rgba(155,0,0,0.92)", borderColor:"rgba(229,9,20,0.55)", color:"#fff" },
-  lockPeek:      { ...abs, top:16, right:16, zIndex:820, display:"inline-flex", alignItems:"center", justifyContent:"center", background:"rgba(155,0,0,0.92)", border:"1px solid rgba(229,9,20,0.55)", color:"#fff", ...r(10), width:42, height:42, cursor:"pointer", fontSize:15 },
-  centerControls:{ ...abs, inset:0, display:"flex", alignItems:"center", justifyContent:"center", gap:"clamp(10px,2vw,22px)", zIndex:350 },
-  sideBtn:       { display:"inline-flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:5, color:"#fff", ...r(14), width:58, height:58, background:"#171717", border:"1px solid #3a3a3a", cursor:"pointer", fontSize:17, boxShadow:"0 10px 26px rgba(0,0,0,0.72)" },
-  ovLabel:       { fontSize:"0.48rem", fontWeight:700, letterSpacing:"0.5px", textTransform:"uppercase" },
-  playBtn:       { display:"inline-flex", alignItems:"center", justifyContent:"center", width:66, height:66, borderRadius:"50%", background:C.red, border:"none", cursor:"pointer", color:"#fff", fontSize:26, margin:"0 6px", boxShadow:`0 0 0 1px rgba(229,9,20,0.38),0 6px 26px rgba(229,9,20,0.38)` },
-  gesturePanel:  { ...abs, top:"50%", transform:"translateY(-50%)", display:"flex", flexDirection:"column", alignItems:"center", gap:9, background:C.g02, backdropFilter:"blur(20px)", WebkitBackdropFilter:"blur(20px)", border:"1px solid "+C.gb, ...r(20), padding:"15px 10px", minWidth:48, color:"#fff", zIndex:750, pointerEvents:"none", fontSize:14 },
-  gestureTrack:  { width:5, height:90, background:"rgba(255,255,255,0.08)", borderRadius:999, position:"relative", overflow:"hidden" },
-  gestureFill:   { ...abs, bottom:0, left:0, width:"100%", borderRadius:999, transition:"height 0.04s linear" },
-  resumeOverlay: { ...abs, inset:0, display:"flex", alignItems:"center", justifyContent:"center", background:"rgba(0,0,0,0.82)", backdropFilter:"blur(14px)", WebkitBackdropFilter:"blur(14px)", zIndex:460 },
-  resumeCard:    { background:"linear-gradient(158deg,#141414,#0d0d0d)", border:"1px solid rgba(255,255,255,0.10)", ...r(18), padding:"26px 30px", textAlign:"center", maxWidth:310, width:"92%", boxShadow:"0 40px 96px rgba(0,0,0,0.98)", display:"flex", flexDirection:"column", alignItems:"center" },
-  resumeIcon:    { width:48, height:48, borderRadius:"50%", background:"rgba(229,9,20,0.10)", border:"1px solid rgba(229,9,20,0.30)", display:"flex", alignItems:"center", justifyContent:"center", color:C.red, marginBottom:12, fontSize:17 },
-  resumeTitle:   { color:"#fff", fontSize:"1.02rem", fontWeight:800, marginBottom:5, letterSpacing:"-0.3px" },
-  resumeSub:     { color:C.dim, fontSize:"0.68rem", fontWeight:500, marginBottom:12, fontFamily:F.mono },
-  resumeBar:     { width:"100%", height:3, background:"rgba(255,255,255,0.06)", ...r(999), overflow:"hidden", marginBottom:16 },
-  resumeBarFill: { height:"100%", background:`linear-gradient(to right,${C.red},${C.redB})`, ...r(999) },
-  resumeActions: { display:"flex", gap:8, width:"100%" },
-  resumeBtn:     { flex:1, display:"inline-flex", alignItems:"center", justifyContent:"center", gap:6, ...r(10), padding:"10px 12px", fontSize:"0.78rem", fontWeight:700, fontFamily:F.font, minHeight:42, cursor:"pointer" },
-  resumePrimary: { background:`linear-gradient(135deg,${C.redB},${C.red})`, color:"#fff", border:"none", boxShadow:`0 3px 18px ${C.redD}` },
+  root:           { position:"fixed", inset:0, background:"#000", overflow:"hidden", fontFamily:F.font, zIndex:99999, userSelect:"none", WebkitUserSelect:"none" },
+
+  // ── Video fills above episode bar
+  video:          { ...abs, top:0, left:0, right:0, /* bottom set dynamically */ width:"100%", background:"#000", display:"block", cursor:"pointer" },
+
+  // ── Iframe wrapper also respects episode bar
+  iframeWrap:     { ...abs, top:0, left:0, right:0, /* bottom set dynamically */ },
+  iframe:         { width:"100%", height:"100%", border:"none", background:"#000", display:"block" },
+
+  loaderWrap:     { ...abs, inset:0, background:"#000", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:22, zIndex:200 },
+  spinWrap:       { position:"relative", width:60, height:60 },
+  spinRing:       { ...abs, borderRadius:"50%", border:"2px solid transparent" },
+  sr1:            { inset:0,  borderTopColor:C.red, borderRightColor:"rgba(229,9,20,0.18)", animation:"gp-spin 0.82s ease-in-out infinite" },
+  sr2:            { inset:9,  borderTopColor:"rgba(229,9,20,0.42)", animation:"gp-spin-rev 1.08s ease-in-out infinite" },
+  sr3:            { inset:18, borderTopColor:"rgba(229,9,20,0.20)", animation:"gp-spin 1.42s ease-in-out infinite" },
+  spinDot:        { ...abs, width:8, height:8, background:C.red, borderRadius:"50%", top:"50%", left:"50%", animation:"gp-dot 1.1s ease-in-out infinite" },
+  loaderText:     { color:C.muted, fontSize:"0.60rem", fontFamily:F.mono, letterSpacing:"2.5px", fontWeight:500, textTransform:"uppercase", animation:"gp-text-pulse 2.2s ease-in-out infinite", marginTop:4 },
+
+  bufWrap:        { ...abs, inset:0, display:"flex", alignItems:"center", justifyContent:"center", zIndex:190, pointerEvents:"none" },
+  bufRing:        { width:46, height:46, border:"2px solid rgba(255,255,255,0.06)", borderTopColor:C.red, borderRadius:"50%", animation:"gp-spin 0.68s linear infinite" },
+
+  flash:          { ...abs, top:"50%", left:"50%", width:96, height:96, marginLeft:-48, marginTop:-48, pointerEvents:"none", zIndex:380 },
+  flashRing:      { ...abs, inset:0, borderRadius:"50%", background:"radial-gradient(ellipse at 36% 28%, rgba(255,68,78,0.97), rgba(225,10,20,0.99), rgba(145,0,8,1))", border:"1px solid rgba(255,255,255,0.55)", animation:"gp-flash-ring 0.78s ease-out forwards", zIndex:3 },
+  flashRingPause: { background:"radial-gradient(ellipse at 36% 28%, rgba(200,200,210,0.97), rgba(140,140,155,0.99), rgba(80,80,90,1))" },
+  flashIcon:      { ...abs, inset:0, display:"flex", alignItems:"center", justifyContent:"center", color:"#fff", fontSize:28, animation:"gp-flash-icon 0.68s cubic-bezier(0.34,1.56,0.64,1) forwards", zIndex:5 },
+
+  header:         { ...abs, top:0, left:0, right:0, height:76, display:"flex", alignItems:"center", padding:"0 16px", gap:10, background:"linear-gradient(180deg,rgba(0,0,0,0.97) 0%,rgba(0,0,0,0.7) 52%,transparent 100%)", zIndex:600 },
+  backBtn:        { display:"inline-flex", alignItems:"center", gap:4, background:C.g01, backdropFilter:"blur(20px)", WebkitBackdropFilter:"blur(20px)", color:"#fff", border:"1px solid "+C.gb, padding:"8px 14px 8px 9px", ...r(999), fontSize:"0.74rem", fontWeight:700, cursor:"pointer", flexShrink:0 },
+  titleRow:       { display:"flex", alignItems:"center", gap:7, flex:1, minWidth:0 },
+  titleText:      { color:"#fff", fontSize:"0.96rem", fontWeight:800, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", maxWidth:"min(280px,38vw)", letterSpacing:"-0.3px", textShadow:"0 2px 20px rgba(0,0,0,0.98)" },
+  epBadge:        { background:"linear-gradient(135deg,#e50914,#b0000e)", color:"#fff", fontSize:"0.52rem", fontWeight:800, padding:"3px 7px", ...r(4), textTransform:"uppercase", letterSpacing:"1px", flexShrink:0 },
+  engineBadge:    { background:"rgba(255,255,255,0.05)", color:C.muted, fontSize:"0.48rem", fontWeight:600, fontFamily:F.mono, padding:"2px 6px", ...r(4), textTransform:"uppercase", letterSpacing:"0.7px", border:"1px solid rgba(255,255,255,0.05)", flexShrink:0 },
+  topRight:       { display:"flex", gap:7, flexShrink:0, alignItems:"center" },
+  cornerBtn:      { display:"inline-flex", alignItems:"center", justifyContent:"center", background:C.g01, backdropFilter:"blur(20px)", WebkitBackdropFilter:"blur(20px)", border:"1px solid "+C.gb, color:C.text, ...r(10), width:42, height:42, cursor:"pointer", fontSize:15 },
+  cornerActive:   { background:"rgba(229,9,20,0.25)", borderColor:"rgba(229,9,20,0.5)", color:"#fff" },
+  cornerLock:     { background:"rgba(155,0,0,0.92)", borderColor:"rgba(229,9,20,0.55)", color:"#fff" },
+
+  // Ad block badge
+  adBadge:        { display:"inline-flex", alignItems:"center", gap:5, background:"rgba(0,180,80,0.15)", border:"1px solid rgba(0,200,80,0.35)", color:"#4ade80", ...r(8), padding:"6px 10px", fontSize:13, flexShrink:0 },
+  adBadgePartial: { background:"rgba(255,180,0,0.13)", border:"1px solid rgba(255,180,0,0.32)", color:"#facc15" },
+
+  lockPeek:       { ...abs, top:16, right:16, zIndex:820, display:"inline-flex", alignItems:"center", justifyContent:"center", background:"rgba(155,0,0,0.92)", border:"1px solid rgba(229,9,20,0.55)", color:"#fff", ...r(10), width:42, height:42, cursor:"pointer", fontSize:15 },
+
+  // Center controls float in the middle of the video area (above episode bar)
+  centerControls: { ...abs, top:0, left:0, right:0, display:"flex", alignItems:"center", justifyContent:"center", gap:"clamp(10px,2vw,22px)", zIndex:350, pointerEvents:"none" },
+  sideBtn:        { display:"inline-flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:5, color:"#fff", ...r(14), width:58, height:58, background:"#171717", border:"1px solid #3a3a3a", cursor:"pointer", fontSize:17, boxShadow:"0 10px 26px rgba(0,0,0,0.72)" },
+  ovLabel:        { fontSize:"0.48rem", fontWeight:700, letterSpacing:"0.5px", textTransform:"uppercase" },
+  playBtn:        { display:"inline-flex", alignItems:"center", justifyContent:"center", width:66, height:66, borderRadius:"50%", background:C.red, border:"none", cursor:"pointer", color:"#fff", fontSize:26, margin:"0 6px", boxShadow:`0 0 0 1px rgba(229,9,20,0.38),0 6px 26px rgba(229,9,20,0.38)` },
+
+  gesturePanel:   { ...abs, top:"50%", transform:"translateY(-50%)", display:"flex", flexDirection:"column", alignItems:"center", gap:9, background:C.g02, backdropFilter:"blur(20px)", WebkitBackdropFilter:"blur(20px)", border:"1px solid "+C.gb, ...r(20), padding:"15px 10px", minWidth:48, color:"#fff", zIndex:750, pointerEvents:"none", fontSize:14 },
+  gestureTrack:   { width:5, height:90, background:"rgba(255,255,255,0.08)", borderRadius:999, position:"relative", overflow:"hidden" },
+  gestureFill:    { ...abs, bottom:0, left:0, width:"100%", borderRadius:999, transition:"height 0.04s linear" },
+
+  resumeOverlay:  { ...abs, inset:0, display:"flex", alignItems:"center", justifyContent:"center", background:"rgba(0,0,0,0.82)", backdropFilter:"blur(14px)", WebkitBackdropFilter:"blur(14px)", zIndex:460 },
+  resumeCard:     { background:"linear-gradient(158deg,#141414,#0d0d0d)", border:"1px solid rgba(255,255,255,0.10)", ...r(18), padding:"26px 30px", textAlign:"center", maxWidth:310, width:"92%", boxShadow:"0 40px 96px rgba(0,0,0,0.98)", display:"flex", flexDirection:"column", alignItems:"center" },
+  resumeIcon:     { width:48, height:48, borderRadius:"50%", background:"rgba(229,9,20,0.10)", border:"1px solid rgba(229,9,20,0.30)", display:"flex", alignItems:"center", justifyContent:"center", color:C.red, marginBottom:12, fontSize:17 },
+  resumeTitle:    { color:"#fff", fontSize:"1.02rem", fontWeight:800, marginBottom:5, letterSpacing:"-0.3px" },
+  resumeSub:      { color:C.dim, fontSize:"0.68rem", fontWeight:500, marginBottom:12, fontFamily:F.mono },
+  resumeBar:      { width:"100%", height:3, background:"rgba(255,255,255,0.06)", ...r(999), overflow:"hidden", marginBottom:16 },
+  resumeBarFill:  { height:"100%", background:`linear-gradient(to right,${C.red},${C.redB})`, ...r(999) },
+  resumeActions:  { display:"flex", gap:8, width:"100%" },
+  resumeBtn:      { flex:1, display:"inline-flex", alignItems:"center", justifyContent:"center", gap:6, ...r(10), padding:"10px 12px", fontSize:"0.78rem", fontWeight:700, fontFamily:F.font, minHeight:42, cursor:"pointer" },
+  resumePrimary:  { background:`linear-gradient(135deg,${C.redB},${C.red})`, color:"#fff", border:"none", boxShadow:`0 3px 18px ${C.redD}` },
   resumeSecondary:{ background:"rgba(255,255,255,0.05)", color:C.text, border:"1px solid rgba(255,255,255,0.09)" },
-  autoplayBg:    { ...abs, inset:0, background:"rgba(0,0,0,0.84)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:450, backdropFilter:"blur(14px)", WebkitBackdropFilter:"blur(14px)" },
-  autoplayCard:  { background:"linear-gradient(158deg,#141414,#0d0d0d)", border:"1px solid rgba(255,255,255,0.10)", ...r(18), padding:"30px 38px", textAlign:"center", maxWidth:310, width:"92%", boxShadow:"0 40px 96px rgba(0,0,0,0.98)" },
-  apLabel:       { color:C.red, fontSize:"0.52rem", fontWeight:800, letterSpacing:"4px", textTransform:"uppercase", marginBottom:9 },
-  apTitle:       { color:"#fff", fontSize:"1.00rem", fontWeight:800, marginBottom:18, lineHeight:1.4 },
-  apRing:        { position:"relative", width:62, height:62, margin:"0 auto 10px" },
-  apNum:         { ...abs, inset:0, display:"flex", alignItems:"center", justifyContent:"center", color:"#fff", fontSize:"1.24rem", fontWeight:900 },
-  apHint:        { color:C.dim, fontSize:"0.68rem", marginBottom:12 },
-  apActions:     { display:"flex", gap:8, justifyContent:"center" },
-  apNow:         { display:"inline-flex", alignItems:"center", gap:6, background:"#fff", color:"#000", border:"none", ...r(10), padding:"10px 16px", fontSize:"0.78rem", fontWeight:800, fontFamily:F.font, cursor:"pointer", minHeight:40 },
-  apCancel:      { background:"rgba(36,36,36,0.92)", color:C.text, border:"1px solid rgba(255,255,255,0.11)", ...r(10), padding:"10px 14px", fontSize:"0.78rem", fontWeight:700, fontFamily:F.font, cursor:"pointer", minHeight:40 },
-  ctrlBar:       { ...abs, left:0, right:0, bottom:0, zIndex:600, padding:"36px 16px 10px", background:"linear-gradient(transparent,rgba(0,0,0,0.88))", pointerEvents:"none" },
-  progressRow:   { display:"flex", alignItems:"center", gap:10, pointerEvents:"auto" },
-  timeLabel:     { color:"#fff", fontSize:12, fontWeight:600, fontFamily:F.mono, minWidth:44, textAlign:"center", flexShrink:0, textShadow:"0 1px 6px rgba(0,0,0,0.9)" },
-  track:         { position:"relative", flex:1, height:28, display:"flex", alignItems:"center", cursor:"pointer", touchAction:"none" },
-  trackBg:       { ...abs, left:0, right:0, top:"50%", height:4, transform:"translateY(-50%)", background:"rgba(255,255,255,0.18)", ...r(999) },
-  trackFill:     { ...abs, left:0, top:"50%", height:4, transform:"translateY(-50%)", background:`linear-gradient(to right,${C.red},${C.redB})`, ...r(999), boxShadow:`0 0 10px ${C.redD}` },
-  trackThumb:    { ...abs, top:"50%", width:16, height:16, background:"#fff", borderRadius:"50%", transform:"translate(-50%,-50%)", pointerEvents:"none", boxShadow:`0 2px 10px rgba(0,0,0,0.8),0 0 0 2.5px rgba(229,9,20,0.38)` },
-  volRow:        { display:"flex", alignItems:"center", gap:8, marginTop:5, pointerEvents:"auto" },
-  volSlider:     { flex:1, accentColor:C.red, cursor:"pointer", height:3 },
-  epBar:         { ...abs, left:0, right:0, bottom:0, zIndex:550, display:"flex", alignItems:"center", gap:7, padding:"8px 12px 12px", background:"linear-gradient(transparent,rgba(0,0,0,0.82))" },
-  epScroll:      { display:"flex", gap:6, overflowX:"auto", flex:1, scrollbarWidth:"none", WebkitOverflowScrolling:"touch", padding:"2px 0" },
-  epDot:         { flexShrink:0, minWidth:38, height:36, padding:"0 9px", background:"rgba(255,255,255,0.07)", border:"1px solid rgba(255,255,255,0.12)", ...r(9), color:C.muted, fontSize:"0.76rem", fontWeight:700, fontFamily:F.mono, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", whiteSpace:"nowrap" },
-  epDotActive:   { background:"#e50914", borderColor:"#ff3b4c", color:"#fff", fontWeight:800, boxShadow:"0 0 14px rgba(229,9,20,0.40)" },
-  epNav:         { display:"inline-flex", alignItems:"center", justifyContent:"center", width:34, height:34, background:"rgba(255,255,255,0.07)", border:"1px solid rgba(255,255,255,0.12)", borderRadius:"50%", color:"#fff", cursor:"pointer", fontSize:13, flexShrink:0 },
-  errorToast:    { ...abs, bottom:88, left:"50%", transform:"translateX(-50%)", background:"rgba(135,0,0,0.98)", color:"#fff", padding:"11px 14px", ...r(10), fontSize:"0.74rem", fontWeight:600, zIndex:700, display:"flex", alignItems:"center", gap:8, boxShadow:"0 8px 32px rgba(0,0,0,0.80)", maxWidth:"min(90vw,460px)", border:"1px solid rgba(255,255,255,0.07)" },
-  dlBtn:         { display:"inline-flex", alignItems:"center", gap:5, color:"#fff", background:"rgba(255,255,255,0.14)", border:"1px solid rgba(255,255,255,0.14)", ...r(6), padding:"4px 8px", textDecoration:"none", fontSize:"0.66rem", fontWeight:700, fontFamily:F.font, flexShrink:0 },
+
+  autoplayBg:     { ...abs, inset:0, background:"rgba(0,0,0,0.84)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:450, backdropFilter:"blur(14px)", WebkitBackdropFilter:"blur(14px)" },
+  autoplayCard:   { background:"linear-gradient(158deg,#141414,#0d0d0d)", border:"1px solid rgba(255,255,255,0.10)", ...r(18), padding:"30px 38px", textAlign:"center", maxWidth:310, width:"92%", boxShadow:"0 40px 96px rgba(0,0,0,0.98)" },
+  apLabel:        { color:C.red, fontSize:"0.52rem", fontWeight:800, letterSpacing:"4px", textTransform:"uppercase", marginBottom:9 },
+  apTitle:        { color:"#fff", fontSize:"1.00rem", fontWeight:800, marginBottom:18, lineHeight:1.4 },
+  apRing:         { position:"relative", width:62, height:62, margin:"0 auto 10px" },
+  apNum:          { ...abs, inset:0, display:"flex", alignItems:"center", justifyContent:"center", color:"#fff", fontSize:"1.24rem", fontWeight:900 },
+  apHint:         { color:C.dim, fontSize:"0.68rem", marginBottom:12 },
+  apActions:      { display:"flex", gap:8, justifyContent:"center" },
+  apNow:          { display:"inline-flex", alignItems:"center", gap:6, background:"#fff", color:"#000", border:"none", ...r(10), padding:"10px 16px", fontSize:"0.78rem", fontWeight:800, fontFamily:F.font, cursor:"pointer", minHeight:40 },
+  apCancel:       { background:"rgba(36,36,36,0.92)", color:C.text, border:"1px solid rgba(255,255,255,0.11)", ...r(10), padding:"10px 14px", fontSize:"0.78rem", fontWeight:700, fontFamily:F.font, cursor:"pointer", minHeight:40 },
+
+  // Controls bar — never overlaps episode bar (bottom is set dynamically)
+  ctrlBar:        { ...abs, left:0, right:0, zIndex:600, padding:"36px 16px 10px", background:"linear-gradient(transparent,rgba(0,0,0,0.88))" },
+  progressRow:    { display:"flex", alignItems:"center", gap:10, pointerEvents:"auto" },
+  timeLabel:      { color:"#fff", fontSize:12, fontWeight:600, fontFamily:F.mono, minWidth:44, textAlign:"center", flexShrink:0, textShadow:"0 1px 6px rgba(0,0,0,0.9)" },
+  track:          { position:"relative", flex:1, height:28, display:"flex", alignItems:"center", cursor:"pointer", touchAction:"none" },
+  trackBg:        { ...abs, left:0, right:0, top:"50%", height:4, transform:"translateY(-50%)", background:"rgba(255,255,255,0.18)", ...r(999) },
+  trackFill:      { ...abs, left:0, top:"50%", height:4, transform:"translateY(-50%)", background:`linear-gradient(to right,${C.red},${C.redB})`, ...r(999), boxShadow:`0 0 10px ${C.redD}` },
+  trackThumb:     { ...abs, top:"50%", width:16, height:16, background:"#fff", borderRadius:"50%", transform:"translate(-50%,-50%)", pointerEvents:"none", boxShadow:`0 2px 10px rgba(0,0,0,0.8),0 0 0 2.5px rgba(229,9,20,0.38)` },
+  volRow:         { display:"flex", alignItems:"center", gap:8, marginTop:5, pointerEvents:"auto" },
+  volSlider:      { flex:1, accentColor:C.red, cursor:"pointer", height:3 },
+
+  // Episode bar — fixed to very bottom, 64px tall, never overlapped
+  epBar:          {
+    ...abs, left:0, right:0, bottom:0,
+    height: 64,
+    zIndex:620, // above ctrlBar
+    display:"flex", alignItems:"center", gap:6,
+    padding:"0 10px",
+    background:"linear-gradient(transparent,rgba(0,0,0,0.96) 28%,rgba(0,0,0,0.98))",
+    borderTop:"1px solid rgba(255,255,255,0.04)",
+  },
+  epScroll:       { display:"flex", gap:5, overflowX:"auto", flex:1, scrollbarWidth:"none", WebkitOverflowScrolling:"touch", padding:"6px 2px", alignItems:"center" },
+
+  // Refined episode pill
+  epDot:          {
+    position:"relative",
+    flexShrink:0, minWidth:40, height:40, padding:"0 10px",
+    background:"rgba(255,255,255,0.06)",
+    border:"1px solid rgba(255,255,255,0.10)",
+    ...r(10),
+    color:C.muted,
+    fontSize:"0.78rem", fontWeight:700, fontFamily:F.mono,
+    cursor:"pointer",
+    display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
+    whiteSpace:"nowrap",
+    gap:2,
+    overflow:"hidden",
+  },
+  epDotActive:    {
+    background:"rgba(229,9,20,0.18)",
+    borderColor:"rgba(229,9,20,0.55)",
+    color:"#fff",
+    fontWeight:800,
+    boxShadow:"0 0 16px rgba(229,9,20,0.28)",
+  },
+  epDotNum:       { lineHeight:1, position:"relative", zIndex:1 },
+  // Red underline indicator on active episode
+  epDotBar:       { position:"absolute", bottom:3, left:"50%", transform:"translateX(-50%)", width:16, height:2, background:C.red, borderRadius:999 },
+
+  epNav:          { display:"inline-flex", alignItems:"center", justifyContent:"center", width:32, height:32, background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.10)", borderRadius:"50%", color:"#fff", cursor:"pointer", fontSize:16, flexShrink:0 },
+
+  errorToast:     { ...abs, left:"50%", transform:"translateX(-50%)", background:"rgba(135,0,0,0.98)", color:"#fff", padding:"11px 14px", ...r(10), fontSize:"0.74rem", fontWeight:600, zIndex:700, display:"flex", alignItems:"center", gap:8, boxShadow:"0 8px 32px rgba(0,0,0,0.80)", maxWidth:"min(90vw,460px)", border:"1px solid rgba(255,255,255,0.07)" },
+  dlBtn:          { display:"inline-flex", alignItems:"center", gap:5, color:"#fff", background:"rgba(255,255,255,0.14)", border:"1px solid rgba(255,255,255,0.14)", ...r(6), padding:"4px 8px", textDecoration:"none", fontSize:"0.66rem", fontWeight:700, fontFamily:F.font, flexShrink:0 },
 };

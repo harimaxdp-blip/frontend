@@ -28,6 +28,8 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.view.animation.AccelerateDecelerateInterpolator;
+import android.webkit.JavascriptInterface;
+import android.webkit.WebView;
 import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
@@ -54,10 +56,20 @@ import androidx.media3.exoplayer.dash.DashMediaSource;
 import androidx.media3.exoplayer.hls.HlsMediaSource;
 import androidx.media3.exoplayer.source.MediaSource;
 import androidx.media3.exoplayer.source.ProgressiveMediaSource;
+import android.graphics.Typeface;
+import android.util.TypedValue;
+import androidx.media3.ui.CaptionStyleCompat;
+import androidx.media3.ui.SubtitleView;
 import androidx.media3.ui.AspectRatioFrameLayout;
 import androidx.media3.ui.DefaultTimeBar;
 import androidx.media3.ui.PlayerView;
 import androidx.media3.ui.TimeBar;
+
+import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.YouTubePlayer;
+import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.PlayerConstants;
+import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.options.IFramePlayerOptions;
+import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.listeners.AbstractYouTubePlayerListener;
+import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.views.YouTubePlayerView;
 
 import kotlin.Unit;
 
@@ -83,25 +95,31 @@ public class PlayerActivity extends AppCompatActivity {
 
     public static final String EXTRA_URL   = "url";
     public static final String EXTRA_TITLE = "title";
+    public static final String EXTRA_SERIES_TITLE = "series_title";
 
     private static final String PREFS_NAME    = "hm_watch_pos";
     private static final long   SAVE_EVERY_MS = 5_000L;
     private static final long   MIN_RESUME_MS = 10_000L;
 
-    // ── AUTO-HIDE: 8s (idle), never hides while paused/seeking/navigating ────
-    private static final long AUTO_HIDE_MS  = 8_000L;
+    // ── AUTO-HIDE: 3s (idle), never hides while paused/seeking/navigating ────
+    private static final long AUTO_HIDE_MS  = 3_000L;
     private static final long LOCK_UI_MS    = 3_000L;
 
     private ExoPlayer  player;
     private PlayerView playerView;
+    private YouTubePlayerView youtubePlayerView;
+    private YouTubePlayer activeYoutubePlayer;
+    private boolean isYoutubePlaying = false;
+    private boolean youtubeIsPlaying = false;
+    private float   youtubeCurrentTime = 0f;
+    private float   youtubeDuration = 0f;
     private DelayAudioProcessor delayAudioProcessor;
 
     private String  videoTitle   = "";
     private String  seriesTitle  = "";
     private String  videoUrl     = "";
-    private boolean isFullscreen = false;
+    private boolean isFullscreen = true;
     private int     resizeModeIndex = 0;
-    private boolean resumeChecked = false;
 
     // ── Playlist ──────────────────────────────────────────────────────────────
     private final List<JSONObject> playlist = new ArrayList<>();
@@ -110,6 +128,7 @@ public class PlayerActivity extends AppCompatActivity {
     private LinearLayout episodeContainer;
     private View episodeBar;
     private TextView tvTitle;
+    private TextView tvCurrentTime, tvRemainingTime;
 
     // ── A/V Sync ──────────────────────────────────────────────────────────────
     private long audioOffsetUs = 0L;
@@ -124,9 +143,11 @@ public class PlayerActivity extends AppCompatActivity {
 
     // ── Controls visibility ───────────────────────────────────────────────────
     private boolean controlsVisible = false;
+    private long    lastShowTime    = 0L;
     private boolean isLocked        = false;
     private boolean lockUiVisible   = false;
     private boolean resumeShowing   = false;
+    private boolean resumeChecked   = false;
     private boolean isSeeking       = false; // track seeking to pause auto-hide
     private int previousInterruptionFilter = 1; // Default to INTERRUPTION_FILTER_ALL
 
@@ -181,7 +202,6 @@ public class PlayerActivity extends AppCompatActivity {
     private TextView     tvLockHint, tvTitleSep;
 
     // ── Time labels ───────────────────────────────────────────────────────────
-    private TextView tvCurrentTime, tvRemainingTime;
     private final Handler timeUpdateHandler = new Handler(Looper.getMainLooper());
     private final Runnable timeUpdateRunnable = this::updateTimestamps;
 
@@ -211,6 +231,12 @@ public class PlayerActivity extends AppCompatActivity {
 
     private boolean isPreviewLoading = false;
     private long    lastPreviewPos   = -1;
+
+    // ── Intro Skip ────────────────────────────────────────────────────────────
+    private long introStartMs = -1;
+    private long introEndMs   = -1;
+    private Button btnSkipIntro;
+    private boolean isAniSkipEnabled = true;
 
     private final TelegramRepository telegramRepository = new TelegramRepository();
     private final OkHttpClient okHttpClient = new OkHttpClient();
@@ -249,16 +275,25 @@ public class PlayerActivity extends AppCompatActivity {
             audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
             maxVolume    = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
 
-            // Initialize Telegram Manager
-            String tdlibPath = getFilesDir().getAbsolutePath() + "/tdlib";
-            TelegramManager.INSTANCE.init(tdlibPath);
+            try {
+                String tdlibPath = getFilesDir().getAbsolutePath() + "/tdlib";
+                TelegramManager.INSTANCE.init(tdlibPath);
+            } catch (Exception e) {
+                Log.e("PLAYER", "TelegramManager init failed", e);
+            }
 
             playerView = findViewById(R.id.player_view);
+            youtubePlayerView = findViewById(R.id.youtube_player_view);
+            getLifecycle().addObserver(youtubePlayerView);
 
             videoUrl   = getIntent().getStringExtra(EXTRA_URL);   if (videoUrl == null) videoUrl = "";
             videoTitle = getIntent().getStringExtra(EXTRA_TITLE);
             if (videoTitle == null) videoTitle = "";
-            seriesTitle = cleanSeriesTitle(videoTitle);
+            
+            seriesTitle = getIntent().getStringExtra(EXTRA_SERIES_TITLE);
+            if (seriesTitle == null || seriesTitle.isEmpty()) {
+                seriesTitle = cleanSeriesTitle(videoTitle);
+            }
 
             forcedResumePos = getIntent().getLongExtra("resume_pos", 0);
 
@@ -322,7 +357,7 @@ public class PlayerActivity extends AppCompatActivity {
                 @Override
                 public void onPlayerError(@androidx.annotation.NonNull PlaybackException e) {
                     Log.e("STREAM_FAILED", "CODE=" + e.errorCode + " MSG=" + e.getMessage());
-                    
+
                     // Fallback: if ExoPlayer fails, try WebPlayerActivity again
                     if (videoUrl != null && !getIntent().getBooleanExtra("is_fallback", false)) {
                         Intent intent = new Intent(PlayerActivity.this, WebPlayerActivity.class);
@@ -346,12 +381,6 @@ public class PlayerActivity extends AppCompatActivity {
 
                 @Override
                 public void onIsPlayingChanged(boolean isPlaying) {
-                    // Keep controls visible while paused; restart hide timer when playing
-                    if (!isPlaying) {
-                        autoHideHandler.removeCallbacks(autoHideRunnable);
-                    } else {
-                        if (controlsVisible) scheduleHide();
-                    }
                     updatePlayPauseAccessibility();
                 }
 
@@ -382,10 +411,11 @@ public class PlayerActivity extends AppCompatActivity {
             });
 
             findControllerViews();
+            setupSubtitles();
             buildRowArrays();
-            syncFullscreenIcon();
             updateSeriesUI();
             buildResumeOverlay();
+            syncFullscreenIcon();
             wireButtons();
             setupGestures();
             setupLockButton();
@@ -400,6 +430,32 @@ public class PlayerActivity extends AppCompatActivity {
             Log.e("PLAYER", "CRASH IN ONCREATE", e);
             Toast.makeText(this, "Player Error: " + e.getMessage(), Toast.LENGTH_LONG).show();
             finish();
+        }
+    }
+
+    private void setupSubtitles() {
+        if (playerView == null) return;
+        SubtitleView subtitleView = playerView.getSubtitleView();
+        if (subtitleView != null) {
+            subtitleView.setApplyEmbeddedStyles(false);
+            subtitleView.setApplyEmbeddedFontSizes(false);
+
+            // Responsive size: 5% of the video height (better for both Mobile & TV)
+            subtitleView.setFractionalTextSize(0.05f);
+
+            // Professional "Soft Box" look with shadow for a curved feel
+            CaptionStyleCompat style = new CaptionStyleCompat(
+                    android.graphics.Color.WHITE,
+                    0xB3000000,                       // 70% Black (softer)
+                    android.graphics.Color.TRANSPARENT,
+                    CaptionStyleCompat.EDGE_TYPE_OUTLINE,
+                    android.graphics.Color.BLACK,
+                    Typeface.create("sans-serif-medium", Typeface.BOLD)
+            );
+            subtitleView.setStyle(style);
+
+            // Lift subtitles slightly
+            subtitleView.setBottomPaddingFraction(0.08f);
         }
     }
 
@@ -422,13 +478,35 @@ public class PlayerActivity extends AppCompatActivity {
     }
 
     private void updateTimestamps() {
-        if (player != null && tvCurrentTime != null && tvRemainingTime != null) {
+        if (isYoutubePlaying && activeYoutubePlayer != null && tvCurrentTime != null && tvRemainingTime != null) {
+            tvCurrentTime.setText(fmt((long) youtubeCurrentTime));
+            if (youtubeDuration > 0) {
+                long rem = (long) (youtubeDuration - youtubeCurrentTime);
+                tvRemainingTime.setText(String.format(Locale.US, "-%s", fmt(rem)));
+            }
+        } else if (player != null && tvCurrentTime != null && tvRemainingTime != null) {
             long pos = player.getCurrentPosition();
             long dur = player.getDuration();
             tvCurrentTime.setText(fmt(pos / 1000));
             if (dur > 0) {
                 long rem = dur - pos;
                 tvRemainingTime.setText(String.format(Locale.US, "-%s", fmt(rem / 1000)));
+            }
+
+            // Intro Skip logic
+            if (btnSkipIntro != null && introStartMs != -1 && introEndMs != -1) {
+                if (pos >= introStartMs && pos < introEndMs) {
+                    if (btnSkipIntro.getVisibility() != View.VISIBLE) {
+                        btnSkipIntro.setVisibility(View.VISIBLE);
+                        btnSkipIntro.setAlpha(0f);
+                        btnSkipIntro.animate().alpha(1f).setDuration(300).start();
+                    }
+                } else {
+                    if (btnSkipIntro.getVisibility() == View.VISIBLE) {
+                        btnSkipIntro.animate().alpha(0f).setDuration(300)
+                                .withEndAction(() -> btnSkipIntro.setVisibility(View.GONE)).start();
+                    }
+                }
             }
         }
         timeUpdateHandler.postDelayed(timeUpdateRunnable, 500);
@@ -453,7 +531,6 @@ public class PlayerActivity extends AppCompatActivity {
     private void setupButtonAccessibility() {
         setButtonAccessibility(btnBack,        "Back");
         setButtonAccessibility(btnPictureMode, "Picture mode");
-        setButtonAccessibility(btnFullscreen,  "Fullscreen");
         setButtonAccessibility(btnSync,        "Audio sync");
         setButtonAccessibility(btnSettings,    "Settings");
         setButtonAccessibility(btnRew,         "Rewind 5 seconds");
@@ -464,6 +541,24 @@ public class PlayerActivity extends AppCompatActivity {
         if (progressBar != null) {
             progressBar.setContentDescription("Seek bar");
             progressBar.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
+        }
+    }
+
+    private void syncFullscreenIcon() {
+        int orientation = getResources().getConfiguration().orientation;
+        isFullscreen = (orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE);
+        if (btnFullscreen != null) {
+            btnFullscreen.setImageResource(
+                    isFullscreen ? R.drawable.ic_fullscreen_exit : R.drawable.ic_fullscreen);
+        }
+        if (playerView != null) {
+            if (isFullscreen) {
+                playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
+                resizeModeIndex = 0;
+            } else {
+                playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
+                resizeModeIndex = 1;
+            }
         }
     }
 
@@ -480,6 +575,12 @@ public class PlayerActivity extends AppCompatActivity {
         // Detect Telegram links
         if (videoUrl.contains("t.me/") || videoUrl.contains("telegram.me/")) {
             resolveAndPlayTelegram();
+            return;
+        }
+
+        // Detect YouTube links
+        if (StreamResolver.isYouTube(videoUrl)) {
+            resolveAndPlayYouTube();
             return;
         }
 
@@ -555,6 +656,84 @@ public class PlayerActivity extends AppCompatActivity {
         });
     }
 
+    private void resolveAndPlayYouTube() {
+        if (progressBar != null) progressBar.setVisibility(View.VISIBLE);
+        String videoId = extractYouTubeVideoId(videoUrl);
+        if (videoId == null) {
+            runOnUiThread(() -> {
+                if (progressBar != null) progressBar.setVisibility(View.GONE);
+                Toast.makeText(PlayerActivity.this, "Invalid YouTube URL", Toast.LENGTH_SHORT).show();
+            });
+            return;
+        }
+
+        final String finalVideoId = videoId;
+        runOnUiThread(() -> {
+            isYoutubePlaying = true;
+            if (player != null) player.pause();
+            if (playerView != null) playerView.setVisibility(View.GONE);
+            if (youtubePlayerView != null) {
+                youtubePlayerView.setVisibility(View.VISIBLE);
+                youtubePlayerView.bringToFront(); // Fix Z-order
+
+                IFramePlayerOptions options = new IFramePlayerOptions.Builder(PlayerActivity.this)
+                        .controls(1)
+                        .rel(0)
+                        .ivLoadPolicy(3)
+                        .build();
+
+                youtubePlayerView.initialize(new AbstractYouTubePlayerListener() {
+                    @Override
+                    public void onReady(@androidx.annotation.NonNull YouTubePlayer youTubePlayer) {
+                        activeYoutubePlayer = youTubePlayer;
+                        youTubePlayer.loadVideo(finalVideoId, 0);
+                        if (progressBar != null) progressBar.setVisibility(View.GONE);
+                        updateSeriesUI();
+                    }
+
+                    @Override
+                    public void onCurrentSecond(@androidx.annotation.NonNull YouTubePlayer youTubePlayer, float second) {
+                        youtubeCurrentTime = second;
+                    }
+
+                    @Override
+                    public void onVideoDuration(@androidx.annotation.NonNull YouTubePlayer youTubePlayer, float duration) {
+                        youtubeDuration = duration;
+                    }
+
+                    @Override
+                    public void onStateChange(@androidx.annotation.NonNull YouTubePlayer youTubePlayer, @androidx.annotation.NonNull PlayerConstants.PlayerState state) {
+                        youtubeIsPlaying = (state == PlayerConstants.PlayerState.PLAYING);
+                    }
+
+                    @Override
+                    public void onError(@androidx.annotation.NonNull YouTubePlayer youTubePlayer, @androidx.annotation.NonNull PlayerConstants.PlayerError error) {
+                        Log.e("YOUTUBE", "Player error: " + error.name());
+                        // Fallback to WebPlayerActivity on any YouTube error
+                        runOnUiThread(() -> {
+                            if (progressBar != null) progressBar.setVisibility(View.GONE);
+                            Intent intent = new Intent(PlayerActivity.this, WebPlayerActivity.class);
+                            intent.putExtra("url", videoUrl);
+                            intent.putExtra("title", videoTitle);
+                            startActivity(intent);
+                            finish();
+                        });
+                    }
+                }, options);
+            }
+        });
+    }
+
+    private String extractYouTubeVideoId(String url) {
+        String pattern = "(?<=watch\\?v=|/videos/|embed/|youtu.be/|/v/|/e/|watch\\?v%3D|watch\\?feature=player_embedded&v=|%2Fvideos%2F|embed%2F|youtu.be%2F|%2Fv%2F|/shorts/)[^#&?\\n]*";
+        Pattern compiledPattern = Pattern.compile(pattern);
+        Matcher matcher = compiledPattern.matcher(url);
+        if (matcher.find()) {
+            return matcher.group();
+        }
+        return null;
+    }
+
     private String extractTelegramCdnUrl(String html) {
         // Pattern 1: cdn5.telesco.pe MP4 with token (YOUR CHANNEL'S EXACT FORMAT)
         // Matches: https://cdn5.telesco.pe/file/xxxxx.mp4?token=...
@@ -599,16 +778,28 @@ public class PlayerActivity extends AppCompatActivity {
 
     private void setupTelegramCdnPlayer(String cdnUrl) {
         resumeChecked = false;
+        isYoutubePlaying = false;
+        if (youtubePlayerView != null) youtubePlayerView.setVisibility(View.GONE);
+        if (playerView != null) playerView.setVisibility(View.VISIBLE);
+
+        // telesco.pe CDN requires Referer from t.me
+        Map<String, String> headers = new HashMap<>();
+        headers.put("User-Agent", "Mozilla/5.0 (Linux; Android 12; Pixel 6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36");
+        headers.put("Referer", "https://t.me/");
+        headers.put("Origin", "https://t.me");
+        requestHeaders.clear();
+        requestHeaders.putAll(headers);
 
         // Update preview retriever for the resolved URL
         if (previewHandler != null) {
+            previewHandler.removeCallbacksAndMessages(null);
             final String url = cdnUrl;
+            final Map<String, String> finalHeaders = new HashMap<>(requestHeaders);
             previewHandler.post(() -> {
                 try {
                     if (retriever != null) retriever.release();
                     retriever = new MediaMetadataRetriever();
-                    // telesco.pe CDN doesn't need special headers
-                    retriever.setDataSource(url, new HashMap<>());
+                    retriever.setDataSource(url, finalHeaders);
                 } catch (Exception e) {
                     Log.e("PREVIEW", "Retriever error: " + e.getMessage());
                 }
@@ -622,12 +813,7 @@ public class PlayerActivity extends AppCompatActivity {
                     "Chrome/120.0.0.0 Mobile Safari/537.36")
                 .setAllowCrossProtocolRedirects(true);
 
-        // telesco.pe CDN requires Referer from t.me
-        Map<String, String> headers = new HashMap<>();
-        headers.put("Referer", "https://t.me/");
-        headers.put("Origin", "https://t.me");
         dsFactory.setDefaultRequestProperties(headers);
-        requestHeaders.putAll(headers);
 
         // telesco.pe serves plain MP4 files
         MediaSource mediaSource = new ProgressiveMediaSource.Factory(dsFactory)
@@ -638,6 +824,7 @@ public class PlayerActivity extends AppCompatActivity {
         player.play();
 
         updateSeriesUI();
+        fetchSkipTimes();
     }
 
     private void attemptFallback(String url) {
@@ -662,6 +849,10 @@ public class PlayerActivity extends AppCompatActivity {
     }
 
     private void setupPlayerWithTelegram(int fileId) {
+        isYoutubePlaying = false;
+        if (youtubePlayerView != null) youtubePlayerView.setVisibility(View.GONE);
+        if (playerView != null) playerView.setVisibility(View.VISIBLE);
+
         TdLibDataSource.Factory factory = new TdLibDataSource.Factory(fileId);
         ProgressiveMediaSource mediaSource = new ProgressiveMediaSource.Factory(factory)
                 .createMediaSource(MediaItem.fromUri(videoUrl));
@@ -670,17 +861,30 @@ public class PlayerActivity extends AppCompatActivity {
         player.prepare();
         player.play();
         updateSeriesUI();
+        fetchSkipTimes();
     }
 
     private void setupPlayerWithUrl(String resolvedUrl) {
         resumeChecked = false;
+        isYoutubePlaying = false;
+        if (youtubePlayerView != null) youtubePlayerView.setVisibility(View.GONE);
+        if (playerView != null) playerView.setVisibility(View.VISIBLE);
+
+        Map<String, String> headers = new HashMap<>();
+        headers.put("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36");
+        headers.put("Referer", "https://dub.onestream.today/");
+        headers.put("Cookie",  "cache_2685d8fa2727bff6=1781032689");
+        requestHeaders.clear();
+        requestHeaders.putAll(headers);
 
         if (previewHandler != null) {
+            previewHandler.removeCallbacksAndMessages(null);
+            final Map<String, String> finalHeaders = new HashMap<>(requestHeaders);
             previewHandler.post(() -> {
                 try {
                     if (retriever != null) retriever.release();
                     retriever = new MediaMetadataRetriever();
-                    retriever.setDataSource(resolvedUrl, requestHeaders);
+                    retriever.setDataSource(resolvedUrl, finalHeaders);
                 } catch (Exception e) {
                     Log.e("PREVIEW", "Retriever update error: " + e.getMessage());
                 }
@@ -695,10 +899,6 @@ public class PlayerActivity extends AppCompatActivity {
                             "Chrome/148.0.0.0 Safari/537.36")
                         .setAllowCrossProtocolRedirects(true);
 
-        Map<String, String> headers = new HashMap<>();
-        headers.put("Referer", "https://dub.onestream.today/");
-        headers.put("Cookie",  "cache_2685d8fa2727bff6=1781032689");
-        requestHeaders.putAll(headers);
         dsFactory.setDefaultRequestProperties(headers);
 
         MediaSource mediaSource;
@@ -723,6 +923,7 @@ public class PlayerActivity extends AppCompatActivity {
         Log.d("STREAM_PLAYING", "URL: " + resolvedUrl);
 
         updateSeriesUI();
+        fetchSkipTimes();
     }
 
     private void updateSeriesUI() {
@@ -795,6 +996,112 @@ public class PlayerActivity extends AppCompatActivity {
 
         buildRowArrays();
         buildEpisodeList();
+    }
+
+    private void fetchSkipTimes() {
+        if (!isAniSkipEnabled || seriesTitle == null || seriesTitle.isEmpty()) return;
+
+        introStartMs = -1;
+        introEndMs = -1;
+
+        int episodeNumber = 1;
+        if (!playlist.isEmpty() && currentIndex >= 0 && currentIndex < playlist.size()) {
+            try {
+                JSONObject current = playlist.get(currentIndex);
+                String epNum = current.optString("episode", "");
+                if (!epNum.isEmpty()) {
+                    episodeNumber = Integer.parseInt(epNum);
+                } else {
+                    episodeNumber = currentIndex + 1;
+                }
+            } catch (Exception e) {
+                episodeNumber = currentIndex + 1;
+            }
+        }
+
+        final int finalEpisodeNumber = episodeNumber;
+        final String query = "query ($search: String) { Media (search: $search, type: ANIME) { idMal } }";
+
+        try {
+            JSONObject json = new JSONObject();
+            json.put("query", query);
+            JSONObject variables = new JSONObject();
+            variables.put("search", seriesTitle);
+            json.put("variables", variables);
+
+            okhttp3.RequestBody body = okhttp3.RequestBody.create(
+                    okhttp3.MediaType.parse("application/json; charset=utf-8"),
+                    json.toString());
+
+            Request request = new Request.Builder()
+                    .url("https://graphql.anilist.co")
+                    .post(body)
+                    .build();
+
+            okHttpClient.newCall(request).enqueue(new Callback() {
+                @Override
+                public void onFailure(@androidx.annotation.NonNull Call call, @androidx.annotation.NonNull IOException e) {
+                    Log.e("ANISKIP", "AniList search failed", e);
+                }
+
+                @Override
+                public void onResponse(@androidx.annotation.NonNull Call call, @androidx.annotation.NonNull Response response) throws IOException {
+                    if (!response.isSuccessful()) return;
+                    try {
+                        String respStr = response.body().string();
+                        JSONObject respJson = new JSONObject(respStr);
+                        JSONObject data = respJson.optJSONObject("data");
+                        if (data == null) return;
+                        JSONObject media = data.optJSONObject("Media");
+                        if (media == null) return;
+                        int malId = media.optInt("idMal", 0);
+                        if (malId > 0) {
+                            fetchAniSkipData(malId, finalEpisodeNumber);
+                        }
+                    } catch (Exception e) {
+                        Log.e("ANISKIP", "AniList response parse error", e);
+                    }
+                }
+            });
+        } catch (Exception e) {
+            Log.e("ANISKIP", "AniList request build error", e);
+        }
+    }
+
+    private void fetchAniSkipData(int malId, int episode) {
+        String url = String.format(Locale.US, "https://api.aniskip.com/v2/skip-times/%d/%d?types[]=op", malId, episode);
+
+        Request request = new Request.Builder().url(url).build();
+        okHttpClient.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(@androidx.annotation.NonNull Call call, @androidx.annotation.NonNull IOException e) {
+                Log.e("ANISKIP", "AniSkip request failed", e);
+            }
+
+            @Override
+            public void onResponse(@androidx.annotation.NonNull Call call, @androidx.annotation.NonNull Response response) throws IOException {
+                if (!response.isSuccessful()) return;
+                try {
+                    String respStr = response.body().string();
+                    JSONObject respJson = new JSONObject(respStr);
+                    if (respJson.optBoolean("found", false)) {
+                        JSONArray results = respJson.getJSONArray("results");
+                        for (int i = 0; i < results.length(); i++) {
+                            JSONObject res = results.getJSONObject(i);
+                            if ("op".equals(res.optString("skipType"))) {
+                                JSONObject interval = res.getJSONObject("interval");
+                                introStartMs = (long) (interval.getDouble("startTime") * 1000);
+                                introEndMs = (long) (interval.getDouble("endTime") * 1000);
+                                Log.d("ANISKIP", "Found OP: " + introStartMs + " - " + introEndMs);
+                                break;
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    Log.e("ANISKIP", "AniSkip response parse error", e);
+                }
+            }
+        });
     }
 
     // ══════════════════════════════════════════════════════════════════════════
@@ -889,19 +1196,18 @@ public class PlayerActivity extends AppCompatActivity {
             Log.d("SERIES_DEBUG", "playEpisode: index=" + index + " url=" + epUrl);
 
             Intent intent;
-            if (StreamResolver.isDirectStream(epUrl) || StreamResolver.isHls(epUrl) || StreamResolver.isDash(epUrl)) {
+            if (StreamResolver.isDirectStream(epUrl) || StreamResolver.isHls(epUrl) || StreamResolver.isDash(epUrl) || StreamResolver.isYouTube(epUrl)) {
                 Log.d("SERIES_DEBUG", "Route: DIRECT → PlayerActivity");
                 intent = new Intent(this, PlayerActivity.class);
                 intent.putExtra(PlayerActivity.EXTRA_URL, epUrl);
                 intent.putExtra(PlayerActivity.EXTRA_TITLE, epTitle);
+                intent.putExtra(PlayerActivity.EXTRA_SERIES_TITLE, seriesTitle);
             } else {
                 Log.d("SERIES_DEBUG", "Route: IFRAME → WebPlayerActivity");
                 intent = new Intent(this, WebPlayerActivity.class);
                 intent.putExtra("url", epUrl);
                 intent.putExtra("title", epTitle);
-                if (epUrl.contains("youtube.com") || epUrl.contains("youtu.be")) {
-                    intent.putExtra("adblock", true);
-                }
+                intent.putExtra("series_title", seriesTitle);
             }
 
             saveLastWatchedEpisode(index);
@@ -920,16 +1226,29 @@ public class PlayerActivity extends AppCompatActivity {
             JSONObject ep = playlist.get(index);
             String season = ep.optString("season", "").trim();
             if (season.isEmpty() || season.equals("0")) season = "1";
-            String episode   = ep.optString("episode", "");
+            
+            String episode = ep.optString("episode", "").trim();
+            if (episode.isEmpty()) {
+                episode = String.valueOf(index + 1);
+            }
+
             String episodeId = ep.optString("id", "");
             String normalizedTitle = seriesTitle.toLowerCase().trim();
             String key = normalizedTitle + "_s" + season;
+            
             JSONObject data = new JSONObject();
             data.put("episodeNum", episode);
             data.put("episodeId", episodeId);
+            
+            // Log for debugging
+            Log.d("LASTWATCH", "Saving for " + key + " -> " + data.toString());
+
             getSharedPreferences("hm_last_watched", MODE_PRIVATE)
-                    .edit().putString(key, data.toString()).apply();
-            Log.d("LASTWATCH", "Saved key=" + key + " episode=" + episode);
+                    .edit()
+                    .putString(key, data.toString())
+                    .apply();
+            
+            Log.d("LASTWATCH", "Saved successfully");
         } catch (Exception e) {
             Log.e("LASTWATCH", "Save failed", e);
         }
@@ -1367,6 +1686,10 @@ public class PlayerActivity extends AppCompatActivity {
             }
         }
 
+        if (lastPreviewPos != -1 && Math.abs(lastPreviewPos - positionMs) > 2000) {
+             if (previewImage != null) previewImage.setAlpha(0.5f); // Dim while searching far away
+        }
+
         lastPreviewPos = positionMs;
         if (!isPreviewLoading && retriever != null) fetchNextPreviewFrame();
     }
@@ -1378,11 +1701,15 @@ public class PlayerActivity extends AppCompatActivity {
         previewHandler.post(() -> {
             try {
                 Bitmap bmp;
+                // Use OPTION_CLOSEST_SYNC for speed; on some devices OPTION_PREVIOUS_SYNC is even faster for remote streams
+                int option = MediaMetadataRetriever.OPTION_CLOSEST_SYNC;
+
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-                    bmp = retriever.getScaledFrameAtTime(posUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC, 240, 135);
+                    bmp = retriever.getScaledFrameAtTime(posUs, option, 240, 135);
                 } else {
-                    bmp = retriever.getFrameAtTime(posUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC);
+                    bmp = retriever.getFrameAtTime(posUs, option);
                 }
+
                 if (bmp != null) {
                     runOnUiThread(() -> {
                         if (previewImage != null) {
@@ -1392,11 +1719,15 @@ public class PlayerActivity extends AppCompatActivity {
                     });
                 }
             } catch (Exception e) {
-                Log.e("PREVIEW", "Frame fetch error: " + e.getMessage());
+                // If it fails, it might be due to HLS or unsupported format for frame extraction
+                Log.e("PREVIEW", "Frame fetch error at " + posUs + "us: " + e.getMessage());
             } finally {
                 isPreviewLoading = false;
                 runOnUiThread(() -> {
-                    if (Math.abs(lastPreviewPos * 1000L - posUs) > 1000000L) fetchNextPreviewFrame();
+                    // If the user moved more than 500ms while we were loading, fetch again
+                    if (Math.abs(lastPreviewPos * 1000L - posUs) > 500000L) {
+                        fetchNextPreviewFrame();
+                    }
                 });
             }
         });
@@ -1461,6 +1792,7 @@ public class PlayerActivity extends AppCompatActivity {
         btnBack             = playerView.findViewById(R.id.btn_back);
         btnPictureMode      = playerView.findViewById(R.id.btn_picture_mode);
         btnFullscreen       = playerView.findViewById(R.id.btn_fullscreen);
+        if (btnFullscreen != null) btnFullscreen.setImageResource(R.drawable.ic_fullscreen_exit);
         btnSync             = playerView.findViewById(R.id.btn_sync);
         btnSettings         = playerView.findViewById(R.id.btn_settings);
 
@@ -1480,6 +1812,25 @@ public class PlayerActivity extends AppCompatActivity {
         previewContainer    = playerView.findViewById(R.id.preview_container);
         previewImage        = playerView.findViewById(R.id.preview_image);
         previewTimeText     = playerView.findViewById(R.id.preview_time);
+
+        // Reset auto-hide when interacting with episodes
+        if (episodeBar != null) {
+            episodeBar.setOnTouchListener((v, event) -> {
+                resetAutoHide();
+                return false; // don't consume, allow scrolling
+            });
+        }
+
+        btnSkipIntro        = playerView.findViewById(R.id.btn_skip_intro);
+        if (btnSkipIntro != null) {
+            btnSkipIntro.setVisibility(View.GONE);
+            btnSkipIntro.setOnClickListener(v -> {
+                if (player != null && introEndMs > 0) {
+                    player.seekTo(introEndMs);
+                    btnSkipIntro.setVisibility(View.GONE);
+                }
+            });
+        }
 
         // Optional: current/remaining time labels (add to layout if desired)
         tvCurrentTime       = playerView.findViewById(R.id.tv_current_time);
@@ -1515,18 +1866,6 @@ public class PlayerActivity extends AppCompatActivity {
     }
 
     // ══════════════════════════════════════════════════════════════════════════
-    //  Fullscreen icon sync
-    // ══════════════════════════════════════════════════════════════════════════
-    private void syncFullscreenIcon() {
-        int orientation = getResources().getConfiguration().orientation;
-        isFullscreen = (orientation == Configuration.ORIENTATION_LANDSCAPE);
-        if (btnFullscreen != null) {
-            btnFullscreen.setImageResource(
-                    isFullscreen ? R.drawable.ic_fullscreen_exit : R.drawable.ic_fullscreen);
-        }
-    }
-
-    // ══════════════════════════════════════════════════════════════════════════
     //  FOCUS MANAGEMENT — Netflix-style, no overshoot, no focus loss
     // ══════════════════════════════════════════════════════════════════════════
 
@@ -1552,7 +1891,7 @@ public class PlayerActivity extends AppCompatActivity {
 
     private void updateFocusHighlight() {
         // Clear all highlights first
-        View[] allButtons = { btnBack, btnPictureMode, btnFullscreen, btnSync, btnSettings,
+        View[] allButtons = { btnBack, btnPictureMode, btnSync, btnSettings,
                               btnRew, btnPP, btnFfwd, btnNextEp, btnPrevEp };
         for (View v : allButtons) clearHighlight(v);
 
@@ -1663,7 +2002,11 @@ public class PlayerActivity extends AppCompatActivity {
                 case 0: if (btnPrevEp != null) btnPrevEp.performClick(); break;
                 case 1: fastSeek(-5_000); break;
                 case 2:
-                    if (player != null) { if (player.isPlaying()) player.pause(); else player.play(); }
+                    if (isYoutubePlaying && activeYoutubePlayer != null) {
+                        if (youtubeIsPlaying) activeYoutubePlayer.pause(); else activeYoutubePlayer.play();
+                    } else if (player != null) {
+                        if (player.isPlaying()) player.pause(); else player.play();
+                    }
                     animatePlayPause();
                     updatePlayPauseAccessibility();
                     break;
@@ -1725,7 +2068,14 @@ public class PlayerActivity extends AppCompatActivity {
         // Media keys
         if (keyCode == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE || keyCode == KeyEvent.KEYCODE_HEADSETHOOK) {
             if (isLocked) { showLockUI(); return true; }
-            if (player.isPlaying()) player.pause(); else player.play();
+            if (isYoutubePlaying && activeYoutubePlayer != null) {
+                // We don't have a simple isPlaying() for youtube, we might need to track it
+                // but let's try toggling or just call play/pause based on a toggle
+                // Actually, the library handles some of it, but for simplicity:
+                activeYoutubePlayer.pause(); // or play
+            } else if (player != null) {
+                if (player.isPlaying()) player.pause(); else player.play();
+            }
             animatePlayPause(); updatePlayPauseAccessibility(); return true;
         }
         if (keyCode == KeyEvent.KEYCODE_MEDIA_REWIND)       { if (isLocked) { showLockUI(); return true; } fastSeek(-5_000); return true; }
@@ -1752,7 +2102,11 @@ public class PlayerActivity extends AppCompatActivity {
                 case KeyEvent.KEYCODE_DPAD_CENTER:
                 case KeyEvent.KEYCODE_ENTER:
                     // CENTER: play/pause (don't show controls yet)
-                    if (player.isPlaying()) player.pause(); else player.play();
+                    if (isYoutubePlaying && activeYoutubePlayer != null) {
+                        if (youtubeIsPlaying) activeYoutubePlayer.pause(); else activeYoutubePlayer.play();
+                    } else if (player != null) {
+                        if (player.isPlaying()) player.pause(); else player.play();
+                    }
                     animatePlayPause(); updatePlayPauseAccessibility();
                     return true;
                 case KeyEvent.KEYCODE_DPAD_LEFT:
@@ -1911,6 +2265,7 @@ public class PlayerActivity extends AppCompatActivity {
     private void showControls() {
         if (isLocked) return;
         controlsVisible = true;
+        lastShowTime = System.currentTimeMillis();
         playerView.showController();
         View[] targets = { topBar, centerControls, bottomBar, scrimTop, scrimBottom, episodeBar };
         for (View v : targets) {
@@ -1947,7 +2302,7 @@ public class PlayerActivity extends AppCompatActivity {
         isSeeking = false;
         playerView.hideController();
 
-        View[] allButtons = { btnBack, btnPictureMode, btnFullscreen, btnSync, btnSettings,
+        View[] allButtons = { btnBack, btnPictureMode, btnSync, btnSettings,
                               btnRew, btnPP, btnFfwd, btnNextEp, btnPrevEp };
         for (View v : allButtons) clearHighlight(v);
 
@@ -1967,12 +2322,25 @@ public class PlayerActivity extends AppCompatActivity {
         if (previewContainer != null) previewContainer.setVisibility(View.GONE);
     }
 
+    private void hideMainBars() {
+        View[] targets = { topBar, centerControls, bottomBar, scrimTop, scrimBottom, episodeBar, tvLockHint, seekIndicator };
+        for (View v : targets) {
+            if (v != null) {
+                v.animate().cancel();
+                v.setVisibility(View.GONE);
+                v.setAlpha(0f);
+            }
+        }
+        if (btnLock != null) {
+            btnLock.animate().cancel();
+            btnLock.setVisibility(View.GONE);
+            btnLock.setAlpha(0f);
+        }
+        if (previewContainer != null) previewContainer.setVisibility(View.GONE);
+    }
+
     private void scheduleHide() {
         autoHideHandler.removeCallbacks(autoHideRunnable);
-        // Don't schedule hide if: paused, seeking, episode row focused
-        if (player != null && !player.isPlaying()) return;
-        if (isSeeking) return;
-        if (focusRow == 3) return; // episode row active
         autoHideHandler.postDelayed(autoHideRunnable, AUTO_HIDE_MS);
     }
 
@@ -2083,9 +2451,6 @@ public class PlayerActivity extends AppCompatActivity {
     // ══════════════════════════════════════════════════════════════════════════
     private void setupGestures() {
         playerView.setOnTouchListener((v, e) -> {
-            if (e.getAction() == MotionEvent.ACTION_UP) {
-                v.performClick();
-            }
             handleTouch(e);
             return true;
         });
@@ -2098,7 +2463,7 @@ public class PlayerActivity extends AppCompatActivity {
         switch (e.getAction()) {
             case MotionEvent.ACTION_DOWN:
                 downRawX = rawX; downRawY = rawY;
-                downInLeft = rawX < w / 3f; downInRight = rawX > w * 2f / 3f;
+                downInLeft = rawX < w / 2f; downInRight = rawX >= w / 2f;
                 dirLocked = false; isVertical = false; isHorizontal = false;
                 if (downInLeft)  gestureStartValue = getBrightnessPct();
                 if (downInRight) gestureStartValue = getVolumePct();
@@ -2118,10 +2483,13 @@ public class PlayerActivity extends AppCompatActivity {
                         
                         if (!isLocked) {
                             if (isVertical) {
+                                playerView.showController(); // Ensure the container is active
+                                hideMainBars();              // Hide everything but indicators
                                 if (downInLeft)  showGestureIndicator(true);
                                 if (downInRight) showGestureIndicator(false);
+                            } else {
+                                showControls();
                             }
-                            showControls();
                         }
                     }
                 }
@@ -2134,11 +2502,11 @@ public class PlayerActivity extends AppCompatActivity {
                     if (downInLeft) {
                         setBrightness(pct);
                         if (viewBrightnessFill != null) viewBrightnessFill.setScaleY(pct / 100f);
-                        if (tvBrightnessValue  != null) tvBrightnessValue.setText(getString(R.string.percentage_format, pct));
+                        if (tvBrightnessValue  != null) tvBrightnessValue.setText(pct + "%");
                     } else if (downInRight) {
                         setVolume(pct);
                         if (viewVolumeFill != null) viewVolumeFill.setScaleY(pct / 100f);
-                        if (tvVolumeValue  != null) tvVolumeValue.setText(getString(R.string.percentage_format, pct));
+                        if (tvVolumeValue  != null) tvVolumeValue.setText(pct + "%");
                     }
                 }
                 if (isHorizontal) {
@@ -2166,10 +2534,12 @@ public class PlayerActivity extends AppCompatActivity {
                     dirLocked = false; isVertical = false; isHorizontal = false; break;
                 }
                 if (isVertical) {
-                    hideGestureIndicator(downInLeft); scheduleHide();
+                    hideGestureIndicator(downInLeft);
+                    hideControls(); // Hide everything immediately after gesture finished
                 } else if (isHorizontal) {
                     long ms = (long)((rawX - downRawX) / SEEK_PX_PER_SEC) * 1000L;
-                    fastSeek(ms); hideSeekIndicator(); scheduleHide();
+                    fastSeek(ms); hideSeekIndicator(); hideControls(); // Hide immediately after drag
+                    if (previewContainer != null) previewContainer.setVisibility(View.GONE);
                 } else { handleTap(downRawX); }
                 dirLocked = false; isVertical = false; isHorizontal = false;
                 break;
@@ -2184,8 +2554,17 @@ public class PlayerActivity extends AppCompatActivity {
             fastSeek(ms); lastTapTime = 0;
         } else {
             lastTapTime = now; lastTapSide = side;
-            if (controlsVisible) hideControls();
-            else { focusRow = 1; focusCol = 2; showControls(); }
+            if (controlsVisible) {
+                // Prevent immediate hide if controls were just shown (e.g. via long press release)
+                if (now - lastShowTime > 450) {
+                    hideControls();
+                } else {
+                    scheduleHide();
+                }
+            } else {
+                focusRow = 1; focusCol = 2;
+                showControls();
+            }
         }
     }
 
@@ -2208,14 +2587,17 @@ public class PlayerActivity extends AppCompatActivity {
             if (isFullscreen) {
                 hideSystemUI();
                 btnFullscreen.setImageResource(R.drawable.ic_fullscreen_exit);
-                btnFullscreen.setContentDescription("Exit fullscreen");
                 setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+                playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
+                resizeModeIndex = 0;
             } else {
                 showSystemUI();
                 btnFullscreen.setImageResource(R.drawable.ic_fullscreen);
-                btnFullscreen.setContentDescription("Fullscreen");
                 setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
+                playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
+                resizeModeIndex = 1; // Update index to match "Fit"
             }
+            btnFullscreen.announceForAccessibility(isFullscreen ? "Fullscreen enabled" : "Fullscreen disabled");
             scheduleHide();
         });
 
@@ -2246,6 +2628,12 @@ public class PlayerActivity extends AppCompatActivity {
     //  Seek + skip overlays
     // ══════════════════════════════════════════════════════════════════════════
     private void fastSeek(long delta) {
+        if (isYoutubePlaying && activeYoutubePlayer != null) {
+            float target = Math.max(0, Math.min(youtubeDuration, youtubeCurrentTime + (delta / 1000f)));
+            activeYoutubePlayer.seekTo(target);
+            showSeekIndicatorTimed(delta);
+            return;
+        }
         if (player == null) return;
         long target = Math.max(0, Math.min(player.getDuration(), player.getCurrentPosition() + delta));
         player.seekTo(target);
@@ -2292,10 +2680,13 @@ public class PlayerActivity extends AppCompatActivity {
     }
 
     private void showGestureIndicator(boolean isBrightness) {
-        LinearLayout v = isBrightness ? brightnessIndicator : volumeIndicator;
-        if (v == null) return;
-        v.setScaleX(0.8f); v.setAlpha(0f); v.setVisibility(View.VISIBLE);
-        v.animate().scaleX(1f).alpha(1f).setDuration(180)
+        LinearLayout toShow = isBrightness ? brightnessIndicator : volumeIndicator;
+        LinearLayout toHide = isBrightness ? volumeIndicator : brightnessIndicator;
+        if (toHide != null) toHide.setVisibility(View.GONE);
+        if (toShow == null) return;
+        toShow.animate().cancel();
+        toShow.setScaleX(0.8f); toShow.setAlpha(0f); toShow.setVisibility(View.VISIBLE);
+        toShow.animate().scaleX(1f).alpha(1f).setDuration(180)
                 .setInterpolator(new AccelerateDecelerateInterpolator()).start();
     }
 
@@ -2404,6 +2795,12 @@ public class PlayerActivity extends AppCompatActivity {
             builder.setSelectUndeterminedTextLanguage(true);
         }
         player.setTrackSelectionParameters(builder.build());
+    }
+
+    @Override
+    public void onConfigurationChanged(@androidx.annotation.NonNull Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        syncFullscreenIcon();
     }
 
     private void hideSystemUI() {

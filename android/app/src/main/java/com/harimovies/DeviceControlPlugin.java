@@ -154,12 +154,12 @@ public class DeviceControlPlugin extends Plugin {
         }
 
         // --- SMART ROUTING FOR WEB PLAYER ---
-        // If it's a Telegram link, route it to PlayerActivity instead of WebPlayer
-        if (StreamResolver.isTelegram(url)) {
+        // If it's a Telegram or YouTube link, route it to PlayerActivity instead of WebPlayer
+        if (StreamResolver.isTelegram(url) || StreamResolver.isYouTube(url)) {
             Intent intent = new Intent(getActivity(), PlayerActivity.class);
             intent.putExtra("url", url);
             intent.putExtra("title", title);
-            
+
             String playlistStr = call.getString("playlist");
             if (playlistStr == null) {
                 com.getcapacitor.JSArray playlistArr = call.getArray("playlist");
@@ -178,7 +178,7 @@ public class DeviceControlPlugin extends Plugin {
         Intent intent = new Intent(getActivity(), WebPlayerActivity.class);
         intent.putExtra("url",   url);
         intent.putExtra("title", title != null ? title : "");
-        
+
         String playlistStr = call.getString("playlist");
         if (playlistStr == null) {
             com.getcapacitor.JSArray playlistArr = call.getArray("playlist");

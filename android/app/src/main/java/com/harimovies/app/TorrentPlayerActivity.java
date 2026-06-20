@@ -16,6 +16,9 @@ import androidx.media3.exoplayer.audio.AudioSink;
 import androidx.media3.exoplayer.audio.DefaultAudioSink;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.exoplayer.source.MediaSource;
+import android.util.TypedValue;
+import androidx.media3.ui.CaptionStyleCompat;
+import androidx.media3.ui.SubtitleView;
 import androidx.media3.ui.AspectRatioFrameLayout;
 import androidx.media3.ui.DefaultTimeBar;
 import androidx.media3.ui.PlayerView;
@@ -157,7 +160,7 @@ public class TorrentPlayerActivity extends AppCompatActivity {
     private final Handler  autoHideHandler    = new Handler(Looper.getMainLooper());
     private final Runnable autoHideRunnable   = this::hideControls;
     private final Runnable hideLockUiRunnable = this::hideLockUI;
-    private static final long AUTO_HIDE_MS = 4_000L;
+    private static final long AUTO_HIDE_MS = 3_000L;
     private static final long LOCK_UI_MS   = 3_000L;
 
     // ── Gesture state ───────────────────────────────────────────────────
@@ -297,6 +300,7 @@ public class TorrentPlayerActivity extends AppCompatActivity {
         }
 
         findControllerViews();
+        setupSubtitles();
         if (tvTitle != null) tvTitle.setText(videoTitle);
         syncFullscreenIcon();
         wireButtons();
@@ -363,12 +367,41 @@ public class TorrentPlayerActivity extends AppCompatActivity {
         }
     }
 
+    private void setupSubtitles() {
+        if (playerView == null) return;
+        SubtitleView subtitleView = playerView.getSubtitleView();
+        if (subtitleView != null) {
+            subtitleView.setApplyEmbeddedStyles(false);
+            subtitleView.setApplyEmbeddedFontSizes(false);
+            subtitleView.setFractionalTextSize(0.05f);
+            CaptionStyleCompat style = new CaptionStyleCompat(
+                    android.graphics.Color.WHITE,
+                    0xB3000000,
+                    android.graphics.Color.TRANSPARENT,
+                    CaptionStyleCompat.EDGE_TYPE_OUTLINE,
+                    android.graphics.Color.BLACK,
+                    Typeface.create("sans-serif-medium", Typeface.BOLD)
+            );
+            subtitleView.setStyle(style);
+            subtitleView.setBottomPaddingFraction(0.08f);
+        }
+    }
+
     private void syncFullscreenIcon() {
         int orientation = getResources().getConfiguration().orientation;
         isFullscreen = (orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE);
         if (btnFullscreen != null) {
             btnFullscreen.setImageResource(
                     isFullscreen ? R.drawable.ic_fullscreen_exit : R.drawable.ic_fullscreen);
+        }
+        if (playerView != null) {
+            if (isFullscreen) {
+                playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
+                resizeModeIndex = 0;
+            } else {
+                playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
+                resizeModeIndex = 1;
+            }
         }
     }
 
@@ -974,6 +1007,23 @@ public class TorrentPlayerActivity extends AppCompatActivity {
         }
     }
 
+    private void hideMainBars() {
+        View[] targets = { topBar, centerControls, bottomBar, scrimTop, scrimBottom, tvLockHint, seekIndicator };
+        for (View v : targets) {
+            if (v != null) {
+                v.animate().cancel();
+                v.setVisibility(View.GONE);
+                v.setAlpha(0f);
+            }
+        }
+        if (btnLock != null) {
+            btnLock.animate().cancel();
+            btnLock.setVisibility(View.GONE);
+            btnLock.setAlpha(0f);
+        }
+        if (previewContainer != null) previewContainer.setVisibility(View.GONE);
+    }
+
     private void scheduleHide() {
         autoHideHandler.removeCallbacks(autoHideRunnable);
         autoHideHandler.postDelayed(autoHideRunnable, AUTO_HIDE_MS);
@@ -1094,7 +1144,7 @@ public class TorrentPlayerActivity extends AppCompatActivity {
         switch (e.getAction()) {
             case MotionEvent.ACTION_DOWN:
                 downRawX = rawX; downRawY = rawY;
-                downInLeft  = rawX < w / 3f; downInRight = rawX > w * 2f / 3f;
+                downInLeft  = rawX < w / 2f; downInRight = rawX >= w / 2f;
                 dirLocked = false; isVertical = false; isHorizontal = false;
                 if (downInLeft)  gestureStartValue = getBrightnessPct();
                 if (downInRight) gestureStartValue = getVolumePct();
@@ -1113,9 +1163,14 @@ public class TorrentPlayerActivity extends AppCompatActivity {
                         isVertical = Math.abs(dy) >= Math.abs(dx);
                         isHorizontal = !isVertical;
                         if (!isLocked) {
-                            if (isVertical && downInLeft)  showGestureIndicator(true);
-                            if (isVertical && downInRight) showGestureIndicator(false);
-                            showControls();
+                            if (isVertical) {
+                                playerView.showController(); // Ensure the container is active
+                                hideMainBars();              // Hide everything but indicators
+                                if (downInLeft)  showGestureIndicator(true);
+                                if (downInRight) showGestureIndicator(false);
+                            } else {
+                                showControls();
+                            }
                         }
                     }
                 }
@@ -1255,10 +1310,14 @@ public class TorrentPlayerActivity extends AppCompatActivity {
                 hideSystemUI();
                 btnFullscreen.setImageResource(R.drawable.ic_fullscreen_exit);
                 setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+                playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
+                resizeModeIndex = 0;
             } else {
                 showSystemUI();
                 btnFullscreen.setImageResource(R.drawable.ic_fullscreen);
                 setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
+                playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
+                resizeModeIndex = 1; // Update index to match "Fit"
             }
             scheduleHide();
         });
@@ -1293,10 +1352,13 @@ public class TorrentPlayerActivity extends AppCompatActivity {
     }
 
     private void showGestureIndicator(boolean isBrightness) {
-        LinearLayout v = isBrightness ? brightnessIndicator : volumeIndicator;
-        if (v == null) return;
-        v.setScaleX(0.8f); v.setAlpha(0f); v.setVisibility(View.VISIBLE);
-        v.animate().scaleX(1f).alpha(1f).setDuration(180)
+        LinearLayout toShow = isBrightness ? brightnessIndicator : volumeIndicator;
+        LinearLayout toHide = isBrightness ? volumeIndicator : brightnessIndicator;
+        if (toHide != null) toHide.setVisibility(View.GONE);
+        if (toShow == null) return;
+        toShow.animate().cancel();
+        toShow.setScaleX(0.8f); toShow.setAlpha(0f); toShow.setVisibility(View.VISIBLE);
+        toShow.animate().scaleX(1f).alpha(1f).setDuration(180)
                 .setInterpolator(new AccelerateDecelerateInterpolator()).start();
     }
 

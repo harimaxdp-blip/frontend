@@ -130,9 +130,9 @@
                 android:layout_height="32dp"
                 android:layout_marginStart="8dp"
                 android:background="@drawable/bg_icon_btn"
-                android:src="@drawable/ic_equalizer"
+                android:src="@drawable/ic_fullscreen"
                 app:tint="#FFFFFFFF"
-                android:contentDescription="Fullscreen"
+                android:contentDescription="Toggle Fullscreen"
                 android:padding="8dp"
                 android:focusable="true" />
 
@@ -296,6 +296,24 @@
             android:textSize="12sp" />
 
     </LinearLayout>
+
+    <!-- SKIP INTRO BUTTON -->
+    <androidx.appcompat.widget.AppCompatButton
+        android:id="@+id/btn_skip_intro"
+        android:layout_width="wrap_content"
+        android:layout_height="36dp"
+        android:layout_gravity="bottom|end"
+        android:layout_marginEnd="16dp"
+        android:layout_marginBottom="90dp"
+        android:background="@drawable/bg_seek_pill"
+        android:text="@string/skip_intro"
+        android:textColor="#FFFFFF"
+        android:textSize="12sp"
+        android:textStyle="bold"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:visibility="gone"
+        android:focusable="true" />
 
     <!-- THUMBNAIL PREVIEW — shown while scrubbing -->
     <LinearLayout

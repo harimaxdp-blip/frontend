@@ -43,6 +43,7 @@ public class WebPlayerActivity extends AppCompatActivity {
     private volatile boolean userExited = false;
 
     private String videoTitle = "";
+    private String seriesTitle = "";
     private String playlistJson = null;
     private int currentIndex = 0;
     private final Handler handler = new Handler(Looper.getMainLooper());
@@ -104,9 +105,11 @@ public class WebPlayerActivity extends AppCompatActivity {
         }
         Log.d("WEB_DEBUG", "WEBPLAYER_URL=" + url);
         videoTitle    = getIntent().getStringExtra("title");
+        seriesTitle   = getIntent().getStringExtra("series_title");
         playlistJson  = getIntent().getStringExtra("playlist");
         currentIndex  = getIntent().getIntExtra("index", 0);
         if (videoTitle == null) videoTitle = "";
+        if (seriesTitle == null) seriesTitle = "";
 
         // Normalize playlist
         if (playlistJson != null &&
@@ -256,6 +259,7 @@ public class WebPlayerActivity extends AppCompatActivity {
         Intent intent = new Intent(this, PlayerActivity.class);
         intent.putExtra(PlayerActivity.EXTRA_URL, url);
         intent.putExtra(PlayerActivity.EXTRA_TITLE, videoTitle);
+        intent.putExtra(PlayerActivity.EXTRA_SERIES_TITLE, seriesTitle);
         if (playlistJson != null) {
             intent.putExtra("playlist", playlistJson);
             intent.putExtra("index", currentIndex);
