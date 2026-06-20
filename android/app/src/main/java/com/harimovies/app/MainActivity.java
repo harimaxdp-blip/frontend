@@ -85,9 +85,17 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        SplashScreen.installSplashScreen(this);
+        androidx.core.splashscreen.SplashScreen splashScreen = androidx.core.splashscreen.SplashScreen.installSplashScreen(this);
         registerPlugin(DeviceControlPlugin.class);
         super.onCreate(savedInstanceState);
+
+        // Keep splash screen until WebView is ready
+        splashScreen.setKeepOnScreenCondition(() -> this.bridge == null || this.bridge.getWebView() == null);
+
+        // Fix white flash: set WebView background to black immediately
+        if (this.bridge != null && this.bridge.getWebView() != null) {
+            this.bridge.getWebView().setBackgroundColor(android.graphics.Color.BLACK);
+        }
 
         // Global Torrent Cache Cleanup
         // Ensures that if TorrentPlayerActivity crashed or was killed,

@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools">
 
-    <style name="AppTheme" parent="Theme.AppCompat.Light.NoActionBar">
+    <style name="AppTheme" parent="Theme.AppCompat.DayNight.NoActionBar">
         <item name="colorPrimary">@color/colorPrimary</item>
-        <item name="colorPrimaryDark">@android:color/transparent</item>
-        <item name="colorAccent">@color/colorAccent</item>
-        <item name="android:windowBackground">#0a0a0a</item>
+        <item name="colorPrimaryDark">#000000</item>
+        <item name="colorAccent">#E50914</item>
+        <item name="android:windowBackground">#000000</item>
         <item name="android:windowFullscreen">true</item>
-        <item name="android:statusBarColor">#0a0a0a</item>
-        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:statusBarColor">#000000</item>
+        <item name="android:navigationBarColor">#000000</item>
         <item name="android:windowLayoutInDisplayCutoutMode"
             tools:targetApi="27">shortEdges</item>
         <item name="android:windowTranslucentStatus">true</item>
@@ -19,23 +19,18 @@
         parent="Theme.AppCompat.DayNight.NoActionBar">
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
-        <item name="android:background">#0a0a0a</item>
+        <item name="android:background">#000000</item>
+        <item name="android:windowBackground">#000000</item>
     </style>
 
     <style name="AppTheme.NoActionBarLaunch"
         parent="Theme.SplashScreen">
 
-        <!--
-             Using splash_icon.xml which centers @drawable/splash.
-             This matches the Netflix-style HM logo provided in your 2nd image.
-        -->
-        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_icon</item>
+        <!-- Show the adjusted clipart image -->
+        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_icon_v2</item>
 
-        <!-- Black background to match the HM logo image -->
+        <!-- Black background -->
         <item name="windowSplashScreenBackground">#000000</item>
-
-        <!-- Ensures the container matches the background -->
-        <item name="windowSplashScreenIconBackgroundColor">#000000</item>
 
         <item name="postSplashScreenTheme">@style/AppTheme</item>
 

@@ -1,13 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="48dp"
-    android:height="48dp"
-    android:viewportWidth="24"
-    android:viewportHeight="24">
+    android:width="100dp"
+    android:height="100dp"
+    android:viewportWidth="100"
+    android:viewportHeight="100">
+    <!-- Subtle track -->
     <path
         android:fillColor="#00000000"
-        android:strokeColor="@color/colorAccent"
-        android:strokeWidth="2.5"
+        android:strokeColor="#1AFFFFFF"
+        android:strokeWidth="7"
+        android:pathData="M 50,50 m -40,0 a 40,40 0 1,1 80,0 a 40,40 0 1,1 -80,0" />
+    <!-- Bright red arc -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#E50914"
+        android:strokeWidth="8"
         android:strokeLineCap="round"
-        android:pathData="M12,2A10,10 0,0,1 22,12A10,10 0,0,1 12,22" />
+        android:pathData="M 50,10 A 40,40 0 0,1 90,50 A 40,40 0 0,1 50,90" />
 </vector>   
