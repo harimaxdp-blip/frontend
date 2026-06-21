@@ -638,10 +638,20 @@ public class PlayerActivity extends AppCompatActivity {
                     isFullscreen ? R.drawable.ic_fullscreen_exit : R.drawable.ic_fullscreen);
         }
         if (playerView != null) {
-            if (isFullscreen) {
+            // Detect if running on Android TV
+            android.app.UiModeManager uiModeManager = (android.app.UiModeManager) getSystemService(Context.UI_MODE_SERVICE);
+            boolean isTv = uiModeManager != null && uiModeManager.getCurrentModeType() == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION;
+
+            if (isTv) {
+                // TV Default: Fit mode
+                playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
+                resizeModeIndex = 1;
+            } else if (isFullscreen) {
+                // Phone Landscape Default: Fill (Netflix style)
                 playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
                 resizeModeIndex = 0;
             } else {
+                // Phone Portrait Default: Fit
                 playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
                 resizeModeIndex = 1;
             }

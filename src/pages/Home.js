@@ -491,10 +491,13 @@ export default function Home({ type = "all" }) {
       .map(([n, items]) => [n, [...items].sort(sortByYearThenCreatedAt)]);
   }, [movies, isMovieType, isAnimeGenre, matchesTab, passesFilters, search, searchScore]);
 
-  const buildSeriesGroups = useCallback((filterFn) => {
-    const filtered = movies.filter(filterFn);
+  // ─── FIX: single shared series-grouping builder, reused by BOTH the
+  //     live memoized groups AND the nav-state restore effect, so the
+  //     two can never drift out of sync with each other (this was the
+  //     root cause of restore landing one level too high for anime). ──
+  const groupSeriesItems = useCallback((items) => {
     const groups = {};
-    filtered.forEach((item) => {
+    items.forEach((item) => {
       const title  = normalize(item.seriesTitle || item.title || "Unknown Series");
       const season = String(item.season || "1");
       if (!groups[title]) groups[title] = { displayName: item.seriesTitle || item.title || "Unknown Series", seasons: {}, maxYear: 0, maxCreatedAt: 0 };
@@ -504,8 +507,14 @@ export default function Home({ type = "all" }) {
       if (!groups[title].seasons[season]) groups[title].seasons[season] = [];
       groups[title].seasons[season].push(item);
     });
+    return groups;
+  }, [normalize]);
+
+  const buildSeriesGroups = useCallback((filterFn) => {
+    const filtered = movies.filter(filterFn);
+    const groups = groupSeriesItems(filtered);
     return Object.entries(groups).sort((a, b) => { if (b[1].maxYear !== a[1].maxYear) return b[1].maxYear - a[1].maxYear; return b[1].maxCreatedAt - a[1].maxCreatedAt; });
-  }, [movies, normalize]);
+  }, [movies, groupSeriesItems]);
 
   const seriesGroups = useMemo(() =>
     buildSeriesGroups((i) => isSeriesType(i.type) && !isAnimeGenre(i) && matchesTab(i) && passesFilters(i, "seriesTitle")),
@@ -529,6 +538,28 @@ export default function Home({ type = "all" }) {
     const hasEp = (ep) => ep !== undefined && ep !== null && ep !== "" && ep !== 0 && ep !== "0";
     return buildSeriesGroups((i) => (isAnimeType(i.type) || isAnimeGenre(i)) && hasEp(i.episode) && passesFilters(i, "seriesTitle"));
   }, [buildSeriesGroups, isAnimeType, isAnimeGenre, passesFilters]);
+
+  // ─── FIX: unfiltered (no search/filter applied) lookup map used ONLY
+  //     by the nav-state restore effect. Covers series AND anime series
+  //     using the exact same season-keying logic as the live groups,
+  //     so a saved seriesTitle/seasonNum ALWAYS resolves correctly. ────
+  const allSeriesLookup = useMemo(() => {
+    const items = movies.filter((i) => isSeriesType(i.type) || isAnimeType(i.type) || isAnimeGenre(i));
+    return groupSeriesItems(items);
+  }, [movies, isSeriesType, isAnimeType, isAnimeGenre, groupSeriesItems]);
+
+  // ─── FIX: unfiltered lookup for collections, used only by restore. ──
+  const allMovieCollectionLookup = useMemo(() => {
+    const items = movies.filter((i) => isMovieType(i.type) || isAnimeType(i.type) || isAnimeGenre(i));
+    const g = {};
+    items.forEach((m) => {
+      const base = m.collectionTitle?.trim() || m.title.split(/\s*[-–—]\s*\d|\d+/)[0].trim() || m.title;
+      if (!g[base]) g[base] = [];
+      g[base].push(m);
+    });
+    Object.keys(g).forEach((key) => { g[key] = [...g[key]].sort(sortByYearThenCreatedAt); });
+    return g;
+  }, [movies, isMovieType, isAnimeType, isAnimeGenre]);
 
   const lwKey = useCallback((seriesTitle, seasonNum) => {
     const s = !seasonNum || seasonNum === "0" || seasonNum === 0 ? "1" : String(seasonNum);
@@ -644,8 +675,11 @@ export default function Home({ type = "all" }) {
   }, [viewStack, popView]);
 
   // ─── NAV STATE RESTORE ────────────────────────────────────────────────────
-  // FIX: Use search-agnostic lookups for restoration so async state updates
-  //      to movieGroups/seriesGroups don't cause "not found" failures.
+  // FIX: Uses allSeriesLookup / allMovieCollectionLookup (unfiltered, and
+  //      now INCLUDING anime) so async state updates to the live, filtered
+  //      groups never cause "not found" failures that silently fall back
+  //      to a shallower view (e.g. landing on the series banner instead of
+  //      the season's episode list).
   useEffect(() => {
     if (!isDataLoaded) return;
     const saved = ss.getJSON("ott_nav_state");
@@ -680,22 +714,8 @@ export default function Home({ type = "all" }) {
 
     const kinds = stackKinds || [];
 
-    // ── Robust Lookup: Series (Search-Agnostic) ──
-    const allSeriesGroups = (() => {
-      const all = movies.filter((i) => isSeriesType(i.type));
-      const g = {};
-      all.forEach((item) => {
-        const t = normalize(item.seriesTitle || item.title || "Unknown Series");
-        const s = String(item.season || "1");
-        if (!g[t]) g[t] = { displayName: item.seriesTitle || item.title || "Unknown Series", seasons: {} };
-        if (!g[t].seasons[s]) g[t].seasons[s] = [];
-        g[t].seasons[s].push(item);
-      });
-      return g;
-    })();
-
     if (kinds.includes("season") && seriesTitle && seasonNum) {
-      const entry = allSeriesGroups[seriesTitle];
+      const entry = allSeriesLookup[seriesTitle];
       if (entry) {
         const eps = entry.seasons[seasonNum];
         if (eps) {
@@ -721,7 +741,7 @@ export default function Home({ type = "all" }) {
     }
 
     if (kinds.includes("series") && seriesTitle) {
-      const entry = allSeriesGroups[seriesTitle];
+      const entry = allSeriesLookup[seriesTitle];
       if (entry) {
         const id0 = 0, id1 = nextNavId();
         navIdRef.current = id1;
@@ -740,23 +760,7 @@ export default function Home({ type = "all" }) {
     }
 
     if (kinds.includes("collection") && collectionName) {
-      // ── Robust Lookup: Collection (Search-Agnostic) ──
-      const allMovieGroups = (() => {
-        const all = movies.filter((i) => isMovieType(i.type));
-        const g = {};
-        all.forEach((m) => {
-          const base = m.collectionTitle?.trim() || m.title.split(/\s*[-–—]\s*\d|\d+/)[0].trim() || m.title;
-          if (!g[base]) g[base] = [];
-          g[base].push(m);
-        });
-        // Sort items within each group
-        Object.keys(g).forEach(key => {
-          g[key] = [...g[key]].sort(sortByYearThenCreatedAt);
-        });
-        return g;
-      })();
-
-      const groupItems = allMovieGroups[collectionName];
+      const groupItems = allMovieCollectionLookup[collectionName];
       if (groupItems) {
         const id0 = 0, id1 = nextNavId();
         navIdRef.current = id1;
@@ -777,7 +781,7 @@ export default function Home({ type = "all" }) {
     // Default: just home scroll
     setTimeout(() => { isRestoringNavState.current = false; }, 200);
     restoreScrollAndFocus(scrollY, focusId);
-  }, [isDataLoaded, normalize, movies, isMovieType, isSeriesType]);
+  }, [isDataLoaded, allSeriesLookup, allMovieCollectionLookup]);
 
   useEffect(() => {
     if (!isDataLoaded) return;
@@ -821,7 +825,13 @@ useLayoutEffect(() => {
 
   const cardId = useCallback((prefix, id) => `${prefix}_${id}`, []);
 
-  const playMovie = useCallback((movie, playlist = null, currentIndex = 0) => {
+  // ─── FIX: playMovie now accepts an explicit `navContext` override so
+  //     ANY entry point (episode card, continue-button on a season card,
+  //     continue-pill, recently-watched strip, hero banner) can declare
+  //     exactly which series/season it represents — instead of silently
+  //     relying on what happens to be on viewStack at the time. This is
+  //     what previously caused "back" to land one level too high. ──────
+  const playMovie = useCallback((movie, playlist = null, currentIndex = 0, navContext = null) => {
     if (movie.episode !== undefined && movie.episode !== null &&
         movie.episode !== "" && movie.episode !== 0 && movie.episode !== "0") {
       const sTitle = movie.seriesTitle || movie.title;
@@ -857,15 +867,27 @@ useLayoutEffect(() => {
     const seriesView = viewStack.find((v) => v.kind === "series");
     const colView    = viewStack.find((v) => v.kind === "collection");
 
+    // ── FIX: explicit navContext takes priority over whatever is
+    //     currently on viewStack. This lets "continue" buttons that
+    //     don't push a season/series view still persist the correct
+    //     season context, so Back lands on the episode list (not the
+    //     series banner) with the chosen episode highlighted. ────────
+    const effStackKinds = navContext
+      ? Array.from(new Set([...stackKinds, "series", "season"]))
+      : stackKinds;
+    const effSeriesTitleKey  = navContext?.seriesTitleKey ?? (seriesView?.data?.titleKey ?? (seasonView ? normalize(seasonView.data?.seriesTitle) : null));
+    const effSeriesDisplay   = navContext?.seriesDisplayName ?? (seriesView?.data?.seriesTitle ?? seasonView?.data?.seriesTitle ?? null);
+    const effSeasonNum       = navContext?.seasonNum ?? (seasonView?.data?.seasonNum ?? null);
+
     // ── FIX: save the current search string BEFORE clearing it ──
     const currentSearch = search;
 
     ss.setJSON("ott_nav_state", {
-      stackKinds,
+      stackKinds: effStackKinds,
       collectionName:    colView?.data?.name    ?? null,
-      seriesTitle:       seriesView?.data?.titleKey ?? (seasonView ? normalize(seasonView.data?.seriesTitle) : null),
-      seriesDisplayName: seriesView?.data?.seriesTitle ?? seasonView?.data?.seriesTitle ?? null,
-      seasonNum:         seasonView?.data?.seasonNum   ?? null,
+      seriesTitle:       effSeriesTitleKey,
+      seriesDisplayName: effSeriesDisplay,
+      seasonNum:         effSeasonNum,
       scrollY:           deepScrollY,
       focusId:           deepFocusId,
       homeScrollY:       homeInfo.scrollY,
@@ -1041,7 +1063,13 @@ useLayoutEffect(() => {
                         : sorted[0];
                       if (epToPlay) {
                         const idx = sorted.findIndex(ep => ep.id === epToPlay.id);
-                        playMovie(epToPlay, sorted, idx >= 0 ? idx : 0);
+                        // ── FIX: explicit navContext so Back lands on this
+                        //     episode's season list, not the series banner ──
+                        playMovie(epToPlay, sorted, idx >= 0 ? idx : 0, {
+                          seriesTitleKey:     sKey,
+                          seriesDisplayName:  item.seriesTitle || item.title,
+                          seasonNum:          sNum,
+                        });
                         return;
                       }
                     }
@@ -1258,7 +1286,15 @@ useLayoutEffect(() => {
                               || sortedEps[0];
                             if (epToPlay) {
                               const idx = sortedEps.findIndex(ep => ep.id === epToPlay.id);
-                              playMovie(epToPlay, sortedEps, idx >= 0 ? idx : 0);
+                              // ── FIX: explicit navContext so Back returns to
+                              //     THIS season's episode list, not the series
+                              //     banner (this button never pushes a "season"
+                              //     view onto viewStack on its own). ───────────
+                              playMovie(epToPlay, sortedEps, idx >= 0 ? idx : 0, {
+                                seriesTitleKey:    selectedSeries.titleKey,
+                                seriesDisplayName: selectedSeries.seriesTitle,
+                                seasonNum:         sNum,
+                              });
                             }
                           }}>
                           <span className="continue-play-icon" aria-hidden="true">▶</span>
