@@ -640,13 +640,8 @@ export default function Home({ type = "all" }) {
   const popView = useCallback(() => {
     if (viewStack.length <= 1) return;
     isNavigatingBack.current = true;
-    // ── FIX: clear search only when leaving a COLLECTION view, so a
-    //     search term stays active while browsing inside a collection
-    //     opened from search results, and clears once you back out. ──
-    const leavingKind = viewStack[viewStack.length - 1]?.kind;
-    if (leavingKind === "collection") setSearch("");
     setViewStack((prev) => prev.slice(0, -1));
-  }, [viewStack]);
+  }, [viewStack.length]);
 
   useLayoutEffect(() => {
     if (!isNavigatingBack.current) return;
