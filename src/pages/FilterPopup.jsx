@@ -46,7 +46,6 @@ export const GENRES = [
   { value: "zombie",       label: "Zombie",         icon: "ti-biohazard"   },
   { value: "mystery",      label: "Mystery",        icon: "ti-search"      },
   { value: "musical",      label: "Musical",        icon: "ti-music"       },
-  
 ];
 
 function yearDecadeLabel(year) {
@@ -86,9 +85,19 @@ export function FilterPopup({
 }) {
   const [activeTab, setActiveTab] = useState(initialTab);
   const overlayRef = useRef(null);
+  const activeTabRef = useRef(null); // Ref to grab focus for the TV remote
 
+  // 1. Reset active tab and immediately target it for remote control focus
   useEffect(() => {
-    if (open) setActiveTab(initialTab);
+    if (open) {
+      setActiveTab(initialTab);
+      // Timeout ensures the DOM nodes are rendered before we try to focus
+      setTimeout(() => {
+        if (activeTabRef.current) {
+          activeTabRef.current.focus();
+        }
+      }, 50);
+    }
   }, [open, initialTab]);
 
   useEffect(() => {
@@ -199,6 +208,7 @@ export function FilterPopup({
             <button
               key={t.id}
               role="tab"
+              ref={activeTab === t.id ? activeTabRef : null} // Assign ref to active tab
               aria-selected={activeTab === t.id}
               className={`fp-tab${activeTab === t.id ? " fp-tab--active" : ""}`}
               onClick={() => setActiveTab(t.id)}
@@ -311,6 +321,7 @@ export function FilterPopup({
   );
 }
 
+// Keep FilterTrigger, LanguagePopup, GenrePopup, YearPopup as they are...
 export function FilterTrigger({ icon, label, activeValue = [], onClick }) {
   const isActive = Array.isArray(activeValue) && activeValue.length > 0;
   const hintText = isActive 

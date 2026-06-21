@@ -26,22 +26,42 @@ export default function MoviePlayer() {
   useEffect(() => {
     if (useFallback) return;
 
+    // Prevent double-launching or launching if we already have a timeout pending
+    if (window._mp_launching) return;
+    window._mp_launching = true;
+
     const isSeries       = Array.isArray(playlist) && playlist.length > 1;
     const currentEpisode = isSeries ? playlist[startIndex] : movie;
 
     const url   = currentEpisode?.link || currentEpisode?.url || currentEpisode?.episodeLink;
     const title = currentEpisode?.title || currentEpisode?.episodeTitle || "";
 
-    if (!url) { handleGoBack(); return; }
+    const cleanup = () => {
+      window._mp_launching = false;
+    };
+
+    if (!url) { cleanup(); handleGoBack(); return; }
+
+    // Safety timeout: if we are still on this page after 12 seconds, force go back
+    const safetyTimer = setTimeout(() => {
+      console.warn("MoviePlayer safety timeout triggered - forcing go back");
+      cleanup();
+      handleGoBack();
+    }, 12000);
+
+    const onPlayerDone = () => {
+      clearTimeout(safetyTimer);
+      cleanup();
+      handleGoBack();
+    };
 
     // ── Magnet link → TorrentPlayerActivity ────────────────────────────────
     if (url.startsWith("magnet:")) {
       DeviceControl.openTorrentPlayer({ magnet: url, title })
-        .then(handleGoBack)
+        .then(onPlayerDone)
         .catch((err) => {
           console.warn("Torrent player failed:", err);
-          // No web fallback for magnet links — just go back
-          handleGoBack();
+          onPlayerDone();
         });
       return;
     }
@@ -76,6 +96,8 @@ export default function MoviePlayer() {
 
     const launchFallback = (err) => {
       console.warn("PLAYER_FALLBACK:", err);
+      clearTimeout(safetyTimer);
+      cleanup();
       setFallbackPayload({
         url,
         title,
@@ -86,10 +108,15 @@ export default function MoviePlayer() {
     };
 
     if (isDirectVideo) {
-      DeviceControl.openExoPlayer(payload).then(handleGoBack).catch(launchFallback);
+      DeviceControl.openExoPlayer(payload).then(onPlayerDone).catch(launchFallback);
     } else {
-      DeviceControl.openWebPlayer(payload).then(handleGoBack).catch(launchFallback);
+      DeviceControl.openWebPlayer(payload).then(onPlayerDone).catch(launchFallback);
     }
+
+    return () => {
+      clearTimeout(safetyTimer);
+      cleanup();
+    };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (useFallback && fallbackPayload) {

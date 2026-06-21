@@ -2228,3 +2228,145 @@ select.tv-input {
   .banner-count-row { flex-direction: column; align-items: flex-start; }
   .banner-slot      { padding: 10px; gap: 9px; flex-wrap: wrap; }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   VIRTUAL REMOTE UI
+   ═══════════════════════════════════════════════════════════════ */
+.remote-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.remote-container {
+  width: 100%;
+  max-width: 380px;
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+  padding: 20px 0;
+}
+
+.remote-top-row,
+.remote-media-row,
+.remote-extra-row {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 15px;
+}
+
+.remote-btn {
+  background: #222;
+  border: 1px solid #333;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  outline: none;
+  transition: all 0.15s var(--ease-out);
+}
+
+.remote-btn:hover { background: #333; border-color: #444; }
+.remote-btn:active { background: var(--primary); transform: scale(0.92); border-color: var(--primary); }
+
+.circle-btn {
+  width: 65px;
+  height: 65px;
+  border-radius: 50%;
+  font-size: 0.65rem;
+  font-weight: 800;
+  gap: 4px;
+}
+
+.pill-btn {
+  padding: 12px 24px;
+  border-radius: 50px;
+}
+
+.play-pause-btn {
+  width: 70px;
+  height: 70px;
+  border-radius: 50%;
+  background: #111;
+  border: 2px solid #e50914;
+  color: #e50914;
+}
+
+.play-pause-btn:active {
+  background: #e50914;
+  color: #fff;
+}
+
+/* ─── D-PAD ─── */
+.remote-dpad-section {
+  display: flex;
+  justify-content: center;
+  padding: 10px 0;
+}
+
+.remote-dpad {
+  position: relative;
+  width: 220px;
+  height: 220px;
+  background: #181818;
+  border: 2px solid #2a2a2a;
+  border-radius: 50%;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+}
+
+.dpad-btn {
+  position: absolute;
+  background: transparent;
+  border: none;
+  color: #888;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  outline: none;
+  padding: 10px;
+  transition: color 0.1s;
+}
+
+.dpad-btn:active { color: #fff; transform: scale(1.1); }
+
+.dpad-up    { top: 5px; left: 50%; transform: translateX(-50%); width: 80px; height: 60px; }
+.dpad-down  { bottom: 5px; left: 50%; transform: translateX(-50%); width: 80px; height: 60px; }
+.dpad-left  { left: 5px; top: 50%; transform: translateY(-50%); width: 60px; height: 80px; }
+.dpad-right { right: 5px; top: 50%; transform: translateY(-50%); width: 60px; height: 80px; }
+
+.dpad-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 80px;
+  height: 80px;
+  background: #2a2a2a;
+  border: 2px solid #3a3a3a;
+  border-radius: 50%;
+  color: #fff;
+  font-weight: 900;
+  letter-spacing: 1px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+}
+
+.dpad-center:active {
+  background: var(--primary);
+  border-color: var(--primary);
+  transform: translate(-50%, -50%) scale(0.92);
+}
+
+@media (max-width: 480px) {
+  .remote-container { max-width: 100%; gap: 20px; }
+  .remote-dpad { width: 180px; height: 180px; }
+  .dpad-center { width: 65px; height: 65px; font-size: 0.9rem; }
+  .circle-btn { width: 55px; height: 55px; }
+}

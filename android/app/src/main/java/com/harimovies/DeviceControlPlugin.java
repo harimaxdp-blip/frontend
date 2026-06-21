@@ -219,4 +219,15 @@ public class DeviceControlPlugin extends Plugin {
         customTabsIntent.launchUrl(getActivity(), Uri.parse(url));
         call.resolve();
     }
+
+    @PluginMethod
+    public void sendRemoteCommand(PluginCall call) {
+        String cmd = call.getString("command");
+        if (cmd != null) {
+            PlayerActivity.receiveRemoteCommand(cmd);
+            call.resolve();
+        } else {
+            call.reject("Command is missing");
+        }
+    }
 }

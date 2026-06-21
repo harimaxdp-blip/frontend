@@ -256,6 +256,7 @@ public class TorrentPlayerActivity extends AppCompatActivity {
                         .build();
             }
         };
+        renderersFactory.setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER);
         player = new ExoPlayer.Builder(this, renderersFactory).build();
         player.setSeekParameters(SeekParameters.EXACT);
         playerView.setPlayer(player);

@@ -134,6 +134,7 @@ public class TrackSelectionDialog extends DialogFragment {
         androidx.media3.common.TrackGroup group;
         int trackIndex;
         String language;
+        boolean supported = true;
 
         static Opt track(int type, String label, String sub) {
             Opt o = new Opt(); o.trackType = type; o.label = label; o.sub = sub; return o;
@@ -605,7 +606,7 @@ public class TrackSelectionDialog extends DialogFragment {
         TextView main = new TextView(ctx);
         main.setText(opt.label);
         main.setTextSize(14f);
-        main.setTextColor(opt.selected ? C_WHITE : C_GREY_MID);
+        main.setTextColor(opt.selected ? C_WHITE : (opt.supported ? C_GREY_MID : 0xFF44444A));
         main.setTypeface(opt.selected ? Typeface.DEFAULT_BOLD : Typeface.DEFAULT);
         main.setSingleLine(true);
         txt.addView(main);
@@ -614,7 +615,7 @@ public class TrackSelectionDialog extends DialogFragment {
             TextView sub = new TextView(ctx);
             sub.setText(opt.sub);
             sub.setTextSize(11f);
-            sub.setTextColor(opt.selected ? 0xFFBB4040 : C_GREY);
+            sub.setTextColor(opt.selected ? 0xFFBB4040 : (opt.supported ? C_GREY : 0xFF333338));
             LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(MATCH, WRAP);
             slp.topMargin = dp(3);
             sub.setLayoutParams(slp);
@@ -626,7 +627,8 @@ public class TrackSelectionDialog extends DialogFragment {
         if (opt.badge != null && !opt.badge.isEmpty()) {
             TextView badge = new TextView(ctx);
             badge.setText(opt.badge);
-            badge.setTextColor(opt.selected ? C_ACCENT : C_GREY);
+            boolean isUnsupp = "Unsupported".equals(opt.badge);
+            badge.setTextColor(opt.selected ? C_ACCENT : (isUnsupp ? 0xFF55555A : C_GREY));
             badge.setTextSize(9.5f);
             badge.setTypeface(Typeface.DEFAULT_BOLD);
             badge.setLetterSpacing(0.05f);
@@ -634,7 +636,7 @@ public class TrackSelectionDialog extends DialogFragment {
             GradientDrawable bbg = new GradientDrawable();
             bbg.setCornerRadius(dp(5));
             bbg.setColor(Color.TRANSPARENT);
-            bbg.setStroke(dp(1), opt.selected ? C_ACCENT : C_BORDER);
+            bbg.setStroke(dp(1), opt.selected ? C_ACCENT : (isUnsupp ? 0xFF333338 : C_BORDER));
             badge.setBackground(bbg);
             LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(WRAP, WRAP);
             blp.leftMargin = dp(8);
@@ -732,7 +734,9 @@ public class TrackSelectionDialog extends DialogFragment {
                 Opt o = Opt.track(C.TRACK_TYPE_VIDEO, f.height + "p", videoSub(f));
                 o.group = g.getMediaTrackGroup(); o.trackIndex = t;
                 o.selected = g.isTrackSelected(t) && !isAuto;
+                o.supported = g.isTrackSupported(t);
                 o.badge = f.height >= 2160 ? "4K" : f.height >= 1080 ? "FHD" : f.height >= 720 ? "HD" : "SD";
+                if (!o.supported) o.badge = "Unsupported";
                 fixed.add(o);
             }
         }
@@ -762,7 +766,9 @@ public class TrackSelectionDialog extends DialogFragment {
                 Opt o = Opt.track(C.TRACK_TYPE_AUDIO, audioLabel(f, idx), dot(p));
                 o.group = g.getMediaTrackGroup(); o.trackIndex = t;
                 o.language = f.language; o.selected = g.isTrackSelected(t);
+                o.supported = g.isTrackSupported(t);
                 if (ac != null) o.badge = ac;
+                if (!o.supported) o.badge = "Unsupported";
                 out.add(o); idx++;
             }
         }
@@ -783,7 +789,9 @@ public class TrackSelectionDialog extends DialogFragment {
                 Opt o = Opt.track(C.TRACK_TYPE_TEXT, subLabel(f, idx), subSub(f));
                 o.group = g.getMediaTrackGroup(); o.trackIndex = t;
                 o.language = f.language; o.selected = sel;
+                o.supported = g.isTrackSupported(t);
                 if ((f.roleFlags & C.ROLE_FLAG_CAPTION) != 0) o.badge = "CC";
+                if (!o.supported) o.badge = "Unsupported";
                 subs.add(o); idx++;
             }
         }

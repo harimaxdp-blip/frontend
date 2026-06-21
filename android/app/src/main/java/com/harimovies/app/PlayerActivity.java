@@ -46,6 +46,7 @@ import androidx.media3.common.MediaItem;
 import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
 import androidx.media3.common.TrackSelectionParameters;
+import androidx.media3.common.Tracks;
 import androidx.media3.datasource.DefaultHttpDataSource;
 import androidx.media3.exoplayer.DefaultRenderersFactory;
 import androidx.media3.exoplayer.ExoPlayer;
@@ -76,6 +77,7 @@ import kotlin.Unit;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -241,6 +243,57 @@ public class PlayerActivity extends AppCompatActivity {
     private final TelegramRepository telegramRepository = new TelegramRepository();
     private final OkHttpClient okHttpClient = new OkHttpClient();
 
+    private static WeakReference<PlayerActivity> activeInstance = new WeakReference<>(null);
+
+    public static void receiveRemoteCommand(String cmd) {
+        PlayerActivity activity = activeInstance.get();
+        if (activity != null) {
+            activity.runOnUiThread(() -> {
+                Log.d("REMOTE", "External command: " + cmd);
+                switch (cmd.toLowerCase()) {
+                    case "up":    activity.onKeyDown(KeyEvent.KEYCODE_DPAD_UP,    new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_UP)); break;
+                    case "down":  activity.onKeyDown(KeyEvent.KEYCODE_DPAD_DOWN,  new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_DOWN)); break;
+                    case "left":  activity.onKeyDown(KeyEvent.KEYCODE_DPAD_LEFT,  new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_LEFT)); break;
+                    case "right": activity.onKeyDown(KeyEvent.KEYCODE_DPAD_RIGHT, new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_RIGHT)); break;
+                    case "enter": activity.onKeyDown(KeyEvent.KEYCODE_DPAD_CENTER, new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_CENTER)); break;
+                    case "back":  activity.onKeyDown(KeyEvent.KEYCODE_BACK,        new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BACK)); break;
+                    case "play":  if (activity.player != null) activity.player.play(); break;
+                    case "pause": if (activity.player != null) activity.player.pause(); break;
+                    case "next":  if (activity.btnNextEp != null) activity.btnNextEp.performClick(); break;
+                    case "prev":  if (activity.btnPrevEp != null) activity.btnPrevEp.performClick(); break;
+                    case "rewind": activity.fastSeek(-5000); break;
+                    case "forward": activity.fastSeek(10000); break;
+                    case "vol_up": activity.audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_RAISE, AudioManager.FLAG_SHOW_UI); break;
+                    case "vol_down": activity.audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_LOWER, AudioManager.FLAG_SHOW_UI); break;
+                    case "fullscreen": if (activity.btnFullscreen != null) activity.btnFullscreen.performClick(); break;
+                    case "settings": if (activity.btnSettings != null) activity.btnSettings.performClick(); break;
+                }
+            });
+        }
+    }
+
+    // ── Remote Bridge ────────────────────────────────────────────────────────
+    private class RemoteBridge {
+        @JavascriptInterface
+        public void sendCommand(String cmd) {
+            runOnUiThread(() -> {
+                Log.d("REMOTE", "Received JS command: " + cmd);
+                switch (cmd.toLowerCase()) {
+                    case "up":    onKeyDown(KeyEvent.KEYCODE_DPAD_UP,    new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_UP)); break;
+                    case "down":  onKeyDown(KeyEvent.KEYCODE_DPAD_DOWN,  new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_DOWN)); break;
+                    case "left":  onKeyDown(KeyEvent.KEYCODE_DPAD_LEFT,  new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_LEFT)); break;
+                    case "right": onKeyDown(KeyEvent.KEYCODE_DPAD_RIGHT, new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_RIGHT)); break;
+                    case "enter": onKeyDown(KeyEvent.KEYCODE_DPAD_CENTER, new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_CENTER)); break;
+                    case "back":  onKeyDown(KeyEvent.KEYCODE_BACK,        new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BACK)); break;
+                    case "play":  if (player != null) player.play(); break;
+                    case "pause": if (player != null) player.pause(); break;
+                    case "next":  if (btnNextEp != null) btnNextEp.performClick(); break;
+                    case "prev":  if (btnPrevEp != null) btnPrevEp.performClick(); break;
+                }
+            });
+        }
+    }
+
     // ── Continuous Seek ───────────────────────────────────────────────────────
     private final Handler continuousSeekHandler = new Handler(Looper.getMainLooper());
     private int continuousSeekDirection = 0; // -1 for rewind, 1 for forward
@@ -258,6 +311,7 @@ public class PlayerActivity extends AppCompatActivity {
 // ── onCreate ──────────────────────────────────────────────────────────────
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        activeInstance = new WeakReference<>(this);
         // 1. Kill window animations completely BEFORE layout initialization
         getWindow().setWindowAnimations(0);
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
@@ -345,6 +399,7 @@ public class PlayerActivity extends AppCompatActivity {
                             .build();
                 }
             };
+            renderersFactory.setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER);
             player = new ExoPlayer.Builder(this, renderersFactory).build();
             player.setSeekParameters(SeekParameters.EXACT);
             applySavedTrackPreferences();
@@ -355,8 +410,39 @@ public class PlayerActivity extends AppCompatActivity {
 
             player.addListener(new Player.Listener() {
                 @Override
+                public void onTracksChanged(@androidx.annotation.NonNull Tracks tracks) {
+                    boolean hasAudio = false;
+                    boolean hasSupportedAudio = false;
+                    for (Tracks.Group group : tracks.getGroups()) {
+                        if (group.getType() == C.TRACK_TYPE_AUDIO) {
+                            hasAudio = true;
+                            if (group.isSupported()) {
+                                hasSupportedAudio = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (hasAudio && !hasSupportedAudio) {
+                        Toast.makeText(PlayerActivity.this,
+                                "Audio format not supported by this phone's hardware.",
+                                Toast.LENGTH_LONG).show();
+                    }
+                }
+
+                @Override
                 public void onPlayerError(@androidx.annotation.NonNull PlaybackException e) {
                     Log.e("STREAM_FAILED", "CODE=" + e.errorCode + " MSG=" + e.getMessage());
+
+                    // Recover from decoder init failures (common when selecting unsupported audio tracks)
+                    if (e.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED) {
+                        Toast.makeText(PlayerActivity.this, "Audio/Video track not supported", Toast.LENGTH_SHORT).show();
+                        player.setTrackSelectionParameters(player.getTrackSelectionParameters().buildUpon()
+                                .clearOverrides()
+                                .build());
+                        player.prepare();
+                        player.play();
+                        return;
+                    }
 
                     // Fallback: if ExoPlayer fails, try WebPlayerActivity again
                     if (videoUrl != null && !getIntent().getBooleanExtra("is_fallback", false)) {
@@ -1960,31 +2046,16 @@ public class PlayerActivity extends AppCompatActivity {
     }
 
     /**
-     * Netflix-style focus: scale 1.12, alpha 1.0, elevation up.
-     * No OvershootInterpolator — smooth and fast at 150ms.
+     * Netflix-style focus feedback using TvFocusAnimator.
      */
     private void applyHighlight(View v) {
         if (v == null || v.getVisibility() != View.VISIBLE) return;
-        v.animate().cancel();
-        v.animate()
-                .scaleX(1.12f).scaleY(1.12f)
-                .alpha(1.0f)
-                .setDuration(150)
-                .setInterpolator(new AccelerateDecelerateInterpolator())
-                .start();
-        v.setElevation(dp(6));
+        TvFocusAnimator.animate(v, true, getResources().getDisplayMetrics().density);
     }
 
     private void clearHighlight(View v) {
         if (v == null) return;
-        v.animate().cancel();
-        v.animate()
-                .scaleX(1f).scaleY(1f)
-                .alpha(0.75f)
-                .setDuration(150)
-                .setInterpolator(new AccelerateDecelerateInterpolator())
-                .start();
-        v.setElevation(0f);
+        TvFocusAnimator.animate(v, false, getResources().getDisplayMetrics().density);
     }
 
     private void activateFocused() {
@@ -2053,7 +2124,10 @@ public class PlayerActivity extends AppCompatActivity {
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         if (player == null) return super.onKeyDown(keyCode, event);
 
-        // Volume keys (blocked in lock mode)
+        // 1. Always reset auto-hide on ANY key press for remote stability
+        if (controlsVisible) resetAutoHide();
+
+        // 2. Volume keys (blocked in lock mode)
         if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
             if (isLocked) { showLockUI(); return true; }
             audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC,
@@ -2065,25 +2139,59 @@ public class PlayerActivity extends AppCompatActivity {
                     AudioManager.ADJUST_LOWER, AudioManager.FLAG_SHOW_UI); return true;
         }
 
-        // Media keys
-        if (keyCode == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE || keyCode == KeyEvent.KEYCODE_HEADSETHOOK) {
+        // 3. Back Button Management
+        if (keyCode == KeyEvent.KEYCODE_BACK) {
+            if (resumeShowing) {
+                hideResumeOverlay();
+                return true;
+            }
+            if (controlsVisible) {
+                hideControls();
+                return true;
+            }
+            // Allow default back action (exit) if controls are already hidden
+            return super.onKeyDown(keyCode, event);
+        }
+
+        // 4. Menu / Info / Settings keys
+        if (keyCode == KeyEvent.KEYCODE_MENU || keyCode == KeyEvent.KEYCODE_INFO || keyCode == KeyEvent.KEYCODE_M) {
+            if (isLocked) { showLockUI(); return true; }
+            if (!controlsVisible) {
+                showControls();
+                focusRow = 0; focusCol = 4; // Focus settings
+                updateFocusHighlight();
+            } else {
+                hideControls();
+            }
+            return true;
+        }
+
+        // 5. Media keys
+        if (keyCode == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE || keyCode == KeyEvent.KEYCODE_HEADSETHOOK
+                || keyCode == KeyEvent.KEYCODE_MEDIA_PLAY || keyCode == KeyEvent.KEYCODE_MEDIA_PAUSE) {
             if (isLocked) { showLockUI(); return true; }
             if (isYoutubePlaying && activeYoutubePlayer != null) {
-                // We don't have a simple isPlaying() for youtube, we might need to track it
-                // but let's try toggling or just call play/pause based on a toggle
-                // Actually, the library handles some of it, but for simplicity:
-                activeYoutubePlayer.pause(); // or play
+                if (youtubeIsPlaying) activeYoutubePlayer.pause(); else activeYoutubePlayer.play();
             } else if (player != null) {
                 if (player.isPlaying()) player.pause(); else player.play();
             }
             animatePlayPause(); updatePlayPauseAccessibility(); return true;
         }
-        if (keyCode == KeyEvent.KEYCODE_MEDIA_REWIND)       { if (isLocked) { showLockUI(); return true; } fastSeek(-5_000); return true; }
-        if (keyCode == KeyEvent.KEYCODE_MEDIA_FAST_FORWARD) { if (isLocked) { showLockUI(); return true; } fastSeek(10_000);  return true; }
+        if (keyCode == KeyEvent.KEYCODE_MEDIA_REWIND || keyCode == KeyEvent.KEYCODE_MEDIA_SKIP_BACKWARD) {
+            if (isLocked) { showLockUI(); return true; } fastSeek(-5_000); return true;
+        }
+        if (keyCode == KeyEvent.KEYCODE_MEDIA_FAST_FORWARD || keyCode == KeyEvent.KEYCODE_MEDIA_SKIP_FORWARD) {
+            if (isLocked) { showLockUI(); return true; } fastSeek(10_000);  return true;
+        }
+        if (keyCode == KeyEvent.KEYCODE_MEDIA_NEXT) {
+            if (isLocked) { showLockUI(); return true; } if (btnNextEp != null) btnNextEp.performClick(); return true;
+        }
+        if (keyCode == KeyEvent.KEYCODE_MEDIA_PREVIOUS) {
+            if (isLocked) { showLockUI(); return true; } if (btnPrevEp != null) btnPrevEp.performClick(); return true;
+        }
 
         // Resume overlay intercepts all nav
         if (resumeShowing) {
-            if (keyCode == KeyEvent.KEYCODE_BACK) return super.onKeyDown(keyCode, event);
             switch (keyCode) {
                 case KeyEvent.KEYCODE_DPAD_LEFT:  resumeFocusCol = 0; updateResumeHighlight(); return true;
                 case KeyEvent.KEYCODE_DPAD_RIGHT: resumeFocusCol = 1; updateResumeHighlight(); return true;
@@ -2091,17 +2199,16 @@ public class PlayerActivity extends AppCompatActivity {
                 case KeyEvent.KEYCODE_ENTER:
                     if (resumeFocusCol == 0) doResume(); else doStartOver(); return true;
             }
-            return true; // swallow all other keys while resume is showing
+            return true;
         }
 
         if (isLocked) return super.onKeyDown(keyCode, event);
 
-        // ── Controls hidden: quick seek + show ───────────────────────────────
+        // 6. Controls hidden: quick seek + show
         if (!controlsVisible) {
             switch (keyCode) {
                 case KeyEvent.KEYCODE_DPAD_CENTER:
                 case KeyEvent.KEYCODE_ENTER:
-                    // CENTER: play/pause (don't show controls yet)
                     if (isYoutubePlaying && activeYoutubePlayer != null) {
                         if (youtubeIsPlaying) activeYoutubePlayer.pause(); else activeYoutubePlayer.play();
                     } else if (player != null) {
@@ -2110,21 +2217,17 @@ public class PlayerActivity extends AppCompatActivity {
                     animatePlayPause(); updatePlayPauseAccessibility();
                     return true;
                 case KeyEvent.KEYCODE_DPAD_LEFT:
-                    // Quick seek -5s, show skip overlay
                     fastSeek(-5_000);
                     return true;
                 case KeyEvent.KEYCODE_DPAD_RIGHT:
-                    // Quick seek +10s, show skip overlay
                     fastSeek(10_000);
                     return true;
                 case KeyEvent.KEYCODE_DPAD_UP:
-                    // Show controls, focus play/pause
                     showControls();
                     focusRow = 1; focusCol = 2;
                     updateFocusHighlight();
                     return true;
                 case KeyEvent.KEYCODE_DPAD_DOWN:
-                    // Show controls, focus episode list if exists
                     showControls();
                     if (!playlist.isEmpty()) {
                         focusRow = 3;
@@ -2138,48 +2241,34 @@ public class PlayerActivity extends AppCompatActivity {
             return super.onKeyDown(keyCode, event);
         }
 
-        // Controls are visible — reset hide timer on every key
-        resetAutoHide();
-
+        // 7. Controls are visible — Navigation logic
         switch (keyCode) {
             case KeyEvent.KEYCODE_DPAD_CENTER:
             case KeyEvent.KEYCODE_ENTER:
                 activateFocused();
                 return true;
 
-            // ── UP: move up one row ──────────────────────────────────────────
             case KeyEvent.KEYCODE_DPAD_UP:
-                if (focusRow == 3) {
-                    focusRow = 2;
-                } else if (focusRow == 2) {
-                    focusRow = 1; focusCol = clampCenterCol(2); // back to play/pause
-                } else if (focusRow == 1) {
-                    focusRow = 0; focusCol = 2; // top bar: fullscreen default
-                }
-                // row 0: already at top, do nothing
+                if (focusRow == 3) focusRow = 2;
+                else if (focusRow == 2) { focusRow = 1; focusCol = clampCenterCol(2); }
+                else if (focusRow == 1) { focusRow = 0; focusCol = 2; }
                 updateFocusHighlight();
                 return true;
 
-            // ── DOWN: move down one row ──────────────────────────────────────
             case KeyEvent.KEYCODE_DPAD_DOWN:
-                if (focusRow == 0) {
-                    focusRow = 1; focusCol = clampCenterCol(2);
-                } else if (focusRow == 1) {
-                    focusRow = 2;
-                } else if (focusRow == 2) {
+                if (focusRow == 0) { focusRow = 1; focusCol = clampCenterCol(2); }
+                else if (focusRow == 1) focusRow = 2;
+                else if (focusRow == 2) {
                     if (!playlist.isEmpty() && episodeBar != null && episodeBar.getVisibility() == View.VISIBLE) {
                         focusRow = 3;
                         episodeFocusIndex = currentIndex;
                     }
                 }
-                // row 3: already at bottom
                 updateFocusHighlight();
                 return true;
 
-            // ── LEFT: move left in row, or seek/scroll ───────────────────────
             case KeyEvent.KEYCODE_DPAD_LEFT:
                 if (focusRow == 2) {
-                    // Seekbar: accelerating seek on hold
                     long stepL = getSeekHoldStep(event.getRepeatCount());
                     fastSeek(-stepL);
                 } else if (focusRow == 3) {
@@ -2190,7 +2279,6 @@ public class PlayerActivity extends AppCompatActivity {
                     }
                 } else if (focusRow == 1) {
                     int next = focusCol - 1;
-                    // Skip hidden prev-ep button
                     if (next >= 0) {
                         if (next != 0 || (btnPrevEp != null && btnPrevEp.getVisibility() == View.VISIBLE)) {
                             focusCol = next;
@@ -2202,7 +2290,6 @@ public class PlayerActivity extends AppCompatActivity {
                 }
                 return true;
 
-            // ── RIGHT: move right in row, or seek/scroll ─────────────────────
             case KeyEvent.KEYCODE_DPAD_RIGHT:
                 if (focusRow == 2) {
                     long stepR = getSeekHoldStep(event.getRepeatCount());
@@ -2224,6 +2311,13 @@ public class PlayerActivity extends AppCompatActivity {
                 } else if (focusRow == 0) {
                     if (focusCol < topRowButtons.length - 1) { focusCol++; updateFocusHighlight(); }
                 }
+                return true;
+
+            case KeyEvent.KEYCODE_PAGE_UP:
+                if (btnPrevEp != null && btnPrevEp.getVisibility() == View.VISIBLE) btnPrevEp.performClick();
+                return true;
+            case KeyEvent.KEYCODE_PAGE_DOWN:
+                if (btnNextEp != null && btnNextEp.getVisibility() == View.VISIBLE) btnNextEp.performClick();
                 return true;
         }
 

@@ -2,10 +2,29 @@ import { useState, useEffect } from "react";
 import "./Movies.css";
 import { db } from "../firebase";
 import { collection, addDoc, onSnapshot, doc, setDoc, deleteDoc } from "firebase/firestore";
+import DeviceControl from "../plugins/deviceControl";
+import {
+  ChevronUp,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Play,
+  Pause,
+  RotateCcw,
+  RotateCw,
+  Settings,
+  ArrowLeft,
+  Maximize,
+  Volume2,
+  Volume1,
+  SkipForward,
+  SkipBack
+} from "lucide-react";
 
 // ─── Tab IDs ────────────────────────────────────────────────────────────────
 const TAB_UPLOAD = "upload";
 const TAB_BANNER = "banner";
+const TAB_REMOTE = "remote";
 
 export default function UploadMovie() {
   const currentYear = new Date().getFullYear();
@@ -195,6 +214,16 @@ filled[i] = {
 
   const getMoviePreview = (id) => allMovies.find((m) => m.id === id) || null;
 
+  // ── Remote commands ────────────────────────────────────────────────────────
+  const sendCmd = (cmd) => {
+    if (DeviceControl && typeof DeviceControl.sendRemoteCommand === "function") {
+      DeviceControl.sendRemoteCommand({ command: cmd });
+      if (window.navigator?.vibrate) window.navigator.vibrate(40);
+    } else {
+      console.warn("DeviceControl.sendRemoteCommand not available");
+    }
+  };
+
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="movies-page">
@@ -212,7 +241,13 @@ filled[i] = {
             className={`upload-tab ${activeTab === TAB_BANNER ? "upload-tab--active" : ""}`}
             onClick={() => setActiveTab(TAB_BANNER)}
           >
-            🖼️ Hero Banners
+            🖼️ Banners
+          </button>
+          <button
+            className={`upload-tab ${activeTab === TAB_REMOTE ? "upload-tab--active" : ""}`}
+            onClick={() => setActiveTab(TAB_REMOTE)}
+          >
+            🎮 TV Remote
           </button>
         </div>
 
@@ -438,6 +473,86 @@ filled[i] = {
             >
               {bannerSaving ? "SAVING…" : `💾 SAVE ${bannerCount} BANNER${bannerCount !== 1 ? "S" : ""}`}
             </button>
+          </div>
+        )}
+
+        {/* ══════════════════════════════════════════════════════════════
+            TAB 3 — TV REMOTE CONTROL
+        ══════════════════════════════════════════════════════════════ */}
+        {activeTab === TAB_REMOTE && (
+          <div className="tv-upload remote-tab">
+            <h1 className="tv-title">🎮 Android TV Remote</h1>
+            <p className="banner-subtitle">Control your TV player directly from your mobile.</p>
+
+            <div className="remote-container">
+              {/* Top Row: Back & Settings */}
+              <div className="remote-top-row">
+                <button className="remote-btn circle-btn" onClick={() => sendCmd("back")}>
+                  <ArrowLeft size={24} />
+                  <span>BACK</span>
+                </button>
+                <button className="remote-btn circle-btn" onClick={() => sendCmd("settings")}>
+                  <Settings size={24} />
+                  <span>MENU</span>
+                </button>
+              </div>
+
+              {/* D-PAD Section */}
+              <div className="remote-dpad-section">
+                <div className="remote-dpad">
+                  <button className="dpad-btn dpad-up" onClick={() => sendCmd("up")}>
+                    <ChevronUp size={32} />
+                  </button>
+                  <button className="dpad-btn dpad-down" onClick={() => sendCmd("down")}>
+                    <ChevronDown size={32} />
+                  </button>
+                  <button className="dpad-btn dpad-left" onClick={() => sendCmd("left")}>
+                    <ChevronLeft size={32} />
+                  </button>
+                  <button className="dpad-btn dpad-right" onClick={() => sendCmd("right")}>
+                    <ChevronRight size={32} />
+                  </button>
+                  <button className="dpad-center" onClick={() => sendCmd("enter")}>
+                    OK
+                  </button>
+                </div>
+              </div>
+
+              {/* Media Controls */}
+              <div className="remote-media-row">
+                <button className="remote-btn" onClick={() => sendCmd("prev")}>
+                  <SkipBack size={20} />
+                </button>
+                <button className="remote-btn" onClick={() => sendCmd("rewind")}>
+                  <RotateCcw size={22} />
+                </button>
+                <button className="remote-btn play-pause-btn" onClick={() => sendCmd("play")}>
+                  <Play size={28} fill="currentColor" />
+                </button>
+                <button className="remote-btn play-pause-btn" onClick={() => sendCmd("pause")}>
+                  <Pause size={28} fill="currentColor" />
+                </button>
+                <button className="remote-btn" onClick={() => sendCmd("forward")}>
+                  <RotateCw size={22} />
+                </button>
+                <button className="remote-btn" onClick={() => sendCmd("next")}>
+                  <SkipForward size={20} />
+                </button>
+              </div>
+
+              {/* Extra Row: Volume / Fullscreen */}
+              <div className="remote-extra-row">
+                <button className="remote-btn pill-btn" onClick={() => sendCmd("vol_down")}>
+                  <Volume1 size={20} />
+                </button>
+                <button className="remote-btn pill-btn" onClick={() => sendCmd("vol_up")}>
+                  <Volume2 size={20} />
+                </button>
+                <button className="remote-btn pill-btn" onClick={() => sendCmd("fullscreen")}>
+                  <Maximize size={20} />
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>

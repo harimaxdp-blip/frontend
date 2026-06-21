@@ -148,7 +148,7 @@ function sortByYearThenCreatedAt(a, b) {
 
 function groupSortKey(items) {
   return {
-    year:       Math.max(...items.map((m) => parseInt(m.year) || 0)),
+    year:      Math.max(...items.map((m) => parseInt(m.year) || 0)),
     createdAt: Math.max(...items.map(getCreatedAt)),
   };
 }
@@ -324,17 +324,20 @@ export default function Home({ type = "all" }) {
   const [movies, setMovies]             = useState([]);
   const [allBanners, setAllBanners]     = useState([]);
   const [filterOpen, setFilterOpen]     = useState(false);
-  const [filterTab, setFilterTab]       = useState("language"); // Updated order default
+  const [filterTab, setFilterTab]       = useState("language");
   const [isDataLoaded, setIsDataLoaded] = useState(false);
   const handleGridKeyDown               = useSpatialNav();
 
   const [isTV, setIsTV] = useState(() => detectIsTV());
 
-  // Changed filter states to arrays to support multiple selections
   const [languageFilter, setLanguageFilter] = useState([]);
   const [genreFilter,    setGenreFilter]    = useState([]);
   const [yearFilter,     setYearFilter]     = useState([]);
   const [search,         setSearch]         = useState("");
+
+  // ─── FIX: track whether we are mid-restore so the type-change
+  //     layout-effect doesn't wipe the search we just restored ───
+  const isRestoringNavState = useRef(false);
 
   const [isListening,  setIsListening]  = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -457,7 +460,6 @@ export default function Home({ type = "all" }) {
     return m / query.length > 0.7;
   };
 
-  // Adjusted filtering to accommodate multiple matching elements
   const passesFilters = useCallback((item, titleField = "title") => {
     const mL = languageFilter.length === 0 || languageFilter.includes(normalize(item.language));
     const mG = genreFilter.length === 0 || genreFilter.includes(normalize(item.genre));
@@ -641,6 +643,9 @@ export default function Home({ type = "all" }) {
     return () => { window.removeEventListener("popstate", onPop); window.removeEventListener("keydown", onKey); };
   }, [viewStack, popView]);
 
+  // ─── NAV STATE RESTORE ────────────────────────────────────────────────────
+  // FIX: Use search-agnostic lookups for restoration so async state updates
+  //      to movieGroups/seriesGroups don't cause "not found" failures.
   useEffect(() => {
     if (!isDataLoaded) return;
     const saved = ss.getJSON("ott_nav_state");
@@ -661,19 +666,38 @@ export default function Home({ type = "all" }) {
       });
     }
 
+    // ── FIX: mark that we are restoring so the type-change layout-effect
+    //         below does NOT wipe the search we are about to set ──
+    isRestoringNavState.current = true;
+
     try {
       if (filters?.language !== undefined) setLanguageFilter(filters.language);
       if (filters?.genre    !== undefined) setGenreFilter(filters.genre);
       if (filters?.year     !== undefined) setYearFilter(filters.year);
+      if (filters?.search   !== undefined) setSearch(filters.search);
       setFilterOpen(false);
     } catch {}
 
     const kinds = stackKinds || [];
 
+    // ── Robust Lookup: Series (Search-Agnostic) ──
+    const allSeriesGroups = (() => {
+      const all = movies.filter((i) => isSeriesType(i.type));
+      const g = {};
+      all.forEach((item) => {
+        const t = normalize(item.seriesTitle || item.title || "Unknown Series");
+        const s = String(item.season || "1");
+        if (!g[t]) g[t] = { displayName: item.seriesTitle || item.title || "Unknown Series", seasons: {} };
+        if (!g[t].seasons[s]) g[t].seasons[s] = [];
+        g[t].seasons[s].push(item);
+      });
+      return g;
+    })();
+
     if (kinds.includes("season") && seriesTitle && seasonNum) {
-      const entry = [...seriesGroups, ...animeSeriesGroups].find(([t]) => t === seriesTitle);
+      const entry = allSeriesGroups[seriesTitle];
       if (entry) {
-        const eps = entry[1].seasons[seasonNum];
+        const eps = entry.seasons[seasonNum];
         if (eps) {
           const id0 = 0, id1 = nextNavId(), id2 = nextNavId();
           navIdRef.current = id2;
@@ -686,17 +710,18 @@ export default function Home({ type = "all" }) {
           window.history.pushState(   { id: id2, kind: "season" }, "");
           setViewStack([
             { kind: "home" },
-            { kind: "series", data: { titleKey: seriesTitle, seriesTitle: entry[1].displayName || seriesDisplayName || seriesTitle, seasons: entry[1].seasons } },
-            { kind: "season", data: { seriesTitle: entry[1].displayName || seriesDisplayName || seriesTitle, seasonNum, episodes: eps } },
+            { kind: "series", data: { titleKey: seriesTitle, seriesTitle: entry.displayName || seriesDisplayName || seriesTitle, seasons: entry.seasons } },
+            { kind: "season", data: { seriesTitle: entry.displayName || seriesDisplayName || seriesTitle, seasonNum, episodes: eps } },
           ]);
           restoreScrollAndFocus(scrollY, focusId);
+          setTimeout(() => { isRestoringNavState.current = false; }, 200);
           return;
         }
       }
     }
 
     if (kinds.includes("series") && seriesTitle) {
-      const entry = [...seriesGroups, ...animeSeriesGroups].find(([t]) => t === seriesTitle);
+      const entry = allSeriesGroups[seriesTitle];
       if (entry) {
         const id0 = 0, id1 = nextNavId();
         navIdRef.current = id1;
@@ -706,17 +731,33 @@ export default function Home({ type = "all" }) {
         window.history.pushState(   { id: id1, kind: "series" }, "");
         setViewStack([
           { kind: "home" },
-          { kind: "series", data: { titleKey: seriesTitle, seriesTitle: entry[1].displayName || seriesDisplayName || seriesTitle, seasons: entry[1].seasons } },
+          { kind: "series", data: { titleKey: seriesTitle, seriesTitle: entry.displayName || seriesDisplayName || seriesTitle, seasons: entry.seasons } },
         ]);
         restoreScrollAndFocus(scrollY, focusId);
+        setTimeout(() => { isRestoringNavState.current = false; }, 200);
         return;
       }
     }
 
     if (kinds.includes("collection") && collectionName) {
-      const group = movieGroups.find(([n]) => n === collectionName) ||
-                    animeMovieGroups.find(([n]) => n === collectionName);
-      if (group) {
+      // ── Robust Lookup: Collection (Search-Agnostic) ──
+      const allMovieGroups = (() => {
+        const all = movies.filter((i) => isMovieType(i.type));
+        const g = {};
+        all.forEach((m) => {
+          const base = m.collectionTitle?.trim() || m.title.split(/\s*[-–—]\s*\d|\d+/)[0].trim() || m.title;
+          if (!g[base]) g[base] = [];
+          g[base].push(m);
+        });
+        // Sort items within each group
+        Object.keys(g).forEach(key => {
+          g[key] = [...g[key]].sort(sortByYearThenCreatedAt);
+        });
+        return g;
+      })();
+
+      const groupItems = allMovieGroups[collectionName];
+      if (groupItems) {
         const id0 = 0, id1 = nextNavId();
         navIdRef.current = id1;
         savedScrollMap.current[id0] = Number(homeScrollY) || 0;
@@ -725,15 +766,18 @@ export default function Home({ type = "all" }) {
         window.history.pushState(   { id: id1, kind: "collection" }, "");
         setViewStack([
           { kind: "home" },
-          { kind: "collection", data: { name: group[0], items: group[1] } },
+          { kind: "collection", data: { name: collectionName, items: groupItems } },
         ]);
         restoreScrollAndFocus(scrollY, focusId);
+        setTimeout(() => { isRestoringNavState.current = false; }, 200);
         return;
       }
     }
 
+    // Default: just home scroll
+    setTimeout(() => { isRestoringNavState.current = false; }, 200);
     restoreScrollAndFocus(scrollY, focusId);
-  }, [isDataLoaded, movieGroups, animeMovieGroups, seriesGroups, animeSeriesGroups, normalize]);
+  }, [isDataLoaded, normalize, movies, isMovieType, isSeriesType]);
 
   useEffect(() => {
     if (!isDataLoaded) return;
@@ -745,14 +789,19 @@ export default function Home({ type = "all" }) {
     });
   }, [isDataLoaded, currentView.kind]);
 
-  useLayoutEffect(() => {
-    setLanguageFilter([]); setGenreFilter([]); setYearFilter([]); setSearch("");
-    setViewStack([{ kind: "home" }]);
-    navIdRef.current = 0;
-    savedScrollMap.current = {};
-    savedFocusMap.current  = {};
-    if (!ss.getJSON("ott_nav_state")) scrollPageTo(0);
-  }, [type]);
+  // ─── FIX: guard against wiping restored search/filters when type changes ──
+useLayoutEffect(() => {
+  if (isRestoringNavState.current) return;
+  // ── FIX: if nav state is pending (returning from player), don't wipe —
+  //         the restore effect will handle everything
+  if (ss.getJSON("ott_nav_state")) return;
+  setLanguageFilter([]); setGenreFilter([]); setYearFilter([]); setSearch("");
+  setViewStack([{ kind: "home" }]);
+  navIdRef.current = 0;
+  savedScrollMap.current = {};
+  savedFocusMap.current  = {};
+  scrollPageTo(0);
+}, [type]);
 
   const handleOpenCollection = useCallback((name, items) => {
     pushView({ kind: "collection", data: { name, items } });
@@ -808,6 +857,9 @@ export default function Home({ type = "all" }) {
     const seriesView = viewStack.find((v) => v.kind === "series");
     const colView    = viewStack.find((v) => v.kind === "collection");
 
+    // ── FIX: save the current search string BEFORE clearing it ──
+    const currentSearch = search;
+
     ss.setJSON("ott_nav_state", {
       stackKinds,
       collectionName:    colView?.data?.name    ?? null,
@@ -820,14 +872,16 @@ export default function Home({ type = "all" }) {
       homeFocusId:       homeInfo.focusId,
       seriesScrollY:     seriesInfo?.scrollY ?? null,
       seriesFocusId:     seriesInfo?.focusId ?? null,
-      filters: { language: languageFilter, genre: genreFilter, year: yearFilter, search: "" },
+      // ── FIX: persist search so restore can rebuild filtered groups ──
+      filters: { language: languageFilter, genre: genreFilter, year: yearFilter, search: currentSearch },
     });
 
+    // Clear search AFTER saving nav state
     setSearch("");
     addRecentWatched(movie);
     navigate("/player", { state: { movie, playlist: finalPlaylist, currentIndex: finalIndex } });
   }, [
-    navigate, viewStack, languageFilter, genreFilter, yearFilter,
+    navigate, viewStack, languageFilter, genreFilter, yearFilter, search,
     seriesGroups, animeSeriesGroups, normalize, saveLastWatched, addRecentWatched,
     saveCurrentScrollAndFocus, cardId,
   ]);
@@ -1027,7 +1081,6 @@ export default function Home({ type = "all" }) {
     );
   }, [isSearchActive, cardId, seriesGroups, animeSeriesGroups, getLastWatchedEp, playMovie, deleteRecentWatched]);
 
-  // Safely display chosen tags without .charAt runtime crashes
   const getFilterLabel = (filterArray, fallbackText) => {
     if (!filterArray || filterArray.length === 0) return fallbackText;
     if (filterArray.length === 1) return filterArray[0].charAt(0).toUpperCase() + filterArray[0].slice(1);
@@ -1108,16 +1161,10 @@ export default function Home({ type = "all" }) {
               </div>
             )}
 
-            {/* Layout filter elements updated inside layout to request pattern: Language -> Genre -> Year */}
             <div className="filter-bar search-filter-gap" role="group" aria-label="Filter content">
-              
-              {/* 1. Language Trigger */}
               <button
                 className={`fp-trigger ${languageFilter.length > 0 ? "fp-trigger--active-teal" : ""}`}
-                onClick={() => {
-                  setFilterTab("language");
-                  setFilterOpen(true);
-                }}
+                onClick={() => { setFilterTab("language"); setFilterOpen(true); }}
                 aria-haspopup="dialog"
                 aria-expanded={filterOpen && filterTab === "language"}
               >
@@ -1129,13 +1176,9 @@ export default function Home({ type = "all" }) {
                 {languageFilter.length > 0 && <span className="fp-trigger-dot" aria-hidden="true" />}
               </button>
 
-              {/* 2. Genre Trigger */}
               <button
                 className={`fp-trigger ${genreFilter.length > 0 ? "fp-trigger--active-red" : ""}`}
-                onClick={() => {
-                  setFilterTab("genre");
-                  setFilterOpen(true);
-                }}
+                onClick={() => { setFilterTab("genre"); setFilterOpen(true); }}
                 aria-haspopup="dialog"
                 aria-expanded={filterOpen && filterTab === "genre"}
               >
@@ -1153,13 +1196,9 @@ export default function Home({ type = "all" }) {
                 {genreFilter.length > 0 && <span className="fp-trigger-dot" aria-hidden="true" />}
               </button>
 
-              {/* 3. Year Trigger */}
               <button
                 className={`fp-trigger ${yearFilter.length > 0 ? "fp-trigger--active-gold" : ""}`}
-                onClick={() => {
-                  setFilterTab("year");
-                  setFilterOpen(true);
-                }}
+                onClick={() => { setFilterTab("year"); setFilterOpen(true); }}
                 aria-haspopup="dialog"
                 aria-expanded={filterOpen && filterTab === "year"}
               >
