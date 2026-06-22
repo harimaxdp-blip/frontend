@@ -400,7 +400,7 @@ public class PlayerActivity extends AppCompatActivity {
                             .build();
                 }
             };
-            renderersFactory.setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER);
+            renderersFactory.setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON);
             player = new ExoPlayer.Builder(this, renderersFactory).build();
             player.setSeekParameters(SeekParameters.EXACT);
             applySavedTrackPreferences();

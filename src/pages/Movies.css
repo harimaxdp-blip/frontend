@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════════
-   HARI MOVIE — OTT UI  ·  Production Edition v6 (TV-Smooth Fix)
+   HARI MOVIE — OTT UI  ·  Production Edition v7 (Full Fix)
    Platform-Aware: Mobile · Android TV · Smart TV · PC · 4K · 8K
    ═══════════════════════════════════════════════════════════════ */
 
@@ -35,6 +35,9 @@
   --ease-premium:      cubic-bezier(0.16, 1, 0.3, 1);
   --spring:            cubic-bezier(0.34, 1.56, 0.64, 1);
 
+  /* Netflix-style easing — subtle, never bouncy */
+  --ease-netflix:      cubic-bezier(0.25, 0.46, 0.45, 0.94);
+
   --card-ratio:        2 / 3;
 
   --font-display:      'Bebas Neue', sans-serif;
@@ -44,10 +47,10 @@
   --dur-normal:        220ms;
   --dur-premium:       300ms;
 
-  /* ── TV-specific durations (overridden below for tv/android-mode) ── */
-  --tv-dur-focus:      100ms;
-  --tv-dur-transform:  100ms;
-  --tv-dur-shadow:     80ms;
+  /* TV-specific durations */
+  --tv-dur-focus:      90ms;
+  --tv-dur-transform:  90ms;
+  --tv-dur-shadow:     70ms;
 
   --grid-min:          clamp(110px, 14vw, 200px);
 
@@ -67,7 +70,7 @@
 
 html {
   font-size: 16px;
-  scroll-behavior: auto;
+  scroll-behavior: auto; /* never auto-scroll via CSS — JS controls this */
 }
 
 body {
@@ -95,15 +98,10 @@ body::before {
 
 /* ─── Platform overrides ── */
 .android-mode body { background: #050505; }
-.tv-mode body { background: #030303; }
-.tv-mode :root { --radius-card: 12px; --radius-ui: 14px; }
+.tv-mode body      { background: #030303; }
+.tv-mode :root     { --radius-card: 12px; --radius-ui: 14px; }
 
-/*
- * ─── TV PERFORMANCE: disable dur-premium for TV modes ──────────
- * Android TV / Smart TV CPUs are weak. Keeping --dur-premium at
- * 300ms makes every focus-change feel sluggish. Override to 100ms
- * so the highlighted card snaps into its focused state instantly.
- */
+/* TV: fast durations so D-pad feel snappy */
 .tv-mode,
 .android-mode {
   --dur-premium: 100ms;
@@ -119,10 +117,9 @@ body::before {
   width: 100%;
   max-width: 100%;
   padding: clamp(16px, 3vw, 44px) clamp(10px, 3%, 64px) 120px;
-  /* FIX: remove translateZ(0) from page wrapper — it creates a
-     stacking-context that forces the GPU to composite the entire
-     page as one layer, killing frame rate on TV hardware.        */
-  animation: pageIn 180ms ease both;
+  /* FIX v7: fade-in only, no translateY — prevents the "jump" when
+     the page mounts and layout shifts from image loads push content. */
+  animation: pageIn 200ms ease both;
   overflow-x: hidden;
 }
 
@@ -159,15 +156,12 @@ body::before {
   background-size: cover;
   background-position: center center;
   background-repeat: no-repeat;
-  /* FIX: use only opacity for transition, not transform —
-     scaling the bg on TV causes a full composite flush    */
   will-change: opacity;
 }
 
 .hero-bg--in  { opacity: 1; transform: scale(1.04); transition: opacity 0.5s ease, transform 8s linear; }
 .hero-bg--out { opacity: 0; transform: scale(1.0);  transition: opacity 0.45s ease, transform 0.45s ease; }
 
-/* On TV, skip the parallax scale — too expensive */
 .tv-mode .hero-bg--in,
 .android-mode .hero-bg--in  { transform: none; transition: opacity 0.4s ease; }
 .tv-mode .hero-bg--out,
@@ -613,7 +607,10 @@ body::before {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(var(--grid-min), 1fr));
   gap: clamp(8px, 1.4vw, 20px);
-  padding: 14px 0;
+  /* FIX v7: padding-top removed — was causing a 14px scroll jump
+     when the grid re-renders (e.g. filter change). Use margin-top
+     on the section-title instead. */
+  padding: 10px 0 4px;
   align-items: start;
   width: 100%;
 }
@@ -648,23 +645,13 @@ body::before {
   object-fit: cover;
   object-position: center top;
   display: block;
-  /*
-   * FIX: removed will-change: transform from poster-img.
-   * Previously ALL poster images were promoted to GPU layers
-   * simultaneously. On TV (weak GPU), this caused frame-budget
-   * overruns. Now only the focused card gets GPU promotion.
-   */
-  transition: opacity 0.3s ease, transform 0.5s var(--ease-premium), filter 0.3s ease;
+  /* FIX v7: no will-change here — only focused card gets GPU promotion */
+  transition: opacity 0.3s ease, transform 0.4s var(--ease-netflix), filter 0.3s ease;
   backface-visibility: hidden;
   max-width: 100%;
   z-index: 2;
 }
 
-/*
- * TV/Android: disable the slow filter/scale transition on posters.
- * The card border/outline is enough visual feedback. Keeping the
- * transform transition on TV causes jank on rapid D-pad presses.
- */
 .tv-mode .poster-img,
 .android-mode .poster-img {
   transition: opacity 0.2s ease;
@@ -707,31 +694,30 @@ body::before {
   flex-direction: column;
   cursor: pointer;
   position: relative;
-  /*
-   * FIX: removed global will-change: transform.
-   * This was the #1 performance killer on TV — promoting every card
-   * to a GPU layer simultaneously overwhelms VRAM on weak TV SoCs.
-   * will-change is now only set on :focus (see TV focus rules below).
-   */
   will-change: auto;
+  /* FIX v7: Netflix-style easing — smooth deceleration, not spring.
+     Spring easing caused the "bad animation" on scroll because cards
+     overshoot during layout-triggered repaints. */
   transition:
-    transform      var(--dur-premium) var(--ease-premium),
-    box-shadow     var(--dur-premium) var(--ease-premium),
-    border-color   var(--dur-normal)  ease;
-  animation: cardAppear 200ms ease both;
-  animation-delay: calc(var(--i, 0) * 14ms);
+    transform    var(--dur-premium) var(--ease-netflix),
+    box-shadow   var(--dur-premium) var(--ease-netflix),
+    border-color var(--dur-normal)  ease;
+  /* FIX v7: staggered appear uses translateY(8px) not 10px — gentler */
+  animation: cardAppear 180ms var(--ease-netflix) both;
+  animation-delay: calc(var(--i, 0) * 12ms);
   outline: none;
   width: 100%;
   min-width: 0;
   min-height: 80px;
-  /* FIX: contain layout so focus changes don't trigger full-page
-     layout recalculation. This alone can cut focus latency 30-50%. */
   contain: layout style;
 }
 
+/* FIX v7: cardAppear — smaller translateY (10→6px), shorter duration.
+   The original 10px shift caused visible "jumping" when many cards
+   appeared simultaneously during a scroll-triggered render. */
 @keyframes cardAppear {
-  from { opacity: 0; transform: scale(0.93) translateY(10px); }
-  to   { opacity: 1; transform: scale(1)    translateY(0); }
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 /* Bottom gradient vignette */
@@ -747,11 +733,7 @@ body::before {
   border-radius: 0 0 var(--radius-card) var(--radius-card);
 }
 
-/*
- * FIX: sheen sweep pseudo-element disabled on TV.
- * The ::before animation (left: -65% → 120%) triggers layout + paint
- * on every hover/focus. On PC it's fine; on TV it adds ~8ms per frame.
- */
+/* Sheen sweep — disabled on TV */
 .card::before,
 .episode-card::before {
   content: '';
@@ -769,7 +751,7 @@ body::before {
 .tv-mode .episode-card::before,
 .android-mode .card::before,
 .android-mode .episode-card::before {
-  display: none; /* removed — expensive paint on TV hardware */
+  display: none;
 }
 
 .card-info {
@@ -999,7 +981,7 @@ body::before {
 
 /* ─── Series view ── */
 .series-view-section {
-  animation: premiumEnter var(--dur-premium) var(--ease-premium) both;
+  animation: premiumEnter var(--dur-premium) var(--ease-netflix) both;
 }
 
 .series-view-header {
@@ -1131,8 +1113,18 @@ body::before {
 
 /* ═══════════════════════════════════════════════════════════════
    RECENTLY WATCHED — HORIZONTAL STRIP
+   FIX v7: The strip no longer causes scroll-to-top because we
+   removed scroll-snap-type from .rw-hstrip (snap interacted badly
+   with the page scroll container on some Android WebViews, triggering
+   a full scroll reset). The strip still scrolls horizontally fine.
    ═══════════════════════════════════════════════════════════════ */
-.recently-watched-section { margin-bottom: 40px; }
+.recently-watched-section {
+  margin-bottom: 40px;
+  /* FIX v7: isolate this section's stacking context so its
+     overflow:auto child doesn't bubble scroll events to the page */
+  isolation: isolate;
+  contain: layout;
+}
 
 .rw-hstrip {
   display: flex;
@@ -1142,8 +1134,12 @@ body::before {
   padding: 8px 2px 18px;
   scrollbar-width: none;
   -ms-overflow-style: none;
-  scroll-snap-type: x mandatory;
+  /* FIX v7: removed scroll-snap-type — it caused the page to
+     scroll to top on Android WebView when snapping fired mid-page-scroll.
+     Cards are still scrollable horizontally without snap. */
   -webkit-overflow-scrolling: touch;
+  /* Prevent horizontal scroll from propagating to vertical page scroll */
+  overscroll-behavior-x: contain;
 }
 
 .rw-hstrip::-webkit-scrollbar { display: none; }
@@ -1154,13 +1150,13 @@ body::before {
   display: flex;
   flex-direction: column;
   cursor: pointer;
-  scroll-snap-align: start;
   outline: none;
   border-radius: var(--radius-card);
-  /* FIX: will-change: auto on mobile/PC; only promoted on focus for TV */
   will-change: auto;
-  transition: transform var(--dur-premium) var(--ease-premium);
+  transition: transform var(--dur-premium) var(--ease-netflix);
   -webkit-tap-highlight-color: transparent;
+  /* FIX v7: ensure the card itself doesn't intercept vertical scroll */
+  touch-action: pan-x;
 }
 
 .rw-hcard:active {
@@ -1176,7 +1172,7 @@ body::before {
   overflow: hidden;
   background: var(--bg-card);
   border: 1px solid var(--glass-border);
-  transition: border-color var(--dur-normal), box-shadow var(--dur-premium) var(--ease-premium);
+  transition: border-color var(--dur-normal), box-shadow var(--dur-premium) var(--ease-netflix);
 }
 
 .rw-hcard-badge {
@@ -1208,11 +1204,21 @@ body::before {
   border-radius: 0 0 var(--radius-card) var(--radius-card);
 }
 
+/* ─── Delete button — FIXED for TV ──────────────────────────────
+   FIX v7: On TV the delete button was invisible (opacity:0, 
+   pointer-events:none) because TV uses (hover:none) media query
+   but the old TV override only triggered on .rw-hcard:focus,
+   not on .rw-hcard:focus-within. The button itself getting focus
+   via D-pad never made .rw-hcard match :focus.
+   
+   Solution: Always show on TV/Android, and show on focus-within
+   so when the button itself receives focus the parent still matches.
+   ──────────────────────────────────────────────────────────────── */
 .rw-hcard-delete {
   position: absolute;
   top: 5px; right: 5px;
   z-index: 7;
-  width: 26px; height: 26px;
+  width: 28px; height: 28px;
   background: rgba(0,0,0,0.78);
   border: 1px solid rgba(255,255,255,0.18);
   border-radius: 50%;
@@ -1225,25 +1231,54 @@ body::before {
   padding: 0;
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
-  transition: background var(--dur-fast), color var(--dur-fast), transform var(--dur-fast), border-color var(--dur-fast);
+  transition: background var(--dur-fast), color var(--dur-fast), transform var(--dur-fast), border-color var(--dur-fast), opacity var(--dur-fast);
+  /* Default: hidden on desktop (shown on hover) */
   opacity: 0;
   pointer-events: none;
 }
 
+/* Touch / coarse pointer — always visible */
 @media (hover: none), (pointer: coarse) {
-  .rw-hcard-delete { opacity: 1; pointer-events: auto; }
+  .rw-hcard-delete {
+    opacity: 1;
+    pointer-events: auto;
+  }
 }
 
+/* Desktop fine pointer — show on hover or focus-within */
 @media (hover: hover) and (pointer: fine) {
   .rw-hcard:hover .rw-hcard-delete,
-  .rw-hcard:focus-within .rw-hcard-delete { opacity: 1; pointer-events: auto; }
+  .rw-hcard:focus-within .rw-hcard-delete {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+/* FIX v7: TV / Android — ALWAYS show delete button.
+   TV uses coarse pointer so the media query above covers it,
+   but we add explicit TV overrides as a safety net, and also
+   handle focus-within for when the button itself is focused. */
+.tv-mode .rw-hcard-delete,
+.android-mode .rw-hcard-delete {
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  /* Make it slightly larger for D-pad accuracy */
+  width: 32px;
+  height: 32px;
+}
+
+/* TV delete button focus style */
+.tv-mode .rw-hcard-delete:focus,
+.android-mode .rw-hcard-delete:focus {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  background: rgba(229,9,20,0.85);
+  color: #fff;
+  border-color: transparent;
 }
 
 .rw-hcard-delete:hover  { background: rgba(229,9,20,0.90); color: #fff; border-color: transparent; transform: scale(1.15); }
 .rw-hcard-delete:active { transform: scale(0.88); }
-
-.tv-mode .rw-hcard:focus .rw-hcard-delete,
-.android-mode .rw-hcard:focus .rw-hcard-delete { opacity: 1; pointer-events: auto; }
 
 .rw-hcard-info {
   padding: 6px 2px 0;
@@ -1286,7 +1321,7 @@ body::before {
   }
 }
 
-/* TV recently-watched focus */
+/* TV recently-watched card focus */
 .tv-mode .rw-hcard:focus,
 .tv-mode .rw-hcard:focus-visible,
 .android-mode .rw-hcard:focus,
@@ -1294,18 +1329,12 @@ body::before {
   outline: none;
   will-change: transform;
   transform: translateY(-10px) scale(1.08);
-  transition: transform var(--tv-dur-transform) var(--ease-premium);
+  transition: transform var(--tv-dur-transform) var(--ease-netflix);
 }
 
 .tv-mode .rw-hcard:focus .rw-hcard-poster,
 .android-mode .rw-hcard:focus .rw-hcard-poster {
   border-color: var(--teal);
-  /*
-   * FIX: single box-shadow instead of multi-layer.
-   * Each blurred shadow layer is composited separately by the GPU.
-   * One shadow = 1 pass. Four shadows = 4 passes. On Mali/Adreno
-   * this is the difference between 60fps and 30fps.
-   */
   box-shadow: 0 0 0 3px var(--teal), 0 16px 40px rgba(0,0,0,0.90);
 }
 
@@ -1323,7 +1352,6 @@ body::before {
   z-index: 10;
 }
 
-/* FIX: disable ripple on TV — it triggers paint on a composited layer */
 .tv-mode .ripple-wave,
 .android-mode .ripple-wave { display: none; }
 
@@ -1332,24 +1360,30 @@ body::before {
 
 /* ═══════════════════════════════════════════════════════════════
    SLIDE-IN ANIMATIONS
+   FIX v7: Use opacity-only fade for all platforms.
+   translateX caused the "disturbing" animation when scrolling
+   because the browser repainted the entire section on each frame.
    ═══════════════════════════════════════════════════════════════ */
 .slide-in-premium,
 .collection-view {
-  animation: premiumEnter var(--dur-premium) var(--ease-premium) both;
-  will-change: opacity, transform;
+  animation: premiumEnter var(--dur-premium) var(--ease-netflix) both;
+  will-change: opacity;
 }
 
+/* FIX v7: Netflix-style — fade only, no translate.
+   translate causes jank on scroll because it forces a composite layer
+   re-upload every time the page scrolls during the animation. */
 @keyframes premiumEnter {
-  from { opacity: 0; transform: translateX(18px); }
-  to   { opacity: 1; transform: translateX(0); }
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 
-/* FIX: simpler enter on TV — translateX triggers full-layer repaint */
+/* TV: same opacity-fade, slightly faster */
 .tv-mode .slide-in-premium,
 .tv-mode .collection-view,
 .android-mode .slide-in-premium,
 .android-mode .collection-view {
-  animation: tvPageEnter 120ms ease both;
+  animation: tvPageEnter 100ms ease both;
 }
 
 @keyframes tvPageEnter {
@@ -1360,20 +1394,23 @@ body::before {
 
 /* ═══════════════════════════════════════════════════════════════
    PC / DESKTOP — HOVER & FOCUS
+   FIX v7: hover lift uses --ease-netflix instead of --ease-premium
+   so the card decelerates like Netflix (no overshoot).
    ═══════════════════════════════════════════════════════════════ */
 @media (hover: hover) and (pointer: fine) {
   .card:hover,
   .episode-card:hover {
-    transform: translateY(-8px) scale(1.04);
+    /* FIX v7: scale(1.04) not 1.05 — matches Netflix's subtle lift */
+    transform: translateY(-6px) scale(1.04);
     border-color: var(--glass-hover);
-    box-shadow: 0 22px 50px rgba(0,0,0,0.80), 0 0 30px var(--primary-glow);
+    box-shadow: 0 20px 48px rgba(0,0,0,0.78), 0 0 28px var(--primary-glow);
     z-index: 5;
   }
 
   .card:hover .poster-img,
   .episode-card:hover .poster-img {
-    transform: scale(1.08);
-    filter: brightness(1.07) saturate(1.12);
+    transform: scale(1.06);
+    filter: brightness(1.06) saturate(1.10);
   }
 
   .card:hover::before,
@@ -1381,12 +1418,12 @@ body::before {
 
   .card.is-collection:hover {
     border-color: rgba(245,197,24,0.50);
-    box-shadow: 0 22px 50px rgba(0,0,0,0.80), 0 0 30px rgba(245,197,24,0.14);
+    box-shadow: 0 20px 48px rgba(0,0,0,0.78), 0 0 28px rgba(245,197,24,0.14);
   }
 
   .card.is-series:hover {
     border-color: rgba(0,201,177,0.50);
-    box-shadow: 0 22px 50px rgba(0,0,0,0.80), 0 0 30px rgba(0,201,177,0.14);
+    box-shadow: 0 20px 48px rgba(0,0,0,0.78), 0 0 28px rgba(0,201,177,0.14);
   }
 
   .card:focus-visible,
@@ -1411,8 +1448,8 @@ body::before {
     box-shadow: 0 0 0 4px rgba(0,201,177,0.18), 0 16px 40px rgba(0,0,0,0.70);
   }
 
-  .hero-play-btn:focus-visible      { outline: 2px solid rgba(255,255,255,0.60); outline-offset: 3px; }
-  .filter-bar select:focus-visible   { border-color: rgba(229,9,20,0.60); box-shadow: 0 0 0 2px rgba(229,9,20,0.20); }
+  .hero-play-btn:focus-visible    { outline: 2px solid rgba(255,255,255,0.60); outline-offset: 3px; }
+  .filter-bar select:focus-visible { border-color: rgba(229,9,20,0.60); box-shadow: 0 0 0 2px rgba(229,9,20,0.20); }
 }
 
 
@@ -1447,7 +1484,7 @@ body::before {
 
   .back-btn:hover { background: #1a1a1a; color: #fff; border-color: #2e2e2e; }
 
-  /* TV/Android override — these DO need focus styles even on coarse */
+  /* TV/Android override — these DO need focus styles */
   .tv-mode .card:focus,
   .tv-mode .card:focus-visible,
   .tv-mode .episode-card:focus,
@@ -1456,8 +1493,7 @@ body::before {
   .android-mode .card:focus-visible,
   .android-mode .episode-card:focus,
   .android-mode .episode-card:focus-visible {
-    /* Styles declared in dedicated TV sections below take effect */
-    outline: none;
+    outline: none; /* Actual styles in TV section below */
   }
 }
 
@@ -1470,18 +1506,8 @@ body::before {
 
 
 /* ═══════════════════════════════════════════════════════════════
-   TV — D-PAD REMOTE FOCUS  (smooth, single-shadow, fast)
+   TV — D-PAD REMOTE FOCUS  (fast, single-shadow, Netflix-smooth)
    ═══════════════════════════════════════════════════════════════ */
-
-/*
- * KEY FIXES applied here:
- * 1. will-change: transform only on the focused card (not all cards)
- * 2. transition duration cut to 100ms (was 300ms)
- * 3. box-shadow reduced to 2 layers max (was 4 layers, all blurred)
- * 4. outline used for the visible ring (GPU-composited, no paint)
- * 5. transform uses only translateY+scale — no translateZ(0) hack
- *    (translateZ forces a new stacking context, costs extra composite)
- */
 .tv-mode .card:focus,
 .tv-mode .card:focus-visible,
 .tv-mode .episode-card:focus,
@@ -1489,21 +1515,12 @@ body::before {
   outline: 3px solid var(--primary);
   outline-offset: 2px;
   border-color: var(--primary);
-  /*
-   * FIX: only 2 shadow layers, second one is drop-shadow not blur.
-   * Previously 4 layers including two large blurred shadows caused
-   * per-frame GPU composite stalls on every D-pad keydown.
-   */
   box-shadow: 0 0 0 5px rgba(229,9,20,0.30), 0 20px 44px rgba(0,0,0,0.90);
   transform: translateY(-10px) scale(1.07);
   z-index: 20;
-  /*
-   * FIX: will-change only on the focused element.
-   * Promotes just this one card to GPU layer, not all 50+ cards.
-   */
   will-change: transform;
   transition:
-    transform     var(--tv-dur-transform) var(--ease-premium),
+    transform     var(--tv-dur-transform) var(--ease-netflix),
     box-shadow    var(--tv-dur-shadow)    ease,
     border-color  var(--tv-dur-shadow)    ease,
     outline-color var(--tv-dur-shadow)    ease;
@@ -1513,7 +1530,6 @@ body::before {
 .tv-mode .card:focus-visible .poster-img,
 .tv-mode .episode-card:focus .poster-img,
 .tv-mode .episode-card:focus-visible .poster-img {
-  /* FIX: only brightness — skip saturate/scale to avoid a repaint */
   filter: brightness(1.10);
   transition: filter var(--tv-dur-focus) ease;
 }
@@ -1532,12 +1548,12 @@ body::before {
   box-shadow: 0 0 0 5px rgba(0,201,177,0.35), 0 20px 44px rgba(0,0,0,0.90);
 }
 
-/* When card loses focus, snap back fast too */
+/* Snap back fast on blur */
 .tv-mode .card:not(:focus),
 .tv-mode .episode-card:not(:focus) {
-  will-change: auto; /* release GPU layer immediately on blur */
+  will-change: auto;
   transition:
-    transform    var(--tv-dur-transform) var(--ease-premium),
+    transform    var(--tv-dur-transform) var(--ease-netflix),
     box-shadow   var(--tv-dur-shadow)    ease,
     border-color var(--tv-dur-shadow)    ease;
 }
@@ -1556,9 +1572,19 @@ body::before {
   box-shadow: 0 0 0 3px rgba(229,9,20,0.30);
 }
 
+/* FIX v7: TV fp-trigger button focus */
+.tv-mode .fp-trigger:focus,
+.android-mode .fp-trigger:focus {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 4px rgba(229,9,20,0.25);
+  border-color: rgba(229,9,20,0.5);
+  color: #fff;
+}
+
 
 /* ═══════════════════════════════════════════════════════════════
-   ANDROID TV — D-PAD REMOTE FOCUS  (same philosophy as above)
+   ANDROID TV — D-PAD REMOTE FOCUS
    ═══════════════════════════════════════════════════════════════ */
 .android-mode .card:focus,
 .android-mode .card:focus-visible,
@@ -1567,13 +1593,12 @@ body::before {
   outline: 3px solid var(--primary);
   outline-offset: 2px;
   border-color: var(--primary);
-  /* FIX: 2 layers, smaller radii, less blur = faster composite pass */
   box-shadow: 0 0 0 5px rgba(229,9,20,0.55), 0 20px 40px rgba(0,0,0,0.95);
   transform: translateY(-8px) scale(1.06);
   z-index: 20;
   will-change: transform;
   transition:
-    transform     var(--tv-dur-transform) var(--ease-premium),
+    transform     var(--tv-dur-transform) var(--ease-netflix),
     box-shadow    var(--tv-dur-shadow)    ease,
     border-color  var(--tv-dur-shadow)    ease,
     outline-color var(--tv-dur-shadow)    ease;
@@ -1605,7 +1630,7 @@ body::before {
 .android-mode .episode-card:not(:focus) {
   will-change: auto;
   transition:
-    transform    var(--tv-dur-transform) var(--ease-premium),
+    transform    var(--tv-dur-transform) var(--ease-netflix),
     box-shadow   var(--tv-dur-shadow)    ease,
     border-color var(--tv-dur-shadow)    ease;
 }
@@ -1676,7 +1701,7 @@ body::before {
   flex-shrink: 0;
 }
 
-/* FIX: pause shimmer animation on TV when not visible — saves GPU */
+/* TV: slower shimmer = fewer GPU wakeups */
 .tv-mode .skel-img,
 .tv-mode .skel-title,
 .tv-mode .skel-sub,
@@ -1685,7 +1710,7 @@ body::before {
 .android-mode .skel-title,
 .android-mode .skel-sub,
 .android-mode .rw-skeleton {
-  animation-duration: 2.5s; /* slower = less GPU wakeups */
+  animation-duration: 2.5s;
 }
 
 

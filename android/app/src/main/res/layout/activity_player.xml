@@ -15,7 +15,7 @@
         app:use_controller="true"
         app:controller_layout_id="@layout/exo_player_control_view"
         app:show_buffering="when_playing"
-        app:surface_type="texture_view" />
+        app:surface_type="surface_view" />
 
     <com.pierfrancescosoffritti.androidyoutubeplayer.core.player.views.YouTubePlayerView
         android:id="@+id/youtube_player_view"
