@@ -28,8 +28,6 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.view.animation.AccelerateDecelerateInterpolator;
-import android.webkit.JavascriptInterface;
-import android.webkit.WebView;
 import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
@@ -58,7 +56,6 @@ import androidx.media3.exoplayer.hls.HlsMediaSource;
 import androidx.media3.exoplayer.source.MediaSource;
 import androidx.media3.exoplayer.source.ProgressiveMediaSource;
 import android.graphics.Typeface;
-import android.util.TypedValue;
 import androidx.media3.ui.CaptionStyleCompat;
 import androidx.media3.ui.SubtitleView;
 import androidx.media3.ui.AspectRatioFrameLayout;
@@ -152,7 +149,6 @@ public class PlayerActivity extends AppCompatActivity {
     private boolean resumeChecked   = false;
     private boolean isSeeking       = false; // track seeking to pause auto-hide
     private boolean isAnyDialogOpen = false;
-    private int previousInterruptionFilter = 1; // Default to INTERRUPTION_FILTER_ALL
 
     // ── TV Focus tracking (rows: 0=top, 1=center, 2=seekbar, 3=episodes) ─────
     private int     focusRow          = 1;
@@ -161,6 +157,8 @@ public class PlayerActivity extends AppCompatActivity {
     private int     lastFocusCol      = 2;
     private int     episodeFocusIndex = 0;
     private int     resumeFocusCol    = 0;
+
+    private int previousInterruptionFilter = NotificationManager.INTERRUPTION_FILTER_ALL;
 
     // ── Seek acceleration for hold ────────────────────────────────────────────
     private static final long[] SEEK_HOLD_STEPS    = { 1000L, 5000L, 10000L, 30000L };
@@ -239,7 +237,6 @@ public class PlayerActivity extends AppCompatActivity {
     private long introStartMs = -1;
     private long introEndMs   = -1;
     private Button btnSkipIntro;
-    private boolean isAniSkipEnabled = true;
 
     private final TelegramRepository telegramRepository = new TelegramRepository();
     private final OkHttpClient okHttpClient = new OkHttpClient();
@@ -268,28 +265,6 @@ public class PlayerActivity extends AppCompatActivity {
                     case "vol_down": activity.audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_LOWER, AudioManager.FLAG_SHOW_UI); break;
                     case "fullscreen": if (activity.btnFullscreen != null) activity.btnFullscreen.performClick(); break;
                     case "settings": if (activity.btnSettings != null) activity.btnSettings.performClick(); break;
-                }
-            });
-        }
-    }
-
-    // ── Remote Bridge ────────────────────────────────────────────────────────
-    private class RemoteBridge {
-        @JavascriptInterface
-        public void sendCommand(String cmd) {
-            runOnUiThread(() -> {
-                Log.d("REMOTE", "Received JS command: " + cmd);
-                switch (cmd.toLowerCase()) {
-                    case "up":    onKeyDown(KeyEvent.KEYCODE_DPAD_UP,    new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_UP)); break;
-                    case "down":  onKeyDown(KeyEvent.KEYCODE_DPAD_DOWN,  new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_DOWN)); break;
-                    case "left":  onKeyDown(KeyEvent.KEYCODE_DPAD_LEFT,  new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_LEFT)); break;
-                    case "right": onKeyDown(KeyEvent.KEYCODE_DPAD_RIGHT, new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_RIGHT)); break;
-                    case "enter": onKeyDown(KeyEvent.KEYCODE_DPAD_CENTER, new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_CENTER)); break;
-                    case "back":  onKeyDown(KeyEvent.KEYCODE_BACK,        new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BACK)); break;
-                    case "play":  if (player != null) player.play(); break;
-                    case "pause": if (player != null) player.pause(); break;
-                    case "next":  if (btnNextEp != null) btnNextEp.performClick(); break;
-                    case "prev":  if (btnPrevEp != null) btnPrevEp.performClick(); break;
                 }
             });
         }
@@ -392,16 +367,7 @@ public class PlayerActivity extends AppCompatActivity {
             }
 
             delayAudioProcessor = new DelayAudioProcessor();
-            DefaultRenderersFactory renderersFactory = new DefaultRenderersFactory(this) {
-                @Override
-                protected AudioSink buildAudioSink(@androidx.annotation.NonNull Context context, boolean enableFloatOutput, boolean enableAudioTrackPlaybackParams) {
-                    return new DefaultAudioSink.Builder(context)
-                            .setAudioProcessors(new AudioProcessor[] { delayAudioProcessor })
-                            .build();
-                }
-            };
-            renderersFactory.setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON);
-            player = new ExoPlayer.Builder(this, renderersFactory).build();
+            player = new ExoPlayer.Builder(this, createRenderersFactory()).build();
             player.setSeekParameters(SeekParameters.EXACT);
             applySavedTrackPreferences();
             playerView.setPlayer(player);
@@ -518,6 +484,19 @@ public class PlayerActivity extends AppCompatActivity {
             Toast.makeText(this, "Player Error: " + e.getMessage(), Toast.LENGTH_LONG).show();
             finish();
         }
+    }
+
+    private DefaultRenderersFactory createRenderersFactory() {
+        DefaultRenderersFactory renderersFactory = new DefaultRenderersFactory(this) {
+            @Override
+            protected AudioSink buildAudioSink(@androidx.annotation.NonNull Context context, boolean enableFloatOutput, boolean enableAudioTrackPlaybackParams) {
+                return new DefaultAudioSink.Builder(context)
+                        .setAudioProcessors(new AudioProcessor[] { delayAudioProcessor })
+                        .build();
+            }
+        };
+        renderersFactory.setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON);
+        return renderersFactory;
     }
 
     private void setupSubtitles() {
@@ -724,29 +703,33 @@ public class PlayerActivity extends AppCompatActivity {
             }
 
             @Override
-            public void onResponse(@androidx.annotation.NonNull Call call, @androidx.annotation.NonNull Response response) throws IOException {
+            public void onResponse(@androidx.annotation.NonNull Call call, @androidx.annotation.NonNull Response response) {
                 if (!response.isSuccessful()) {
                     runOnUiThread(() -> attemptFallback(videoUrl));
                     return;
                 }
-                okhttp3.ResponseBody body = response.body();
-                if (body == null) {
-                    runOnUiThread(() -> attemptFallback(videoUrl));
-                    return;
-                }
-                String html = body.string();
-                Log.d("TELEGRAM_RESOLVE", "Got HTML, length=" + html.length());
+                try (okhttp3.ResponseBody body = response.body()) {
+                    if (body == null) {
+                        runOnUiThread(() -> attemptFallback(videoUrl));
+                        return;
+                    }
+                    String html = body.string();
+                    Log.d("TELEGRAM_RESOLVE", "Got HTML, length=" + html.length());
 
-                String cdnUrl = extractTelegramCdnUrl(html);
+                    String cdnUrl = extractTelegramCdnUrl(html);
 
-                if (cdnUrl != null) {
-                    Log.d("TELEGRAM_RESOLVE", "CDN URL found: " + cdnUrl);
-                    runOnUiThread(() -> {
-                        if (progressBar != null) progressBar.setVisibility(View.GONE);
-                        setupTelegramCdnPlayer(cdnUrl);
-                    });
-                } else {
-                    Log.e("TELEGRAM_RESOLVE", "No CDN URL found in HTML");
+                    if (cdnUrl != null) {
+                        Log.d("TELEGRAM_RESOLVE", "CDN URL found: " + cdnUrl);
+                        runOnUiThread(() -> {
+                            if (progressBar != null) progressBar.setVisibility(View.GONE);
+                            setupTelegramCdnPlayer(cdnUrl);
+                        });
+                    } else {
+                        Log.e("TELEGRAM_RESOLVE", "No CDN URL found in HTML");
+                        runOnUiThread(() -> attemptFallback(videoUrl));
+                    }
+                } catch (IOException e) {
+                    Log.e("TELEGRAM_RESOLVE", "Error reading response: " + e.getMessage());
                     runOnUiThread(() -> attemptFallback(videoUrl));
                 }
             }
@@ -1096,6 +1079,7 @@ public class PlayerActivity extends AppCompatActivity {
     }
 
     private void fetchSkipTimes() {
+        boolean isAniSkipEnabled = true;
         if (!isAniSkipEnabled || seriesTitle == null || seriesTitle.isEmpty()) return;
 
         introStartMs = -1;
@@ -1127,8 +1111,8 @@ public class PlayerActivity extends AppCompatActivity {
             json.put("variables", variables);
 
             okhttp3.RequestBody body = okhttp3.RequestBody.create(
-                    okhttp3.MediaType.parse("application/json; charset=utf-8"),
-                    json.toString());
+                    json.toString(),
+                    okhttp3.MediaType.parse("application/json; charset=utf-8"));
 
             Request request = new Request.Builder()
                     .url("https://graphql.anilist.co")
@@ -1142,10 +1126,11 @@ public class PlayerActivity extends AppCompatActivity {
                 }
 
                 @Override
-                public void onResponse(@androidx.annotation.NonNull Call call, @androidx.annotation.NonNull Response response) throws IOException {
+                public void onResponse(@androidx.annotation.NonNull Call call, @androidx.annotation.NonNull Response response) {
                     if (!response.isSuccessful()) return;
-                    try {
-                        String respStr = response.body().string();
+                    try (okhttp3.ResponseBody responseBody = response.body()) {
+                        if (responseBody == null) return;
+                        String respStr = responseBody.string();
                         JSONObject respJson = new JSONObject(respStr);
                         JSONObject data = respJson.optJSONObject("data");
                         if (data == null) return;
@@ -1176,10 +1161,11 @@ public class PlayerActivity extends AppCompatActivity {
             }
 
             @Override
-            public void onResponse(@androidx.annotation.NonNull Call call, @androidx.annotation.NonNull Response response) throws IOException {
+            public void onResponse(@androidx.annotation.NonNull Call call, @androidx.annotation.NonNull Response response) {
                 if (!response.isSuccessful()) return;
-                try {
-                    String respStr = response.body().string();
+                try (okhttp3.ResponseBody responseBody = response.body()) {
+                    if (responseBody == null) return;
+                    String respStr = responseBody.string();
                     JSONObject respJson = new JSONObject(respStr);
                     if (respJson.optBoolean("found", false)) {
                         JSONArray results = respJson.getJSONArray("results");
@@ -1338,7 +1324,7 @@ public class PlayerActivity extends AppCompatActivity {
             data.put("episodeId", episodeId);
             
             // Log for debugging
-            Log.d("LASTWATCH", "Saving for " + key + " -> " + data.toString());
+            Log.d("LASTWATCH", "Saving for " + key + " -> " + data);
 
             getSharedPreferences("hm_last_watched", MODE_PRIVATE)
                     .edit()
@@ -1936,6 +1922,9 @@ public class PlayerActivity extends AppCompatActivity {
         // Reset auto-hide when interacting with episodes
         if (episodeBar != null) {
             episodeBar.setOnTouchListener((v, event) -> {
+                if (event.getAction() == MotionEvent.ACTION_DOWN) {
+                    v.performClick();
+                }
                 resetAutoHide();
                 return false; // don't consume, allow scrolling
             });
@@ -2533,7 +2522,7 @@ public class PlayerActivity extends AppCompatActivity {
 
         // Enable Do Not Disturb if permission is granted
         NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && nm != null && nm.isNotificationPolicyAccessGranted()) {
+        if (nm != null && nm.isNotificationPolicyAccessGranted()) {
             previousInterruptionFilter = nm.getCurrentInterruptionFilter();
             nm.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_PRIORITY);
         }
@@ -2568,10 +2557,11 @@ public class PlayerActivity extends AppCompatActivity {
         // Restore sensor-based landscape orientation
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
 
-        // Restore Do Not Disturb state - Explicitly set to ALL to ensure volume is restored
+        // Restore Do Not Disturb state
         NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && nm != null && nm.isNotificationPolicyAccessGranted()) {
-            nm.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL);
+        if (nm != null && nm.isNotificationPolicyAccessGranted()) {
+            //noinspection WrongConstant
+            nm.setInterruptionFilter(previousInterruptionFilter);
         }
 
         if (tvLockHint != null) { tvLockHint.animate().cancel(); tvLockHint.setVisibility(View.GONE); }
@@ -2588,6 +2578,9 @@ public class PlayerActivity extends AppCompatActivity {
     // ══════════════════════════════════════════════════════════════════════════
     private void setupGestures() {
         playerView.setOnTouchListener((v, e) -> {
+            if (e.getAction() == MotionEvent.ACTION_DOWN) {
+                v.performClick();
+            }
             handleTouch(e);
             return true;
         });
@@ -2639,11 +2632,11 @@ public class PlayerActivity extends AppCompatActivity {
                     if (downInLeft) {
                         setBrightness(pct);
                         if (viewBrightnessFill != null) viewBrightnessFill.setScaleY(pct / 100f);
-                        if (tvBrightnessValue  != null) tvBrightnessValue.setText(pct + "%");
+                        if (tvBrightnessValue  != null) tvBrightnessValue.setText(String.format(Locale.US, "%d%%", pct));
                     } else if (downInRight) {
                         setVolume(pct);
                         if (viewVolumeFill != null) viewVolumeFill.setScaleY(pct / 100f);
-                        if (tvVolumeValue  != null) tvVolumeValue.setText(pct + "%");
+                        if (tvVolumeValue  != null) tvVolumeValue.setText(String.format(Locale.US, "%d%%", pct));
                     }
                 }
                 if (isHorizontal) {
@@ -2876,7 +2869,7 @@ public class PlayerActivity extends AppCompatActivity {
         if (isLocked) {
             setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LOCKED);
             NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && nm != null && nm.isNotificationPolicyAccessGranted()) {
+            if (nm != null && nm.isNotificationPolicyAccessGranted()) {
                 previousInterruptionFilter = nm.getCurrentInterruptionFilter();
                 nm.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_PRIORITY);
             }
@@ -2889,8 +2882,9 @@ public class PlayerActivity extends AppCompatActivity {
         super.onPause();
         if (isLocked) {
             NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && nm != null && nm.isNotificationPolicyAccessGranted()) {
-                nm.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL);
+            if (nm != null && nm.isNotificationPolicyAccessGranted()) {
+                //noinspection WrongConstant
+                nm.setInterruptionFilter(previousInterruptionFilter);
             }
             setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
         }
