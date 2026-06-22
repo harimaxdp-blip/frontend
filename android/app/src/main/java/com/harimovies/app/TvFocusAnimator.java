@@ -8,8 +8,8 @@ import android.view.animation.AccelerateDecelerateInterpolator;
  */
 public final class TvFocusAnimator {
 
-    private static final float SCALE_FACTOR = 1.08f;
-    private static final int DURATION = 150;
+    private static final float SCALE_FACTOR = 1.15f;
+    private static final int DURATION = 200;
 
     public static void animate(View v, boolean focused, float density) {
         float targetScale = focused ? SCALE_FACTOR : 1.0f;

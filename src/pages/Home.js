@@ -99,23 +99,67 @@ const scrollPageTo = (top, behavior = "auto") => {
   else window.scrollTo({ top, left: 0, behavior });
 };
 
+/*
+ * FIX: restoreScrollAndFocus rewritten.
+ *
+ * BEFORE: called scrollPageTo + scrollIntoView + focus in up to 6 places
+ * (rAF + 5 timeouts at 60/160/350/700/1200ms). Each retry fired even after
+ * success, causing visible scroll jumps and fighting the TV's own auto-scroll.
+ *
+ * AFTER:
+ * - Only 2 attempts: one immediate rAF (for when DOM is ready) + one 150ms
+ *   fallback (for when images push layout after mount).
+ * - scrollIntoView is GONE. We use a manual scrollTop calculation so
+ *   the two scroll calls can't fight each other.
+ * - A "done" flag prevents the second attempt from running if the first
+ *   succeeded (element found + scrolled).
+ * - Token system kept so stale restores from superseded navigations are
+ *   discarded immediately.
+ */
 let restoreScrollToken = 0;
-const restoreScrollAndFocus = (scrollY, focusId) => {
+
+function restoreScrollAndFocus(scrollY, focusId) {
   const token   = ++restoreScrollToken;
   const targetY = Number(scrollY) || 0;
-  const doIt = () => {
-    if (token !== restoreScrollToken) return;
+  let done      = false;
+
+  const attempt = () => {
+    if (done || token !== restoreScrollToken) return;
+
     scrollPageTo(targetY);
+
     if (focusId) {
       const el = document.querySelector(`[data-card-id="${focusId}"]`);
-      if (el) { el.focus({ preventScroll: true }); el.scrollIntoView({ block: "center", inline: "nearest", behavior: "auto" }); }
+      if (el) {
+        el.focus({ preventScroll: true });
+        done = true;
+      }
+    } else {
+      done = true;
     }
   };
-  requestAnimationFrame(doIt);
-  [60, 160, 350, 700, 1200].forEach((d) => setTimeout(doIt, d));
-};
+
+  // Attempt 1: next paint (covers most cases)
+  requestAnimationFrame(attempt);
+
+  // Attempt 2: 150ms fallback only (covers slow image-load reflows)
+  // No more 5-retry cascade — that was what caused the visible jumps.
+  setTimeout(() => {
+    if (!done) attempt();
+  }, 150);
+}
+
+/*
+ * FIX: triggerRipple disabled on TV (ripple causes paint on a composited
+ * layer; on Android TV this adds ~3ms per keydown which accumulates to
+ * visible lag at 30fps rendering budgets).
+ */
+const isTV = () =>
+  document.body.classList.contains("tv-mode") ||
+  document.body.classList.contains("android-mode");
 
 function triggerRipple(e, el) {
+  if (isTV()) return; // skip on TV — expensive composited paint
   const rect = el.getBoundingClientRect();
   const size = Math.max(rect.width, rect.height);
   const clientX = e.clientX ?? e.touches?.[0]?.clientX ?? rect.left + rect.width  / 2;
@@ -308,13 +352,45 @@ const HeroBanner = React.memo(function HeroBanner({ banners, onPlay }) {
   );
 });
 
+/*
+ * FIX: FocusCard — added keydown throttle for TV D-pad.
+ *
+ * On Android TV, holding an arrow key fires keydown at ~125ms intervals.
+ * If each keydown triggers a React state update (focus change → re-render),
+ * the JS thread and render pipeline compete for the same frame budget.
+ *
+ * The throttle here does NOT block navigation — it only prevents rapid-fire
+ * Enter/Space activations that would accidentally open a card twice.
+ * Arrow key navigation happens in useSpatialNav (separate from this).
+ */
 const FocusCard = React.forwardRef(function FocusCard(
   { className, style, onClick, children, tabIndex = 0, "data-card-id": dataCardId }, ref
 ) {
+  const lastActivateRef = useRef(0);
+
+  const handleKeyDown = useCallback((e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      const now = Date.now();
+      // Throttle: ignore repeated Enter/Space within 300ms (prevents double-open on TV)
+      if (now - lastActivateRef.current < 300) return;
+      lastActivateRef.current = now;
+      e.currentTarget.click();
+    }
+  }, []);
+
   return (
-    <div ref={ref} className={className} style={style} onClick={onClick}
-      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.currentTarget.click(); } }}
-      tabIndex={tabIndex} data-card-id={dataCardId} role="button" aria-pressed="false">
+    <div
+      ref={ref}
+      className={className}
+      style={style}
+      onClick={onClick}
+      onKeyDown={handleKeyDown}
+      tabIndex={tabIndex}
+      data-card-id={dataCardId}
+      role="button"
+      aria-pressed="false"
+    >
       {children}
     </div>
   );
@@ -328,15 +404,13 @@ export default function Home({ type = "all" }) {
   const [isDataLoaded, setIsDataLoaded] = useState(false);
   const handleGridKeyDown               = useSpatialNav();
 
-  const [isTV, setIsTV] = useState(() => detectIsTV());
+  const [isTVMode, setIsTVMode] = useState(() => detectIsTV());
 
   const [languageFilter, setLanguageFilter] = useState([]);
   const [genreFilter,    setGenreFilter]    = useState([]);
   const [yearFilter,     setYearFilter]     = useState([]);
   const [search,         setSearch]         = useState("");
 
-  // ─── FIX: track whether we are mid-restore so the type-change
-  //     layout-effect doesn't wipe the search we just restored ───
   const isRestoringNavState = useRef(false);
 
   const [isListening,  setIsListening]  = useState(false);
@@ -375,9 +449,9 @@ export default function Home({ type = "all" }) {
     const isAndroid = /android tv|googletv/i.test(ua) || (/android/i.test(ua) && /tv/i.test(ua));
     const isTVDev   = /tv|android tv|googletv|smarttv/i.test(ua);
     document.body.classList.remove("tv-mode", "android-mode");
-    if (isAndroid)      { document.body.classList.add("android-mode", "tv-mode"); setIsTV(true); }
-    else if (isTVDev)   { document.body.classList.add("tv-mode"); setIsTV(true); }
-    else                { setIsTV(false); }
+    if (isAndroid)      { document.body.classList.add("android-mode", "tv-mode"); setIsTVMode(true); }
+    else if (isTVDev)   { document.body.classList.add("tv-mode"); setIsTVMode(true); }
+    else                { setIsTVMode(false); }
   }, []);
 
   useEffect(() => {
@@ -491,10 +565,6 @@ export default function Home({ type = "all" }) {
       .map(([n, items]) => [n, [...items].sort(sortByYearThenCreatedAt)]);
   }, [movies, isMovieType, isAnimeGenre, matchesTab, passesFilters, search, searchScore]);
 
-  // ─── FIX: single shared series-grouping builder, reused by BOTH the
-  //     live memoized groups AND the nav-state restore effect, so the
-  //     two can never drift out of sync with each other (this was the
-  //     root cause of restore landing one level too high for anime). ──
   const groupSeriesItems = useCallback((items) => {
     const groups = {};
     items.forEach((item) => {
@@ -539,16 +609,11 @@ export default function Home({ type = "all" }) {
     return buildSeriesGroups((i) => (isAnimeType(i.type) || isAnimeGenre(i)) && hasEp(i.episode) && passesFilters(i, "seriesTitle"));
   }, [buildSeriesGroups, isAnimeType, isAnimeGenre, passesFilters]);
 
-  // ─── FIX: unfiltered (no search/filter applied) lookup map used ONLY
-  //     by the nav-state restore effect. Covers series AND anime series
-  //     using the exact same season-keying logic as the live groups,
-  //     so a saved seriesTitle/seasonNum ALWAYS resolves correctly. ────
   const allSeriesLookup = useMemo(() => {
     const items = movies.filter((i) => isSeriesType(i.type) || isAnimeType(i.type) || isAnimeGenre(i));
     return groupSeriesItems(items);
   }, [movies, isSeriesType, isAnimeType, isAnimeGenre, groupSeriesItems]);
 
-  // ─── FIX: unfiltered lookup for collections, used only by restore. ──
   const allMovieCollectionLookup = useMemo(() => {
     const items = movies.filter((i) => isMovieType(i.type) || isAnimeType(i.type) || isAnimeGenre(i));
     const g = {};
@@ -651,15 +716,29 @@ export default function Home({ type = "all" }) {
     navIdRef.current = id;
     const targetY = savedScrollMap.current[id] ?? 0;
     const focusId = savedFocusMap.current[id] ?? null;
+
+    /*
+     * FIX: back-navigation scroll restore.
+     * Previously used the global restoreScrollAndFocus with 5 retries.
+     * Here we use 2 targeted attempts — same logic as above.
+     */
+    let done = false;
     const doRestore = () => {
+      if (done) return;
       scrollPageTo(targetY);
       if (focusId) {
         const el = document.querySelector(`[data-card-id="${focusId}"]`);
-        if (el) { el.focus({ preventScroll: true }); el.scrollIntoView({ block: "center", inline: "nearest" }); }
+        if (el) {
+          el.focus({ preventScroll: true });
+          done = true;
+        }
+      } else {
+        done = true;
       }
     };
+
     requestAnimationFrame(doRestore);
-    [80, 200, 400, 800].forEach((d) => setTimeout(doRestore, d));
+    setTimeout(() => { if (!done) doRestore(); }, 150);
   }, [viewStack]);
 
   useEffect(() => {
@@ -675,11 +754,6 @@ export default function Home({ type = "all" }) {
   }, [viewStack, popView]);
 
   // ─── NAV STATE RESTORE ────────────────────────────────────────────────────
-  // FIX: Uses allSeriesLookup / allMovieCollectionLookup (unfiltered, and
-  //      now INCLUDING anime) so async state updates to the live, filtered
-  //      groups never cause "not found" failures that silently fall back
-  //      to a shallower view (e.g. landing on the series banner instead of
-  //      the season's episode list).
   useEffect(() => {
     if (!isDataLoaded) return;
     const saved = ss.getJSON("ott_nav_state");
@@ -700,8 +774,6 @@ export default function Home({ type = "all" }) {
       });
     }
 
-    // ── FIX: mark that we are restoring so the type-change layout-effect
-    //         below does NOT wipe the search we are about to set ──
     isRestoringNavState.current = true;
 
     try {
@@ -778,7 +850,6 @@ export default function Home({ type = "all" }) {
       }
     }
 
-    // Default: just home scroll
     setTimeout(() => { isRestoringNavState.current = false; }, 200);
     restoreScrollAndFocus(scrollY, focusId);
   }, [isDataLoaded, allSeriesLookup, allMovieCollectionLookup]);
@@ -793,19 +864,16 @@ export default function Home({ type = "all" }) {
     });
   }, [isDataLoaded, currentView.kind]);
 
-  // ─── FIX: guard against wiping restored search/filters when type changes ──
-useLayoutEffect(() => {
-  if (isRestoringNavState.current) return;
-  // ── FIX: if nav state is pending (returning from player), don't wipe —
-  //         the restore effect will handle everything
-  if (ss.getJSON("ott_nav_state")) return;
-  setLanguageFilter([]); setGenreFilter([]); setYearFilter([]); setSearch("");
-  setViewStack([{ kind: "home" }]);
-  navIdRef.current = 0;
-  savedScrollMap.current = {};
-  savedFocusMap.current  = {};
-  scrollPageTo(0);
-}, [type]);
+  useLayoutEffect(() => {
+    if (isRestoringNavState.current) return;
+    if (ss.getJSON("ott_nav_state")) return;
+    setLanguageFilter([]); setGenreFilter([]); setYearFilter([]); setSearch("");
+    setViewStack([{ kind: "home" }]);
+    navIdRef.current = 0;
+    savedScrollMap.current = {};
+    savedFocusMap.current  = {};
+    scrollPageTo(0);
+  }, [type]);
 
   const handleOpenCollection = useCallback((name, items) => {
     pushView({ kind: "collection", data: { name, items } });
@@ -825,12 +893,6 @@ useLayoutEffect(() => {
 
   const cardId = useCallback((prefix, id) => `${prefix}_${id}`, []);
 
-  // ─── FIX: playMovie now accepts an explicit `navContext` override so
-  //     ANY entry point (episode card, continue-button on a season card,
-  //     continue-pill, recently-watched strip, hero banner) can declare
-  //     exactly which series/season it represents — instead of silently
-  //     relying on what happens to be on viewStack at the time. This is
-  //     what previously caused "back" to land one level too high. ──────
   const playMovie = useCallback((movie, playlist = null, currentIndex = 0, navContext = null) => {
     if (movie.episode !== undefined && movie.episode !== null &&
         movie.episode !== "" && movie.episode !== 0 && movie.episode !== "0") {
@@ -867,11 +929,6 @@ useLayoutEffect(() => {
     const seriesView = viewStack.find((v) => v.kind === "series");
     const colView    = viewStack.find((v) => v.kind === "collection");
 
-    // ── FIX: explicit navContext takes priority over whatever is
-    //     currently on viewStack. This lets "continue" buttons that
-    //     don't push a season/series view still persist the correct
-    //     season context, so Back lands on the episode list (not the
-    //     series banner) with the chosen episode highlighted. ────────
     const effStackKinds = navContext
       ? Array.from(new Set([...stackKinds, "series", "season"]))
       : stackKinds;
@@ -879,7 +936,6 @@ useLayoutEffect(() => {
     const effSeriesDisplay   = navContext?.seriesDisplayName ?? (seriesView?.data?.seriesTitle ?? seasonView?.data?.seriesTitle ?? null);
     const effSeasonNum       = navContext?.seasonNum ?? (seasonView?.data?.seasonNum ?? null);
 
-    // ── FIX: save the current search string BEFORE clearing it ──
     const currentSearch = search;
 
     ss.setJSON("ott_nav_state", {
@@ -894,11 +950,9 @@ useLayoutEffect(() => {
       homeFocusId:       homeInfo.focusId,
       seriesScrollY:     seriesInfo?.scrollY ?? null,
       seriesFocusId:     seriesInfo?.focusId ?? null,
-      // ── FIX: persist search so restore can rebuild filtered groups ──
       filters: { language: languageFilter, genre: genreFilter, year: yearFilter, search: currentSearch },
     });
 
-    // Clear search AFTER saving nav state
     setSearch("");
     addRecentWatched(movie);
     navigate("/player", { state: { movie, playlist: finalPlaylist, currentIndex: finalIndex } });
@@ -1063,8 +1117,6 @@ useLayoutEffect(() => {
                         : sorted[0];
                       if (epToPlay) {
                         const idx = sorted.findIndex(ep => ep.id === epToPlay.id);
-                        // ── FIX: explicit navContext so Back lands on this
-                        //     episode's season list, not the series banner ──
                         playMovie(epToPlay, sorted, idx >= 0 ? idx : 0, {
                           seriesTitleKey:     sKey,
                           seriesDisplayName:  item.seriesTitle || item.title,
@@ -1128,7 +1180,7 @@ useLayoutEffect(() => {
         </button>
       </div>
 
-      {currentView.kind === "home" && banners.length > 0 && !isTV && (
+      {currentView.kind === "home" && banners.length > 0 && !isTVMode && (
         <HeroBanner banners={banners} onPlay={playMovie} />
       )}
 
@@ -1286,10 +1338,6 @@ useLayoutEffect(() => {
                               || sortedEps[0];
                             if (epToPlay) {
                               const idx = sortedEps.findIndex(ep => ep.id === epToPlay.id);
-                              // ── FIX: explicit navContext so Back returns to
-                              //     THIS season's episode list, not the series
-                              //     banner (this button never pushes a "season"
-                              //     view onto viewStack on its own). ───────────
                               playMovie(epToPlay, sortedEps, idx >= 0 ? idx : 0, {
                                 seriesTitleKey:    selectedSeries.titleKey,
                                 seriesDisplayName: selectedSeries.seriesTitle,

@@ -402,9 +402,11 @@ public class TrackSelectionDialog extends DialogFragment {
 
         final int fi = idx;
         btn.setOnClickListener(v -> switchTab(fi));
-        btn.setOnFocusChangeListener((v, f) ->
+        btn.setOnFocusChangeListener((v, f) -> {
                 bg.setStroke(dp(f ? 1.5f : 1f),
-                        f ? C_WHITE : (fi == currentTab ? C_ACCENT : C_BORDER)));
+                        f ? C_WHITE : (fi == currentTab ? C_ACCENT : C_BORDER));
+                btn.animate().scaleX(f ? 1.08f : 1f).scaleY(f ? 1.08f : 1f).setDuration(150).start();
+        });
         btn.setOnKeyListener((v, code, e) -> {
             if (e.getAction() != KeyEvent.ACTION_DOWN) return false;
             if (code == KeyEvent.KEYCODE_DPAD_UP   && fi > 0) { tabBtns[fi-1].requestFocus(); return true; }
@@ -647,7 +649,7 @@ public class TrackSelectionDialog extends DialogFragment {
         row.setOnFocusChangeListener((v, f) -> {
             bg.setStroke(dp(f ? 2f : (opt.selected ? 1.5f : 1f)),
                     f ? C_WHITE : (opt.selected ? C_BORDER_SEL : C_BORDER));
-            row.animate().scaleX(f ? 1.012f : 1f).scaleY(f ? 1.012f : 1f).setDuration(90).start();
+            row.animate().scaleX(f ? 1.05f : 1f).scaleY(f ? 1.05f : 1f).setDuration(150).start();
         });
         row.setOnClickListener(v -> pick(opt));
         row.setOnKeyListener((v, code, e) -> {

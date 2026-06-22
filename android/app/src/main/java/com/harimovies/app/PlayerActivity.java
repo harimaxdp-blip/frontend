@@ -151,6 +151,7 @@ public class PlayerActivity extends AppCompatActivity {
     private boolean resumeShowing   = false;
     private boolean resumeChecked   = false;
     private boolean isSeeking       = false; // track seeking to pause auto-hide
+    private boolean isAnyDialogOpen = false;
     private int previousInterruptionFilter = 1; // Default to INTERRUPTION_FILTER_ALL
 
     // ── TV Focus tracking (rows: 0=top, 1=center, 2=seekbar, 3=episodes) ─────
@@ -1545,9 +1546,12 @@ public class PlayerActivity extends AppCompatActivity {
     //  A/V Sync Dialog (unchanged)
     // ══════════════════════════════════════════════════════════════════════════
     private void showSyncDialog() {
+        isAnyDialogOpen = true;
+        cancelHide();
         FrameLayout root = findViewById(android.R.id.content);
         FrameLayout overlay = new FrameLayout(this);
         overlay.setBackgroundColor(0xAA000000);
+        // ... rest of the method unchanged but I need to find the close actions
 
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
@@ -1652,20 +1656,32 @@ public class PlayerActivity extends AppCompatActivity {
             long ms = seekBar.getProgress() - 2000;
             audioOffsetUs = ms * 1000L;
             applyAudioOffset();
+            isAnyDialogOpen = false;
             root.removeView(overlay);
             // Restore focus after dialog dismissed
-            if (controlsVisible) restoreLastFocus();
+            if (controlsVisible) {
+                scheduleHide();
+                restoreLastFocus();
+            }
         });
         btnReset.setOnClickListener(v -> {
             seekBar.setProgress(2000);
             audioOffsetUs = 0L;
             applyAudioOffset();
+            isAnyDialogOpen = false;
             root.removeView(overlay);
-            if (controlsVisible) restoreLastFocus();
+            if (controlsVisible) {
+                scheduleHide();
+                restoreLastFocus();
+            }
         });
         overlay.setOnClickListener(v -> {
+            isAnyDialogOpen = false;
             root.removeView(overlay);
-            if (controlsVisible) restoreLastFocus();
+            if (controlsVisible) {
+                scheduleHide();
+                restoreLastFocus();
+            }
         });
         card.setOnClickListener(v -> { /* consume */ });
 
@@ -1674,7 +1690,15 @@ public class PlayerActivity extends AppCompatActivity {
 
     private void showTrackSelectionDialog() {
         if (player == null) return;
-        TrackSelectionDialog dialog = TrackSelectionDialog.newInstance(player, null);
+        isAnyDialogOpen = true;
+        cancelHide();
+        TrackSelectionDialog dialog = TrackSelectionDialog.newInstance(player, () -> {
+            isAnyDialogOpen = false;
+            if (controlsVisible) {
+                scheduleHide();
+                restoreLastFocus();
+            }
+        });
         dialog.show(getSupportFragmentManager(), "TrackSelectionDialog");
     }
 
@@ -2444,8 +2468,17 @@ public class PlayerActivity extends AppCompatActivity {
     }
 
     private void scheduleHide() {
-        autoHideHandler.removeCallbacks(autoHideRunnable);
+        cancelHide();
+        if (isAnyDialogOpen) return;
+        // Never hide while paused or if user is currently seeking/navigating
+        if (player != null && !player.isPlaying()) return;
+        if (isSeeking) return;
+        
         autoHideHandler.postDelayed(autoHideRunnable, AUTO_HIDE_MS);
+    }
+
+    private void cancelHide() {
+        autoHideHandler.removeCallbacks(autoHideRunnable);
     }
 
     // ══════════════════════════════════════════════════════════════════════════
@@ -2706,11 +2739,11 @@ public class PlayerActivity extends AppCompatActivity {
         });
 
         if (btnSync != null) btnSync.setOnClickListener(v -> {
-            saveLastFocus(); showSyncDialog(); scheduleHide();
+            saveLastFocus(); showSyncDialog();
         });
 
         if (btnSettings != null) btnSettings.setOnClickListener(v -> {
-            saveLastFocus(); showTrackSelectionDialog(); scheduleHide();
+            saveLastFocus(); showTrackSelectionDialog();
         });
 
         if (btnRew  != null) btnRew.setOnClickListener(v ->  { fastSeek(-5_000); scheduleHide(); });
