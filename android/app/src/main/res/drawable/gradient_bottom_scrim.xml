@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    gradient_bottom_scrim.xml
+    Black-to-transparent gradient for the bottom scrim overlay.
+    Fades from solid black at the bottom to fully transparent at the top.
+    Slightly stronger opacity than the top scrim to anchor the controls.
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <gradient
+        android:type="linear"
+        android:angle="90"
+        android:startColor="#E6000000"
+        android:endColor="#00000000" />
+</shape>

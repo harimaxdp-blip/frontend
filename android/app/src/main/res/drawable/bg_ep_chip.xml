@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    bg_ep_chip.xml
+    Background for episode chips in the bottom bar.
+    Selector handles selected (white fill) vs default (translucent) states.
+    Used on each chip TextView inflated into episode_container.
+-->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Selected chip: solid white background -->
+    <item android:state_selected="true">
+        <shape android:shape="rectangle">
+            <solid android:color="#FFFFFFFF" />
+            <corners android:radius="20dp" />
+        </shape>
+    </item>
+
+    <!-- Pressed: slightly more opaque -->
+    <item android:state_pressed="true">
+        <shape android:shape="rectangle">
+            <solid android:color="#40FFFFFF" />
+            <corners android:radius="20dp" />
+        </shape>
+    </item>
+
+    <!-- Default: translucent -->
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#26FFFFFF" />
+            <corners android:radius="20dp" />
+        </shape>
+    </item>
+
+</selector>

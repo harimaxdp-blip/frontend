@@ -1,0 +1,66 @@
+.banner-page {
+  padding: 20px;
+  color: white;
+}
+
+.banner-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 40px;
+}
+
+.banner-form input,
+.banner-form textarea,
+.banner-form select {
+  padding: 12px;
+  border-radius: 10px;
+  border: none;
+  background: #1e1e1e;
+  color: white;
+}
+
+.banner-form button {
+  padding: 12px;
+  border: none;
+  border-radius: 10px;
+  background: red;
+  color: white;
+  cursor: pointer;
+}
+
+.banner-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill,minmax(250px,1fr));
+  gap: 20px;
+}
+
+.banner-card {
+  background: #111;
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.banner-card img {
+  width: 100%;
+  height: 180px;
+  object-fit: cover;
+}
+
+.banner-card h3 {
+  padding: 10px;
+}
+
+.banner-card p {
+  padding: 0 10px 10px;
+  opacity: 0.8;
+}
+
+.delete-btn {
+  width: 100%;
+  padding: 10px;
+  background: crimson;
+  border: none;
+  color: white;
+  cursor: pointer;
+}
