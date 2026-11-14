@@ -1,0 +1,42 @@
+workflows:
+  hm-ios-unsigned:
+    name: HM iOS - Unsigned Build
+    max_build_duration: 120
+    instance_type: mac_mini_m2
+
+    environment:
+      xcode: latest
+      node: 20
+
+    scripts:
+      - name: Install React dependencies
+        script: npm ci
+
+      - name: Build React frontend
+        script: npm run build
+
+      - name: Sync Capacitor iOS
+        script: npx cap sync ios
+
+      - name: Resolve Xcode dependencies
+        script: |
+          xcodebuild -resolvePackageDependencies \
+            -project ios/App/App.xcodeproj \
+            -scheme App
+
+      - name: Build unsigned iOS Simulator app
+        script: |
+          xcodebuild build \
+            -project ios/App/App.xcodeproj \
+            -scheme App \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -configuration Debug \
+            -derivedDataPath build/ios-derived \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+
+    artifacts:
+      - build/ios-derived/Build/Products/Debug-iphonesimulator/App.app
+      - /tmp/xcodebuild_logs/*.log

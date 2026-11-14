@@ -1,6 +1,6 @@
 import React, { useEffect, useCallback, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import DeviceControl from "../plugins/deviceControl";
+import playerAdapter from "../player/playerAdapter";
 import GlobalPlayer from "./GlobalPlayer";
 
 export default function MoviePlayer() {
@@ -30,91 +30,56 @@ export default function MoviePlayer() {
     if (window._mp_launching) return;
     window._mp_launching = true;
 
-    const isSeries       = Array.isArray(playlist) && playlist.length > 1;
-    const currentEpisode = isSeries ? playlist[startIndex] : movie;
-
-    const url   = currentEpisode?.link || currentEpisode?.url || currentEpisode?.episodeLink;
-    const title = currentEpisode?.title || currentEpisode?.episodeTitle || "";
-
     const cleanup = () => {
       window._mp_launching = false;
     };
 
-    if (!url) { cleanup(); handleGoBack(); return; }
-
-    // Safety timeout: if we are still on this page after 12 seconds, force go back
-    const safetyTimer = setTimeout(() => {
-      console.warn("MoviePlayer safety timeout triggered - forcing go back");
-      cleanup();
-      handleGoBack();
-    }, 12000);
-
-    const onPlayerDone = () => {
-      clearTimeout(safetyTimer);
-      cleanup();
-      handleGoBack();
-    };
-
-    // ── Magnet link → TorrentPlayerActivity ────────────────────────────────
-    if (url.startsWith("magnet:")) {
-      DeviceControl.openTorrentPlayer({ magnet: url, title })
-        .then(onPlayerDone)
-        .catch((err) => {
-          console.warn("Torrent player failed:", err);
-          onPlayerDone();
-        });
-      return;
+    // Safety timeout: if still on this page after 12 seconds on native platforms, force go back
+    const isNativePlatform = playerAdapter.isAndroid();
+    let safetyTimer = null;
+    if (isNativePlatform) {
+      safetyTimer = setTimeout(() => {
+        console.warn("MoviePlayer safety timeout triggered - forcing go back");
+        cleanup();
+        handleGoBack();
+      }, 12000);
     }
 
-    // ── Normal HTTP video flow ──────────────────────────────────────────────
-    const cleanedPlaylist = Array.isArray(playlist)
-      ? playlist.map(ep => ({
-          link:    ep.link || ep.url || ep.episodeLink || "",
-          title:   ep.title || ep.episodeTitle || ep.name || "",
-          episode: ep.episode || ep.episodeNo || ep.ep || "",
-          season:  ep.season || "1",
-          id:      ep.id || ""
-        }))
-      : null;
-
-    const isDirectVideo =
-      /\.(mp4|m3u8|mkv|webm|ts|avi|mov|flv|mpd)($|\?)/i.test(url) ||
-      /[?&]stream=1/i.test(url)   ||
-      /\/hls\//i.test(url)        ||
-      /\/dash\//i.test(url)       ||
-      /\/manifest\//i.test(url)   ||
-      /\/playlist\//i.test(url)   ||
-      /\.m3u8/i.test(url)         ||
-      /\.mpd/i.test(url);
-
-    const payload = {
-      url,
-      title,
-      playlist: cleanedPlaylist?.length > 0 ? JSON.stringify(cleanedPlaylist) : null,
-      index: startIndex
+    const onPlayerDone = () => {
+      if (safetyTimer) clearTimeout(safetyTimer);
+      cleanup();
+      handleGoBack();
     };
 
-    const launchFallback = (err) => {
-      console.warn("PLAYER_FALLBACK:", err);
-      clearTimeout(safetyTimer);
+    const launchFallback = (err, payload) => {
+      if (err) console.warn("PLAYER_FALLBACK:", err);
+      if (safetyTimer) clearTimeout(safetyTimer);
       cleanup();
-      setFallbackPayload({
-        url,
-        title,
-        playlist: cleanedPlaylist?.length > 0 ? cleanedPlaylist : null,
+      setFallbackPayload(payload || {
+        url: movie?.link || movie?.url || "",
+        title: movie?.title || "",
+        playlist,
         index: startIndex
       });
       setUseFallback(true);
     };
 
-    if (isDirectVideo) {
-      DeviceControl.openExoPlayer(payload).then(onPlayerDone).catch(launchFallback);
-    } else {
-      DeviceControl.openWebPlayer(payload).then(onPlayerDone).catch(launchFallback);
-    }
+    playerAdapter
+      .play({
+        movie,
+        playlist,
+        startIndex,
+        onDone: onPlayerDone,
+        onFallback: launchFallback
+      })
+      .catch((err) => {
+        console.error("PlayerAdapter play error:", err);
+        cleanup();
+        handleGoBack();
+      });
 
     return () => {
-      clearTimeout(safetyTimer);
+      if (safetyTimer) clearTimeout(safetyTimer);
       cleanup();
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps

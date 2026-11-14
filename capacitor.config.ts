@@ -8,6 +8,10 @@ const config: CapacitorConfig = {
     url: 'https://hm-tau-eight.vercel.app',
     cleartext: true,
     androidScheme: 'https'
+  },
+  ios: {
+    contentInset: 'automatic',
+    allowsLinkPreview: false
   }
 };
 
