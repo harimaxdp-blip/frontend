@@ -6,7 +6,7 @@ workflows:
 
     environment:
       xcode: latest
-      node: 20
+      node: 22
 
     scripts:
       - name: Install React dependencies
