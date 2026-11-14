@@ -1,7 +1,10 @@
 package com.harimovies.app;
 
+import android.app.UiModeManager;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
+import android.content.res.Configuration;
 import android.media.AudioManager;
 import android.net.Uri;
 import android.os.Build;
@@ -10,11 +13,13 @@ import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
 import android.util.Log;
+import android.view.KeyEvent;
 import android.view.View;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.view.WindowManager;
 import android.webkit.JavascriptInterface;
+import android.webkit.WebSettings;
 import android.webkit.WebView;
 
 import androidx.core.splashscreen.SplashScreen;
@@ -79,6 +84,44 @@ public class MainActivity extends BridgeActivity {
                 Log.e("HariMoviesBridge", "quitApp failed: " + e.getMessage());
             }
         }
+
+        @JavascriptInterface
+        public boolean isTV() {
+            return MainActivity.this.isTVDevice();
+        }
+
+        @JavascriptInterface
+        public void reloadApp() {
+            runOnUiThread(() -> {
+                if (bridge != null && bridge.getWebView() != null) {
+                    bridge.getWebView().reload();
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void clearCacheAndReload() {
+            runOnUiThread(() -> {
+                if (bridge != null && bridge.getWebView() != null) {
+                    bridge.getWebView().clearCache(true);
+                    bridge.getWebView().reload();
+                }
+            });
+        }
+    }
+
+    public boolean isTVDevice() {
+        try {
+            UiModeManager uiModeManager = (UiModeManager) getSystemService(UI_MODE_SERVICE);
+            if (uiModeManager != null && uiModeManager.getCurrentModeType() == Configuration.UI_MODE_TYPE_TELEVISION) {
+                return true;
+            }
+            PackageManager pm = getPackageManager();
+            return pm.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
+                    || pm.hasSystemFeature(PackageManager.FEATURE_TELEVISION);
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     // ─────────────────────────────────────────────
@@ -94,9 +137,30 @@ public class MainActivity extends BridgeActivity {
         // Keep splash screen until WebView is ready
         splashScreen.setKeepOnScreenCondition(() -> this.bridge == null || this.bridge.getWebView() == null);
 
-        // Fix white flash: set WebView background to black immediately
+        // Fix white flash & configure WebView for TV and latest web updates
         if (this.bridge != null && this.bridge.getWebView() != null) {
-            this.bridge.getWebView().setBackgroundColor(android.graphics.Color.BLACK);
+            WebView webView = this.bridge.getWebView();
+            webView.setBackgroundColor(android.graphics.Color.BLACK);
+            webView.setFocusable(true);
+            webView.setFocusableInTouchMode(true);
+            webView.requestFocus();
+
+            WebSettings settings = webView.getSettings();
+            settings.setDomStorageEnabled(true);
+            settings.setDatabaseEnabled(true);
+            settings.setCacheMode(WebSettings.LOAD_DEFAULT);
+            settings.setMediaPlaybackRequiresUserGesture(false);
+
+            if (isTVDevice()) {
+                webView.post(() -> {
+                    String tvJs = "(function() {" +
+                            "  document.documentElement.setAttribute('data-input', 'key');" +
+                            "  document.body.classList.add('tv-mode', 'android-mode');" +
+                            "  window.isAndroidTV = true;" +
+                            "})();";
+                    webView.evaluateJavascript(tvJs, null);
+                });
+            }
         }
 
         // Global Torrent Cache Cleanup
@@ -134,9 +198,31 @@ public class MainActivity extends BridgeActivity {
     }
 
     @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        if (event.getAction() == KeyEvent.ACTION_DOWN) {
+            WebView webView = this.bridge != null ? this.bridge.getWebView() : null;
+            if (webView != null && !webView.hasFocus()) {
+                webView.requestFocus();
+            }
+        }
+        return super.dispatchKeyEvent(event);
+    }
+
+    @Override
     public void onResume() {
         super.onResume();
         hideSystemUI();
+
+        if (isTVDevice() && this.bridge != null && this.bridge.getWebView() != null) {
+            this.bridge.getWebView().post(() -> {
+                String tvJs = "(function() {" +
+                        "  document.documentElement.setAttribute('data-input', 'key');" +
+                        "  document.body.classList.add('tv-mode', 'android-mode');" +
+                        "  window.isAndroidTV = true;" +
+                        "})();";
+                this.bridge.getWebView().evaluateJavascript(tvJs, null);
+            });
+        }
 
         // Small delay to ensure WebView is ready for JS execution
         new Handler(Looper.getMainLooper()).postDelayed(this::syncLastWatchedToLocalStorage, 500);

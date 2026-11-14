@@ -24,6 +24,7 @@ import ComingSoonGames from "./pages/ComingSoonGames";
 import ComingSoonMusic from "./pages/ComingSoonMusic";
 import gearLink1Img from "./assets/gear-link1.png";
 import gearLink2Img from "./assets/gear-link2.png";
+import { useSpatialNav } from "./hooks/useSpatialNav";
 import "./App.css";
 
 const CATEGORY_PATHS = new Set(["/", "/movies", "/series", "/anime"]);
@@ -38,15 +39,36 @@ const GEAR_LINKS = [
   { img: gearLink2Img, label: "HM Music", desc: "Music For You",  href: "/coming-soon-music" },
 ];
 
+function isTVDevice() {
+  if (typeof window !== "undefined") {
+    if (window.isAndroidTV) return true;
+    try {
+      if (window.HariMovies?.isTV?.()) return true;
+    } catch {}
+    const ua = navigator.userAgent;
+    if (/android tv|googletv|smarttv|tv/i.test(ua) || (/android/i.test(ua) && /tv/i.test(ua))) return true;
+  }
+  return false;
+}
+
 function setupPointerMode() {
   const setMode = (mode) => document.documentElement.setAttribute("data-input", mode);
   window.addEventListener("touchstart", () => setMode("touch"), { passive: true, once: false });
-  window.addEventListener("mousemove",  () => setMode("mouse"), { passive: true, once: false });
+  window.addEventListener("mousemove",  () => {
+    if (!document.body.classList.contains("tv-mode")) setMode("mouse");
+  }, { passive: true, once: false });
   window.addEventListener("keydown", (e) => {
-    if (["ArrowUp","ArrowDown","ArrowLeft","ArrowRight","Enter"," "].includes(e.key))
+    if (["ArrowUp","ArrowDown","ArrowLeft","ArrowRight","Enter"," "].includes(e.key)) {
       setMode("key");
+      document.body.classList.add("tv-mode");
+    }
   }, { passive: true });
-  setMode("mouse");
+  if (isTVDevice()) {
+    setMode("key");
+    document.body.classList.add("tv-mode", "android-mode");
+  } else {
+    setMode("mouse");
+  }
 }
 setupPointerMode();
 
@@ -153,6 +175,7 @@ function GearPopup({ onClose, onNavigate }) {
 // App
 // ─────────────────────────────────────────────────────────
 function App() {
+  useSpatialNav();
   const [open,            setOpen]            = useState(false);
   const [loading,         setLoading]         = useState(true);
   const [user,            setUser]            = useState(null);

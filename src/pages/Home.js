@@ -67,6 +67,12 @@ function readAndroidLastWatched() {
 }
 
 function detectIsTV() {
+  if (typeof window !== "undefined") {
+    if (window.isAndroidTV) return true;
+    try {
+      if (window.HariMovies?.isTV?.()) return true;
+    } catch {}
+  }
   const ua = navigator.userAgent;
   return /android tv|googletv|smarttv|tv/i.test(ua) ||
     (/android/i.test(ua) && /tv/i.test(ua)) ||
@@ -445,13 +451,12 @@ export default function Home({ type = "all" }) {
   const selectedSeason     = currentView.kind === "season"     ? currentView.data : null;
 
   useEffect(() => {
-    const ua = navigator.userAgent;
-    const isAndroid = /android tv|googletv/i.test(ua) || (/android/i.test(ua) && /tv/i.test(ua));
-    const isTVDev   = /tv|android tv|googletv|smarttv/i.test(ua);
-    document.body.classList.remove("tv-mode", "android-mode");
-    if (isAndroid)      { document.body.classList.add("android-mode", "tv-mode"); setIsTVMode(true); }
-    else if (isTVDev)   { document.body.classList.add("tv-mode"); setIsTVMode(true); }
-    else                { setIsTVMode(false); }
+    const isTV = detectIsTV();
+    if (isTV) {
+      document.body.classList.add("android-mode", "tv-mode");
+      document.documentElement.setAttribute("data-input", "key");
+      setIsTVMode(true);
+    }
   }, []);
 
   useEffect(() => {
@@ -857,9 +862,10 @@ export default function Home({ type = "all" }) {
   useEffect(() => {
     if (!isDataLoaded) return;
     requestAnimationFrame(() => {
-      if (!document.body.classList.contains("tv-mode")) return;
-      if (document.activeElement !== document.body) return;
-      const first = document.querySelector("[data-card-id]");
+      const isTV = detectIsTV() || document.documentElement.getAttribute("data-input") === "key";
+      if (!isTV) return;
+      if (document.activeElement && document.activeElement !== document.body) return;
+      const first = document.querySelector("[data-card-id], .card, .season-card-v2, .episode-card");
       if (first) first.focus({ preventScroll: true });
     });
   }, [isDataLoaded, currentView.kind]);

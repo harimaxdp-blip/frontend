@@ -100,8 +100,8 @@ public class PlayerActivity extends AppCompatActivity {
     private static final long   SAVE_EVERY_MS = 5_000L;
     private static final long   MIN_RESUME_MS = 10_000L;
 
-    // ── AUTO-HIDE: 3s (idle), never hides while paused/seeking/navigating ────
-    private static final long AUTO_HIDE_MS  = 3_000L;
+    // ── AUTO-HIDE: 6s (idle on TV), never hides while paused/seeking/navigating ────
+    private static final long AUTO_HIDE_MS  = 6_000L;
     private static final long LOCK_UI_MS    = 3_000L;
 
     private ExoPlayer  player;
@@ -2119,6 +2119,20 @@ public class PlayerActivity extends AppCompatActivity {
     //  TV Remote / D-pad — fixed hierarchy, never loses focus
     // ══════════════════════════════════════════════════════════════════════════
     @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        if (event.getAction() == KeyEvent.ACTION_DOWN) {
+            if (onKeyDown(event.getKeyCode(), event)) {
+                return true;
+            }
+        } else if (event.getAction() == KeyEvent.ACTION_UP) {
+            if (onKeyUp(event.getKeyCode(), event)) {
+                return true;
+            }
+        }
+        return super.dispatchKeyEvent(event);
+    }
+
+    @Override
     public boolean onKeyUp(int keyCode, KeyEvent event) {
         if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
             continuousSeekDirection = 0;
@@ -2163,7 +2177,7 @@ public class PlayerActivity extends AppCompatActivity {
         }
 
         // 3. Back Button Management
-        if (keyCode == KeyEvent.KEYCODE_BACK) {
+        if (keyCode == KeyEvent.KEYCODE_BACK || keyCode == KeyEvent.KEYCODE_ESCAPE) {
             if (resumeShowing) {
                 hideResumeOverlay();
                 return true;
@@ -2177,7 +2191,7 @@ public class PlayerActivity extends AppCompatActivity {
         }
 
         // 4. Menu / Info / Settings keys
-        if (keyCode == KeyEvent.KEYCODE_MENU || keyCode == KeyEvent.KEYCODE_INFO || keyCode == KeyEvent.KEYCODE_M) {
+        if (keyCode == KeyEvent.KEYCODE_MENU || keyCode == KeyEvent.KEYCODE_INFO || keyCode == KeyEvent.KEYCODE_M || keyCode == KeyEvent.KEYCODE_SETTINGS) {
             if (isLocked) { showLockUI(); return true; }
             if (!controlsVisible) {
                 showControls();
@@ -2201,10 +2215,10 @@ public class PlayerActivity extends AppCompatActivity {
             animatePlayPause(); updatePlayPauseAccessibility(); return true;
         }
         if (keyCode == KeyEvent.KEYCODE_MEDIA_REWIND || keyCode == KeyEvent.KEYCODE_MEDIA_SKIP_BACKWARD) {
-            if (isLocked) { showLockUI(); return true; } fastSeek(-5_000); return true;
+            if (isLocked) { showLockUI(); return true; } fastSeek(-5_000); showControls(); return true;
         }
         if (keyCode == KeyEvent.KEYCODE_MEDIA_FAST_FORWARD || keyCode == KeyEvent.KEYCODE_MEDIA_SKIP_FORWARD) {
-            if (isLocked) { showLockUI(); return true; } fastSeek(10_000);  return true;
+            if (isLocked) { showLockUI(); return true; } fastSeek(10_000); showControls(); return true;
         }
         if (keyCode == KeyEvent.KEYCODE_MEDIA_NEXT) {
             if (isLocked) { showLockUI(); return true; } if (btnNextEp != null) btnNextEp.performClick(); return true;
@@ -2220,6 +2234,9 @@ public class PlayerActivity extends AppCompatActivity {
                 case KeyEvent.KEYCODE_DPAD_RIGHT: resumeFocusCol = 1; updateResumeHighlight(); return true;
                 case KeyEvent.KEYCODE_DPAD_CENTER:
                 case KeyEvent.KEYCODE_ENTER:
+                case KeyEvent.KEYCODE_NUMPAD_ENTER:
+                case KeyEvent.KEYCODE_BUTTON_A:
+                case KeyEvent.KEYCODE_BUTTON_SELECT:
                     if (resumeFocusCol == 0) doResume(); else doStartOver(); return true;
             }
             return true;
@@ -2227,32 +2244,38 @@ public class PlayerActivity extends AppCompatActivity {
 
         if (isLocked) return super.onKeyDown(keyCode, event);
 
-        // 6. Controls hidden: quick seek + show
+        // 6. Controls hidden: show controls with clear visual focus immediately!
         if (!controlsVisible) {
             switch (keyCode) {
                 case KeyEvent.KEYCODE_DPAD_CENTER:
                 case KeyEvent.KEYCODE_ENTER:
-                    if (isYoutubePlaying && activeYoutubePlayer != null) {
-                        if (youtubeIsPlaying) activeYoutubePlayer.pause(); else activeYoutubePlayer.play();
-                    } else if (player != null) {
-                        if (player.isPlaying()) player.pause(); else player.play();
-                    }
-                    animatePlayPause(); updatePlayPauseAccessibility();
+                case KeyEvent.KEYCODE_NUMPAD_ENTER:
+                case KeyEvent.KEYCODE_BUTTON_A:
+                case KeyEvent.KEYCODE_BUTTON_SELECT:
+                    showControls();
+                    focusRow = 1; focusCol = clampCenterCol(2); // Auto-focus play/pause
+                    updateFocusHighlight();
                     return true;
                 case KeyEvent.KEYCODE_DPAD_LEFT:
+                    showControls();
+                    focusRow = 2; // Focus seekbar
                     fastSeek(-5_000);
+                    updateFocusHighlight();
                     return true;
                 case KeyEvent.KEYCODE_DPAD_RIGHT:
+                    showControls();
+                    focusRow = 2; // Focus seekbar
                     fastSeek(10_000);
+                    updateFocusHighlight();
                     return true;
                 case KeyEvent.KEYCODE_DPAD_UP:
                     showControls();
-                    focusRow = 1; focusCol = 2;
+                    focusRow = 1; focusCol = clampCenterCol(2);
                     updateFocusHighlight();
                     return true;
                 case KeyEvent.KEYCODE_DPAD_DOWN:
                     showControls();
-                    if (!playlist.isEmpty()) {
+                    if (!playlist.isEmpty() && episodeBar != null && episodeBar.getVisibility() == View.VISIBLE) {
                         focusRow = 3;
                         episodeFocusIndex = currentIndex;
                     } else {
@@ -2268,13 +2291,30 @@ public class PlayerActivity extends AppCompatActivity {
         switch (keyCode) {
             case KeyEvent.KEYCODE_DPAD_CENTER:
             case KeyEvent.KEYCODE_ENTER:
+            case KeyEvent.KEYCODE_NUMPAD_ENTER:
+            case KeyEvent.KEYCODE_BUTTON_A:
+            case KeyEvent.KEYCODE_BUTTON_SELECT:
                 activateFocused();
                 return true;
 
             case KeyEvent.KEYCODE_DPAD_UP:
                 if (focusRow == 3) focusRow = 2;
                 else if (focusRow == 2) { focusRow = 1; focusCol = clampCenterCol(2); }
-                else if (focusRow == 1) { focusRow = 0; focusCol = 2; }
+                else if (focusRow == 1) {
+                    focusRow = 0;
+                    // Find first visible top button near center or current
+                    int targetCol = Math.min(focusCol, topRowButtons.length - 1);
+                    while (targetCol >= 0 && (topRowButtons[targetCol] == null || topRowButtons[targetCol].getVisibility() != View.VISIBLE)) {
+                        targetCol--;
+                    }
+                    if (targetCol < 0) {
+                        targetCol = 0;
+                        while (targetCol < topRowButtons.length && (topRowButtons[targetCol] == null || topRowButtons[targetCol].getVisibility() != View.VISIBLE)) {
+                            targetCol++;
+                        }
+                    }
+                    focusCol = Math.max(0, Math.min(topRowButtons.length - 1, targetCol));
+                }
                 updateFocusHighlight();
                 return true;
 
@@ -2302,14 +2342,22 @@ public class PlayerActivity extends AppCompatActivity {
                     }
                 } else if (focusRow == 1) {
                     int next = focusCol - 1;
+                    while (next >= 0 && (centerRowButtons[next] == null || centerRowButtons[next].getVisibility() != View.VISIBLE)) {
+                        next--;
+                    }
                     if (next >= 0) {
-                        if (next != 0 || (btnPrevEp != null && btnPrevEp.getVisibility() == View.VISIBLE)) {
-                            focusCol = next;
-                            updateFocusHighlight();
-                        }
+                        focusCol = next;
+                        updateFocusHighlight();
                     }
                 } else if (focusRow == 0) {
-                    if (focusCol > 0) { focusCol--; updateFocusHighlight(); }
+                    int next = focusCol - 1;
+                    while (next >= 0 && (topRowButtons[next] == null || topRowButtons[next].getVisibility() != View.VISIBLE)) {
+                        next--;
+                    }
+                    if (next >= 0) {
+                        focusCol = next;
+                        updateFocusHighlight();
+                    }
                 }
                 return true;
 
@@ -2325,14 +2373,22 @@ public class PlayerActivity extends AppCompatActivity {
                     }
                 } else if (focusRow == 1) {
                     int next = focusCol + 1;
-                    if (next <= 4) {
-                        if (next != 4 || (btnNextEp != null && btnNextEp.getVisibility() == View.VISIBLE)) {
-                            focusCol = next;
-                            updateFocusHighlight();
-                        }
+                    while (next < centerRowButtons.length && (centerRowButtons[next] == null || centerRowButtons[next].getVisibility() != View.VISIBLE)) {
+                        next++;
+                    }
+                    if (next < centerRowButtons.length) {
+                        focusCol = next;
+                        updateFocusHighlight();
                     }
                 } else if (focusRow == 0) {
-                    if (focusCol < topRowButtons.length - 1) { focusCol++; updateFocusHighlight(); }
+                    int next = focusCol + 1;
+                    while (next < topRowButtons.length && (topRowButtons[next] == null || topRowButtons[next].getVisibility() != View.VISIBLE)) {
+                        next++;
+                    }
+                    if (next < topRowButtons.length) {
+                        focusCol = next;
+                        updateFocusHighlight();
+                    }
                 }
                 return true;
 

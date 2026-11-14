@@ -1,7 +1,40 @@
 // src/hooks/useSpatialNav.js
-import { useCallback } from "react";
+import { useEffect, useCallback } from "react";
 
-const FOCUSABLE_CARD_SELECTOR = "[data-card-id]";
+const FOCUSABLE_SELECTOR = [
+  "[data-card-id]",
+  ".card",
+  ".episode-card",
+  ".season-card-v2",
+  ".rw-hcard",
+  ".fp-pill",
+  ".fp-tab",
+  ".fp-trigger",
+  ".fp-sheet-close",
+  ".fp-btn-reset",
+  ".fp-btn-apply",
+  ".menu-btn",
+  ".gear-btn",
+  ".search-btn",
+  ".profile-btn",
+  ".mic-btn",
+  ".season-continue-pill",
+  ".continue-play-btn",
+  ".hero-play-btn",
+  ".hero-nav",
+  ".back-btn",
+  ".csg-back-btn",
+  ".csm-back-btn",
+  "[data-sidebar-item]",
+  "[data-menu-button]",
+  "#search-input",
+  ".nav-item",
+  "button:not([disabled]):not([tabindex='-1'])",
+  "input:not([disabled]):not([type='hidden']):not([tabindex='-1'])",
+  "a[href]:not([tabindex='-1'])",
+  "[role='button']:not([tabindex='-1'])"
+].join(", ");
+
 const KEY_TO_DIRECTION = {
   ArrowUp: "up",
   ArrowDown: "down",
@@ -19,10 +52,10 @@ function center(rect) {
 function isDirectionalCandidate(direction, current, candidate) {
   const cur = center(current);
   const next = center(candidate);
-  if (direction === "left") return next.x < cur.x - 4;
-  if (direction === "right") return next.x > cur.x + 4;
-  if (direction === "up") return next.y < cur.y - 4;
-  return next.y > cur.y + 4;
+  if (direction === "left")  return next.x < cur.x - 2 || candidate.right <= current.left + 5;
+  if (direction === "right") return next.x > cur.x + 2 || candidate.left >= current.right - 5;
+  if (direction === "up")    return next.y < cur.y - 2 || candidate.bottom <= current.top + 5;
+  return next.y > cur.y + 2 || candidate.top >= current.bottom - 5;
 }
 
 function directionalScore(direction, current, candidate) {
@@ -30,28 +63,44 @@ function directionalScore(direction, current, candidate) {
   const next = center(candidate);
   const dx = next.x - cur.x;
   const dy = next.y - cur.y;
-  const primary = direction === "left" || direction === "right" ? Math.abs(dx) : Math.abs(dy);
-  const secondary = direction === "left" || direction === "right" ? Math.abs(dy) : Math.abs(dx);
+  const primary   = (direction === "left" || direction === "right") ? Math.abs(dx) : Math.abs(dy);
+  const secondary = (direction === "left" || direction === "right") ? Math.abs(dy) : Math.abs(dx);
 
-  const verticalOverlap = Math.min(current.bottom, candidate.bottom) - Math.max(current.top, candidate.top);
-  const horizontalOverlap = Math.min(current.right, candidate.right) - Math.max(current.left, candidate.left);
-  const hasRowOverlap = verticalOverlap > Math.min(current.height, candidate.height) * 0.25;
-  const hasColumnOverlap = horizontalOverlap > Math.min(current.width, candidate.width) * 0.25;
-  const aligned = direction === "left" || direction === "right" ? hasRowOverlap : hasColumnOverlap;
+  const verticalOverlap   = Math.min(current.bottom, candidate.bottom) - Math.max(current.top, candidate.top);
+  const horizontalOverlap = Math.min(current.right, candidate.right)   - Math.max(current.left, candidate.left);
+  const hasRowOverlap     = verticalOverlap > 0;
+  const hasColumnOverlap  = horizontalOverlap > 0;
+  const aligned           = (direction === "left" || direction === "right") ? hasRowOverlap : hasColumnOverlap;
 
-  return primary * 1000 + secondary * (aligned ? 1 : 8);
+  return primary + secondary * (aligned ? 0.75 : 2.5);
 }
 
 function focusElement(el, preventScroll = false) {
   if (!el) return false;
+  if (!el.hasAttribute("tabindex") && el.tagName !== "BUTTON" && el.tagName !== "INPUT" && el.tagName !== "A") {
+    el.setAttribute("tabindex", "0");
+  }
   el.focus({ preventScroll });
-  el.scrollIntoView?.({ block: "nearest", inline: "nearest", behavior: "smooth" });
+  try {
+    el.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+  } catch {
+    el.scrollIntoView?.();
+  }
   return true;
 }
 
-function isVisibleCard(el) {
+function isVisible(el) {
+  if (!el || el.disabled || el.getAttribute("aria-hidden") === "true") return false;
+  const style = window.getComputedStyle(el);
+  if (style.display === "none" || style.visibility === "hidden" || style.opacity === "0") return false;
   const rect = el.getBoundingClientRect();
   return rect.width > 0 && rect.height > 0;
+}
+
+function getActiveScope() {
+  const openModal = document.querySelector(".filter-popup.open, .fp-sheet, .profile-popup, .gear-popup, .sidebar.open");
+  if (openModal) return openModal;
+  return document.body;
 }
 
 export function useSpatialNav() {
@@ -60,34 +109,77 @@ export function useSpatialNav() {
     const direction = KEY_TO_DIRECTION[key];
     if (!direction) return;
 
-    const scope = document.querySelector(".content") || document;
-    const cards = Array.from(scope.querySelectorAll(FOCUSABLE_CARD_SELECTOR)).filter(isVisibleCard);
+    // Activate TV mode & key input mode immediately on any arrow press
+    document.documentElement.setAttribute("data-input", "key");
+    if (!document.body.classList.contains("tv-mode")) {
+      document.body.classList.add("tv-mode");
+    }
+
+    const scope = getActiveScope();
+    let candidates = Array.from(scope.querySelectorAll(FOCUSABLE_SELECTOR)).filter(isVisible);
+
+    // If searching, also include topbar if not in modal
+    if (scope === document.body) {
+      const topbarElements = Array.from(document.querySelectorAll(".topbar " + FOCUSABLE_SELECTOR)).filter(isVisible);
+      const combined = new Set([...topbarElements, ...candidates]);
+      candidates = Array.from(combined);
+    }
+
+    if (candidates.length === 0) return;
+
     const focused = document.activeElement;
-    const idx = cards.indexOf(focused);
-    if (idx === -1) return;
+    const idx = candidates.indexOf(focused);
 
-    e.preventDefault();
-
-    const rects = cards.map(c => c.getBoundingClientRect());
-    const cur = rects[idx];
-    const target = rects
-      .map((rect, i) => ({ i, rect }))
-      .filter(({ i, rect }) => i !== idx && isDirectionalCandidate(direction, cur, rect))
-      .sort((a, b) => directionalScore(direction, cur, a.rect) - directionalScore(direction, cur, b.rect))[0]?.i;
-
-    if (target >= 0) {
-      focusElement(cards[target]);
+    // 1. If nothing in the interactive list is currently focused, find the best entry element
+    if (idx === -1) {
+      e.preventDefault();
+      // First look for elements currently in the viewport
+      const inView = candidates.filter((el) => {
+        const r = el.getBoundingClientRect();
+        return r.top >= 0 && r.top <= window.innerHeight && r.left >= 0 && r.left <= window.innerWidth;
+      });
+      const pool = inView.length > 0 ? inView : candidates;
+      // Prefer cards first, then search or menu
+      const first = pool.find((el) => el.matches("[data-card-id], .card, .season-card-v2, .episode-card")) ||
+                    pool.find((el) => el.matches("#search-input, .menu-btn")) ||
+                    pool[0];
+      if (first) focusElement(first);
       return;
     }
 
+    // 2. We have a focused element: perform 2D spatial search
+    e.preventDefault();
+    const curRect = focused.getBoundingClientRect();
+
+    const target = candidates
+      .map((el, i) => ({ i, el, rect: el.getBoundingClientRect() }))
+      .filter(({ i, rect }) => i !== idx && isDirectionalCandidate(direction, curRect, rect))
+      .sort((a, b) => directionalScore(direction, curRect, a.rect) - directionalScore(direction, curRect, b.rect))[0];
+
+    if (target && target.el) {
+      focusElement(target.el);
+      return;
+    }
+
+    // 3. Fallbacks when boundary is reached
     if (direction === "left") {
-      const sidebarItem = document.querySelector(".sidebar.open [data-sidebar-item]");
-      if (focusElement(sidebarItem, true)) return;
-      focusElement(document.querySelector("[data-menu-button]"), true);
+      const sidebarOpenItem = document.querySelector(".sidebar.open [data-sidebar-item]");
+      if (focusElement(sidebarOpenItem, true)) return;
+      focusElement(document.querySelector("[data-menu-button], .menu-btn"), true);
     } else if (direction === "up") {
-      focusElement(document.querySelector("#search-input, [data-menu-button]"), true);
+      const searchOrMenu = document.querySelector("#search-input, .fp-trigger, [data-menu-button], .menu-btn");
+      if (searchOrMenu && searchOrMenu !== focused) focusElement(searchOrMenu, true);
+    } else if (direction === "down" && focused.closest(".topbar, .search-bar, .filter-bar")) {
+      const firstCard = document.querySelector("[data-card-id], .card, .season-card-v2, .episode-card");
+      if (firstCard) focusElement(firstCard);
     }
   }, []);
+
+  // Global window listener so TV remote navigation works anywhere in the app
+  useEffect(() => {
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handleKeyDown]);
 
   return handleKeyDown;
 }

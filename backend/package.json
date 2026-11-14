@@ -1,0 +1,13 @@
+{
+  "name": "hari-movies-media-proxy",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.6",
+    "express": "^4.22.3",
+    "webtorrent": "^3.0.21"
+  }
+}

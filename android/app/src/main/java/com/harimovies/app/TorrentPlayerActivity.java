@@ -160,7 +160,7 @@ public class TorrentPlayerActivity extends AppCompatActivity {
     private final Handler  autoHideHandler    = new Handler(Looper.getMainLooper());
     private final Runnable autoHideRunnable   = this::hideControls;
     private final Runnable hideLockUiRunnable = this::hideLockUI;
-    private static final long AUTO_HIDE_MS = 3_000L;
+    private static final long AUTO_HIDE_MS = 6_000L;
     private static final long LOCK_UI_MS   = 3_000L;
 
     // ── Gesture state ───────────────────────────────────────────────────
@@ -1585,6 +1585,16 @@ public class TorrentPlayerActivity extends AppCompatActivity {
     }
 
     @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        if (event.getAction() == KeyEvent.ACTION_DOWN) {
+            if (onKeyDown(event.getKeyCode(), event)) {
+                return true;
+            }
+        }
+        return super.dispatchKeyEvent(event);
+    }
+
+    @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         if (player == null) return super.onKeyDown(keyCode, event);
         if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
@@ -1593,22 +1603,49 @@ public class TorrentPlayerActivity extends AppCompatActivity {
         if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
             audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_LOWER, AudioManager.FLAG_SHOW_UI); return true;
         }
+        if (keyCode == KeyEvent.KEYCODE_BACK || keyCode == KeyEvent.KEYCODE_ESCAPE) {
+            if (controlsVisible) {
+                hideControls();
+                return true;
+            }
+            return super.onKeyDown(keyCode, event);
+        }
         if (!playerStarted) return super.onKeyDown(keyCode, event);
 
-        if (keyCode == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE || keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER) {
+        if (keyCode == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE || keyCode == KeyEvent.KEYCODE_DPAD_CENTER
+                || keyCode == KeyEvent.KEYCODE_ENTER || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER
+                || keyCode == KeyEvent.KEYCODE_BUTTON_A || keyCode == KeyEvent.KEYCODE_BUTTON_SELECT) {
             if (!controlsVisible) {
                 if (player.isPlaying()) player.pause(); else player.play();
-                animatePlayPause(); showControls(); return true;
+                animatePlayPause();
+                showControls();
+                focusRow = 1; focusCol = 1;
+                updateFocusHighlight();
+                return true;
             }
         }
 
         if (isLocked) return super.onKeyDown(keyCode, event);
         if (!controlsVisible) {
             switch (keyCode) {
-                case KeyEvent.KEYCODE_DPAD_LEFT: fastSeek(-5_000); showControls(); return true;
-                case KeyEvent.KEYCODE_DPAD_RIGHT: fastSeek(10_000); showControls(); return true;
+                case KeyEvent.KEYCODE_DPAD_LEFT:
+                    showControls();
+                    focusRow = 2;
+                    fastSeek(-5_000);
+                    updateFocusHighlight();
+                    return true;
+                case KeyEvent.KEYCODE_DPAD_RIGHT:
+                    showControls();
+                    focusRow = 2;
+                    fastSeek(10_000);
+                    updateFocusHighlight();
+                    return true;
                 case KeyEvent.KEYCODE_DPAD_UP:
-                case KeyEvent.KEYCODE_DPAD_DOWN: showControls(); return true;
+                case KeyEvent.KEYCODE_DPAD_DOWN:
+                    showControls();
+                    focusRow = 1; focusCol = 1;
+                    updateFocusHighlight();
+                    return true;
             }
             return super.onKeyDown(keyCode, event);
         }
@@ -1617,6 +1654,9 @@ public class TorrentPlayerActivity extends AppCompatActivity {
         switch (keyCode) {
             case KeyEvent.KEYCODE_DPAD_CENTER:
             case KeyEvent.KEYCODE_ENTER:
+            case KeyEvent.KEYCODE_NUMPAD_ENTER:
+            case KeyEvent.KEYCODE_BUTTON_A:
+            case KeyEvent.KEYCODE_BUTTON_SELECT:
                 activateFocused(); return true;
             case KeyEvent.KEYCODE_DPAD_UP:
                 if (focusRow == 2) focusRow = 1; else if (focusRow == 1) focusRow = 0;

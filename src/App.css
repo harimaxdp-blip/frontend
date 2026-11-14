@@ -695,3 +695,77 @@ body {
   .sidebar  { top: 72px; height: calc(100vh - 72px); }
   .backdrop { top: 72px; }
 }
+
+/* ============================================
+   GLOBAL TV REMOTE FOCUS ENHANCEMENTS
+============================================ */
+body.tv-mode :focus,
+body.tv-mode :focus-visible,
+[data-input="key"] :focus,
+[data-input="key"] :focus-visible {
+  outline: 3px solid #e50914 !important;
+  outline-offset: 2px !important;
+}
+
+body.tv-mode .menu-btn:focus,
+body.tv-mode .gear-btn:focus,
+body.tv-mode .search-btn:focus,
+body.tv-mode .profile-btn:focus,
+[data-input="key"] .menu-btn:focus,
+[data-input="key"] .gear-btn:focus,
+[data-input="key"] .search-btn:focus,
+[data-input="key"] .profile-btn:focus {
+  outline: 3px solid #e50914 !important;
+  outline-offset: 3px !important;
+  transform: scale(1.12) !important;
+  box-shadow: 0 0 16px rgba(229, 9, 20, 0.6) !important;
+  z-index: 50 !important;
+}
+
+body.tv-mode #search-input:focus,
+[data-input="key"] #search-input:focus {
+  outline: 3px solid #e50914 !important;
+  border-color: #e50914 !important;
+  box-shadow: 0 0 16px rgba(229, 9, 20, 0.5) !important;
+}
+
+body.tv-mode .card:focus,
+body.tv-mode .card:focus-visible,
+body.tv-mode .episode-card:focus,
+body.tv-mode .episode-card:focus-visible,
+body.tv-mode .season-card-v2:focus,
+body.tv-mode .season-card-v2:focus-visible,
+body.tv-mode .rw-hcard:focus,
+[data-input="key"] .card:focus,
+[data-input="key"] .card:focus-visible,
+[data-input="key"] .episode-card:focus,
+[data-input="key"] .season-card-v2:focus,
+[data-input="key"] .rw-hcard:focus {
+  outline: 3px solid #e50914 !important;
+  outline-offset: 3px !important;
+  border-color: #e50914 !important;
+  box-shadow: 0 0 0 4px rgba(229, 9, 20, 0.45), 0 16px 32px rgba(0, 0, 0, 0.95) !important;
+  transform: translateY(-6px) scale(1.06) !important;
+  z-index: 30 !important;
+  transition: transform 180ms ease, box-shadow 180ms ease !important;
+}
+
+body.tv-mode .sidebar-inner .item:focus,
+[data-input="key"] .sidebar-inner .item:focus {
+  outline: 3px solid #e50914 !important;
+  background: rgba(229, 9, 20, 0.25) !important;
+  transform: translateX(6px) !important;
+}
+
+body.tv-mode .fp-pill:focus,
+body.tv-mode .fp-tab:focus,
+body.tv-mode .fp-trigger:focus,
+[data-input="key"] .fp-pill:focus,
+[data-input="key"] .fp-tab:focus,
+[data-input="key"] .fp-trigger:focus {
+  outline: 2px solid #e50914 !important;
+  outline-offset: 2px !important;
+  transform: scale(1.04) !important;
+  box-shadow: 0 0 12px rgba(229, 9, 20, 0.5) !important;
+  z-index: 25 !important;
+}
