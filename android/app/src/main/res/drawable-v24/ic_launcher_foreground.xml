@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- White logo "HM" shape approximating the user image -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M25,20 v50 l10,8 v-28 h10 v28 l10,8 v-50 h-10 v15 h-10 v-15 z
+                          M60,20 v50 l15,18 l15,-18 v-50 h-10 v40 l-5,5 l-5,-5 v-40 z" />
+</vector>

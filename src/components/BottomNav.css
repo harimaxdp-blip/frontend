@@ -1,0 +1,289 @@
+
+/* =========================================
+   HM BOTTOM NAVIGATION
+   Mobile: 6 tabs
+   Desktop/Laptop: Hidden
+========================================= */
+
+/* Default: Hidden outside mobile */
+.bottom-nav-wrapper {
+  display: none;
+}
+
+/* =========================================
+   MOBILE NAVIGATION
+========================================= */
+
+@media (max-width: 768px) {
+  .bottom-nav-wrapper {
+    display: block;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    z-index: 99999;
+
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+
+    background: #0b0b0b;
+    box-sizing: border-box;
+  }
+
+  .bottom-nav {
+    position: relative;
+    display: flex;
+    align-items: center;
+
+    width: 100%;
+    height: 64px;
+
+    background: #0b0b0b;
+    border-top: 1px solid #222;
+
+    overflow: hidden;
+    isolation: isolate;
+    box-sizing: border-box;
+  }
+
+  /* -----------------------------------------
+     ACTIVE INDICATOR
+  ----------------------------------------- */
+
+  .nav-indicator {
+    position: absolute;
+    top: 8px;
+    left: 0;
+
+    width: 16.666667%;
+    height: 48px;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    pointer-events: none;
+    z-index: 1;
+
+    transition: transform 0.4s cubic-bezier(
+      0.34, 1.56, 0.64, 1
+    );
+
+    will-change: transform;
+  }
+
+  .nav-indicator::before {
+    content: "";
+    position: absolute;
+
+    width: 44px;
+    height: 44px;
+
+    background: #ff003c;
+    border-radius: 14px;
+
+    box-shadow: 0 4px 16px rgba(255, 0, 60, 0.3);
+
+    animation: activePop 0.35s ease;
+  }
+
+  .nav-indicator svg {
+    position: relative;
+    z-index: 2;
+
+    width: 21px;
+    height: 21px;
+
+    color: #fff;
+  }
+
+  /* -----------------------------------------
+     NAVIGATION BUTTONS
+  ----------------------------------------- */
+
+  .nav-item {
+    flex: 1 1 0;
+    min-width: 0;
+    height: 100%;
+
+    padding: 0;
+    margin: 0;
+
+    border: none;
+    outline: none;
+    background: transparent;
+
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+
+    position: relative;
+    z-index: 2;
+
+    color: #8d8d8d;
+    cursor: pointer;
+
+    -webkit-tap-highlight-color: transparent;
+
+    transition:
+      color 0.25s ease,
+      transform 0.2s ease;
+  }
+
+  .nav-item svg {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+  }
+
+  /* Hide the selected button's duplicate icon.
+     The active indicator displays the selected icon. */
+  .nav-item.active {
+    color: #fff;
+  }
+
+  .nav-item.active > svg {
+    opacity: 0;
+  }
+
+  /* Labels */
+  .nav-label {
+    display: block;
+
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+
+    font-family: inherit;
+    font-size: 9px;
+    font-weight: 500;
+    line-height: 1;
+
+    color: inherit;
+  }
+
+  .nav-item.active .nav-label {
+    color: #fff;
+    font-weight: 700;
+  }
+
+  /* Hover effect */
+  .nav-item:not(.active):hover {
+    color: #fff;
+  }
+
+  /* Tap animation */
+  .nav-item:not(.active):active {
+    transform: scale(0.9);
+  }
+
+  /* Top highlight */
+  .nav-item::after {
+    content: "";
+    position: absolute;
+
+    top: 0;
+    left: 50%;
+
+    width: 0;
+    height: 2px;
+
+    background: #ff003c;
+    border-radius: 2px;
+
+    transform: translateX(-50%);
+    transition: width 0.25s ease;
+  }
+
+  .nav-item:hover::after,
+  .nav-item:focus-visible::after {
+    width: 24px;
+  }
+
+  .nav-item:focus-visible {
+    outline: 2px solid #ff003c;
+    outline-offset: -4px;
+    border-radius: 8px;
+  }
+
+  /* -----------------------------------------
+     ANIMATIONS
+  ----------------------------------------- */
+
+  @keyframes activePop {
+    0% {
+      transform: scale(0.75);
+      opacity: 0.7;
+    }
+
+    60% {
+      transform: scale(1.08);
+      opacity: 1;
+    }
+
+    100% {
+      transform: scale(1);
+    }
+  }
+
+  /* -----------------------------------------
+     CONTENT CLEARANCE
+     Prevent the fixed bar covering page content.
+  ----------------------------------------- */
+
+  .content {
+    padding-bottom: calc(
+      76px + env(safe-area-inset-bottom, 0px)
+    );
+  }
+}
+
+/* =========================================
+   SMALL PHONES
+========================================= */
+
+@media (max-width: 360px) {
+  .nav-item svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .nav-label {
+    font-size: 8px;
+  }
+
+  .nav-indicator::before {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+  }
+}
+
+/* =========================================
+   DESKTOP AND LAPTOP
+========================================= */
+
+@media (min-width: 769px) {
+  .bottom-nav-wrapper {
+    display: none !important;
+  }
+}
+
+/* =========================================
+   REDUCED MOTION ACCESSIBILITY
+========================================= */
+
+@media (prefers-reduced-motion: reduce) {
+  .nav-indicator,
+  .nav-item,
+  .nav-item::after {
+    transition: none !important;
+  }
+
+  .nav-indicator::before {
+    animation: none !important;
+  }
+}

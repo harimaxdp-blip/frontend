@@ -1,0 +1,118 @@
+*{
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+}
+
+body{
+    background:#000;
+    height:100vh;
+    overflow:hidden;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+}
+
+.player-container{
+    width:100%;
+    height:100vh;
+    position:relative;
+}
+
+video{
+    width:100%;
+    height:100%;
+    object-fit:cover;
+}
+
+/* Animation Layer */
+.play-pause-animation{
+    position:absolute;
+    top:50%;
+    left:50%;
+    transform:translate(-50%, -50%) scale(.4);
+    opacity:0;
+    pointer-events:none;
+}
+
+/* Background Circle */
+.play-pause-animation::before{
+    content:"";
+    width:140px;
+    height:140px;
+    border-radius:50%;
+    position:absolute;
+    top:50%;
+    left:50%;
+    transform:translate(-50%, -50%);
+    background:rgba(255,0,0,.2);
+    backdrop-filter:blur(10px);
+    border:3px solid rgba(255,255,255,.3);
+    box-shadow:
+        0 0 30px rgba(255,0,0,.8),
+        0 0 80px rgba(255,0,0,.5);
+}
+
+/* Play Icon */
+.play-mode .icon{
+    width:0;
+    height:0;
+    border-top:28px solid transparent;
+    border-bottom:28px solid transparent;
+    border-left:48px solid white;
+    margin-left:12px;
+}
+
+/* Pause Icon */
+.pause-mode .icon{
+    width:50px;
+    height:55px;
+    position:relative;
+}
+
+.pause-mode .icon::before,
+.pause-mode .icon::after{
+    content:"";
+    position:absolute;
+    width:14px;
+    height:55px;
+    background:white;
+    border-radius:4px;
+}
+
+.pause-mode .icon::before{
+    left:0;
+}
+
+.pause-mode .icon::after{
+    right:0;
+}
+
+/* Show Animation */
+.show{
+    animation:playPauseAnim .8s cubic-bezier(.22,1,.36,1);
+}
+
+@keyframes playPauseAnim{
+
+    0%{
+        opacity:0;
+        transform:translate(-50%, -50%) scale(.3);
+    }
+
+    25%{
+        opacity:1;
+        transform:translate(-50%, -50%) scale(1.2);
+    }
+
+    60%{
+        opacity:1;
+        transform:translate(-50%, -50%) scale(1);
+    }
+
+    100%{
+        opacity:0;
+        transform:translate(-50%, -50%) scale(1.4);
+    }
+
+}

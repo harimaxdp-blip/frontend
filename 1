@@ -1,0 +1,3248 @@
+import React, { useEffect, useRef, useState, useCallback } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
+import Hls from "hls.js";
+import DeviceControl from "../plugins/deviceControl";
+
+import "./Movies2.css";
+import { ScreenOrientation } from "@capacitor/screen-orientation";
+import {
+  FaPlay, FaPause, FaExpand, FaCompress,
+  FaVolumeMute, FaVolumeUp, FaVolumeDown,
+  FaStepForward, FaStepBackward,
+  FaChevronLeft, FaRedo, FaUndo,
+  FaExclamationTriangle, FaDownload,
+  FaLock, FaUnlock, FaSun, FaArrowsAlt,
+} from "react-icons/fa";
+
+// ─── Format helpers ───────────────────────────────────────────────────────────
+const FORMAT_DIRECT_RE = /\.(mp4|m3u8|webm|mkv|avi|mov|ts|flv|ogv|3gp|wmv)($|\?)/i;
+const FORMAT_HLS_RE    = /\.m3u8($|\?)/i;
+const FORMAT_MKV_RE    = /\.mkv($|\?)/i;
+const FORMAT_FLV_RE    = /\.flv($|\?)/i;
+const FORMAT_TS_RE     = /\.(ts|mts)($|\?)/i;
+const FORMAT_DASH_RE   = /\.mpd($|\?)/i;
+
+function getExtension(url) {
+  return (url.split("?")[0].split(".").pop() ?? "").toLowerCase();
+}
+function isCrossOrigin(url) {
+  try { return new URL(url).origin !== window.location.origin; }
+  catch { return false; }
+}
+
+// ─── Ad-block ────────────────────────────────────────────────────────────────
+const AD_DOMAINS = [
+  "doubleclick.net","googlesyndication.com","googletagmanager.com",
+  "googletagservices.com","adservice.google.com","adnxs.com",
+  "advertising.com","amazon-adsystem.com","moatads.com","scorecardresearch.com",
+  "quantserve.com","outbrain.com","taboola.com","popads.net","popcash.net",
+  "trafficjunky.net","exoclick.com","juicyads.com","hilltopads.net",
+  "propellerads.com","adsterra.com","clickadu.com","adcash.com",
+  "media.net","bidvertiser.com","revcontent.com","mgid.com","content.ad",
+];
+function isAdUrl(url) {
+  try {
+    const h = new URL(url).hostname;
+    return AD_DOMAINS.some(d => h === d || h.endsWith("." + d));
+  } catch { return false; }
+}
+const _origFetch = window.fetch;
+window.fetch = function(input, init) {
+  const url = typeof input === "string" ? input : (input?.url ?? "");
+  if (isAdUrl(url)) return Promise.resolve(new Response("", { status: 204 }));
+  return _origFetch.call(this, input, init);
+};
+const _origXHROpen = XMLHttpRequest.prototype.open;
+XMLHttpRequest.prototype.open = function(method, url, ...rest) {
+  if (isAdUrl(url)) { this._blocked = true; return; }
+  return _origXHROpen.call(this, method, url, ...rest);
+};
+const _origXHRSend = XMLHttpRequest.prototype.send;
+XMLHttpRequest.prototype.send = function(...args) {
+  if (this._blocked) return;
+  return _origXHRSend.apply(this, args);
+};
+
+// ─── Service Worker ───────────────────────────────────────────────────────────
+let swRegistered = false;
+async function ensureServiceWorker() {
+  if (swRegistered) return true;
+  if (!("serviceWorker" in navigator)) return false;
+  try {
+    const check = await fetch("/video-sw.js", { method: "HEAD" });
+    const mime  = check.headers.get("content-type") ?? "";
+    if (!check.ok || mime.includes("text/html")) return false;
+    const reg = await navigator.serviceWorker.register("/video-sw.js", { scope: "/" });
+    await new Promise(resolve => {
+      if (reg.active) { resolve(); return; }
+      const w = reg.installing || reg.waiting;
+      if (!w) { resolve(); return; }
+      w.addEventListener("statechange", () => { if (w.state === "activated") resolve(); });
+      setTimeout(resolve, 3000);
+    });
+    swRegistered = true;
+    return true;
+  } catch { return false; }
+}
+
+// ─── mpegts.js loader ────────────────────────────────────────────────────────
+let mpegtsPromise = null;
+function loadMpegts() {
+  if (!mpegtsPromise) {
+    mpegtsPromise = new Promise((resolve, reject) => {
+      if (window.mpegts) { resolve(window.mpegts); return; }
+      const s = document.createElement("script");
+      s.src = "https://cdn.jsdelivr.net/npm/mpegts.js@1.7.3/dist/mpegts.js";
+      s.onload  = () => window.mpegts ? resolve(window.mpegts) : reject(new Error("mpegts missing"));
+      s.onerror = () => reject(new Error("mpegts load failed"));
+      document.head.appendChild(s);
+    });
+  }
+  return mpegtsPromise;
+}
+
+// ─── Orientation ─────────────────────────────────────────────────────────────
+async function lockLandscape() {
+  try { await ScreenOrientation.lock({ orientation: "landscape" }); } catch {}
+}
+async function unlockOrientation() {
+  try { await ScreenOrientation.unlock(); } catch {}
+}
+
+// ─── Ad overlay removal ───────────────────────────────────────────────────────
+function removeAdOverlays() {
+  const sels = [
+    '[class*="ad-"]','[class*="-ad"]','[id*="ad-"]','[id*="-ad"]',
+    '[class*="banner"]','[class*="popup"]',
+    'ins.adsbygoogle','iframe[src*="doubleclick"]','iframe[src*="googlesyndication"]',
+    'iframe[src*="adnxs"]','iframe[src*="exoclick"]','div[data-ad]',
+    '[class*="sponsor"]','[class*="promo"]',
+  ];
+  sels.forEach(sel =>
+    document.querySelectorAll(sel).forEach(el => {
+      if (!el.closest(".mp-card") && !el.closest("video")) el.remove();
+    })
+  );
+}
+
+// ─── Watch position storage ───────────────────────────────────────────────────
+function watchKey(title) {
+  return `hm-pos-${(title || "unknown").replace(/\s+/g,"_").toLowerCase()}`;
+}
+function savePos(title, t) {
+  if (!title || !t || t < 5) return;
+  try { localStorage.setItem(watchKey(title), String(Math.floor(t))); } catch {}
+}
+function loadPos(title) {
+  try { return parseInt(localStorage.getItem(watchKey(title)) || "0", 10) || 0; } catch { return 0; }
+}
+function clearPos(title) {
+  try { localStorage.removeItem(watchKey(title)); } catch {}
+}
+
+// ─── Misc helpers ─────────────────────────────────────────────────────────────
+function clamp(v, lo = 0, hi = 1) { return Math.max(lo, Math.min(hi, v)); }
+function fmt(s) {
+  if (!s || isNaN(s)) return "0:00";
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = Math.floor(s % 60);
+  if (h > 0) return `${h}:${String(m).padStart(2,"0")}:${String(sec).padStart(2,"0")}`;
+  return `${m}:${String(sec).padStart(2,"0")}`;
+}
+
+function VolumeIcon({ muted, volume, size = 16 }) {
+  if (muted || volume === 0) return <FaVolumeMute size={size} />;
+  if (volume < 0.5)          return <FaVolumeDown size={size} />;
+  return <FaVolumeUp size={size} />;
+}
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+const TOTAL_SECS         = 5;
+const SAVE_EVERY         = 5;
+const DESKTOP_HIDE_DELAY = 2500;
+const MOBILE_HIDE_DELAY  = 3500;
+const LOCK_BTN_SHOW_MS   = 2800;
+const GESTURE_THRESHOLD  = 12;
+const GESTURE_SENSITIVITY = 100 / 160;
+
+function detectMobile() {
+  return (
+    /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+    window.matchMedia("(pointer: coarse)").matches
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  MAIN COMPONENT
+// ══════════════════════════════════════════════════════════════════════════════
+export default function MoviePlayer() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const movie    = location.state?.movie;
+
+  const handleGoBack = useCallback(() => {
+    try { window.history.length > 1 ? navigate(-1) : navigate("/", { replace: true }); }
+    catch { navigate("/", { replace: true }); }
+  }, [navigate]);
+
+  const playlist   = location.state?.playlist     ?? null;
+  const startIndex = location.state?.currentIndex ?? 0;
+  const [currentIndex, setCurrentIndex] = useState(startIndex);
+
+  const isSeries       = Array.isArray(playlist) && playlist.length > 1;
+  const currentEpisode = isSeries ? playlist[currentIndex] : movie;
+  const hasNext        = isSeries && currentIndex < playlist.length - 1;
+  const hasPrev        = isSeries && currentIndex > 0;
+
+  // ─── Core Refs ────────────────────────────────────────────────────────────
+  const videoRef         = useRef(null);
+  const containerRef     = useRef(null);
+  const viewportRef      = useRef(null);
+  const hlsRef           = useRef(null);
+  const mpegtsRef        = useRef(null);
+  const countdownRef     = useRef(null);
+  const endTriggeredRef  = useRef(false);
+  const swReadyRef       = useRef(false);
+  const controlsTimerRef = useRef(null);
+  const lockBtnTimerRef  = useRef(null);
+  const adObserverRef    = useRef(null);
+  const progressTrackRef = useRef(null);
+  const lastSaveRef      = useRef(0);
+  const focusRefs        = useRef({});
+
+  // ─── Mobile / Gesture Refs ───────────────────────────────────────────────
+  const isMobileRef            = useRef(false);
+  const showControlsRef        = useRef(true);
+  const controlsBeforeTouchRef = useRef(true);
+  const isScrubbingRef         = useRef(false);
+  const lastTouchEndRef        = useRef(0);
+  const gestureRef             = useRef({
+    active: false, moved: false, type: null,
+    startX: 0, startY: 0, startValue: 0,
+  });
+  const gestureTimerRef = useRef(null);
+  const flashTimerRef   = useRef(null);
+
+  // ─── State ───────────────────────────────────────────────────────────────
+  const [mode, setMode]                         = useState("loading");
+  const [directUrl, setDirectUrl]               = useState("");
+  const [iframeUrl, setIframeUrl]               = useState("");
+  const [loading, setLoading]                   = useState(true);
+  const [error, setError]                       = useState("");
+  const [playerEngine, setPlayerEngine]         = useState("");
+  const [swStatus, setSwStatus]                 = useState("loading");
+
+  const [isPlaying, setIsPlaying]               = useState(false);
+  const [currentTime, setCurrentTime]           = useState(0);
+  const [duration, setDuration]                 = useState(0);
+  const [volume, setVolume]                     = useState(1);
+  const [isMuted, setIsMuted]                   = useState(false);
+  const [isBuffering, setIsBuffering]           = useState(false);
+  const [isFullscreen, setIsFullscreen]         = useState(false);
+
+  const [showControls, setShowControls]         = useState(true);
+  const [showVolumeBar, setShowVolumeBar]       = useState(false);
+  const [countdown, setCountdown]               = useState(null);
+  const [seekPreview, setSeekPreview]           = useState(null);
+  const [scrubPercent, setScrubPercent]         = useState(null);
+  const [isScrubbing, setIsScrubbing]           = useState(false);
+
+  const [resumeTime, setResumeTime]             = useState(0);
+  const [showResumePrompt, setShowResumePrompt] = useState(false);
+
+  const [isMobile, setIsMobile]                 = useState(false);
+  const [brightness, setBrightness]             = useState(100);
+  const [isLocked, setIsLocked]                 = useState(false);
+  const [isStretched, setIsStretched]           = useState(false);
+  const [gestureOverlay, setGestureOverlay]     = useState(null);
+  const [playFlash, setPlayFlash]               = useState(null);
+  const [flashKey, setFlashKey]                 = useState(0);
+  const [showLockPeek, setShowLockPeek]         = useState(false);
+
+  // ─── TV focus state ───────────────────────────────────────────────────────
+  const [tvFocus, setTvFocus]     = useState("play");
+  const [epFocus, setEpFocus]     = useState(currentIndex);
+  const [epBarFocused, setEpBarFocused] = useState(false);
+
+  // ─── Register focus ref helper ────────────────────────────────────────────
+  const setFocusRef = useCallback((id) => (el) => {
+    if (el) focusRefs.current[id] = el;
+    else delete focusRefs.current[id];
+  }, []);
+  const focusId = useCallback((id) => {
+    setTvFocus(id);
+    const el = focusRefs.current[id];
+    if (el) el.focus({ preventScroll: false });
+  }, []);
+
+  useEffect(() => { showControlsRef.current = showControls; }, [showControls]);
+
+  // ─── isMobile detection ───────────────────────────────────────────────────
+  useEffect(() => {
+    const check = () => {
+      const m = detectMobile();
+      setIsMobile(m);
+      isMobileRef.current = m;
+    };
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+
+  // ─── Controls hide timer ──────────────────────────────────────────────────
+  const resetControlsTimer = useCallback(() => {
+    setShowControls(true);
+    clearTimeout(controlsTimerRef.current);
+    if (isScrubbingRef.current) return;
+    const delay = isMobileRef.current ? MOBILE_HIDE_DELAY : DESKTOP_HIDE_DELAY;
+    controlsTimerRef.current = setTimeout(() => setShowControls(false), delay);
+  }, []);
+
+  const handleRootTouchStart = useCallback(() => {
+    controlsBeforeTouchRef.current = showControlsRef.current;
+    if (!isMobileRef.current) {
+      setShowControls(true);
+      clearTimeout(controlsTimerRef.current);
+      controlsTimerRef.current = setTimeout(() => setShowControls(false), DESKTOP_HIDE_DELAY);
+    }
+  }, []);
+
+  useEffect(() => { if (isPlaying && !isMobileRef.current) resetControlsTimer(); }, [isPlaying]); // eslint-disable-line
+
+  // ─── Ad observer ─────────────────────────────────────────────────────────
+  useEffect(() => {
+    removeAdOverlays();
+    adObserverRef.current = new MutationObserver(removeAdOverlays);
+    adObserverRef.current.observe(document.body, { childList: true, subtree: true });
+    return () => adObserverRef.current?.disconnect();
+  }, []);
+
+  // ─── Service Worker ───────────────────────────────────────────────────────
+  useEffect(() => {
+    ensureServiceWorker().then(ok => {
+      swReadyRef.current = ok;
+      setSwStatus(ok ? "ready" : "unavailable");
+    });
+  }, []);
+
+  // ─── Fullscreen listener ──────────────────────────────────────────────────
+  useEffect(() => {
+    const onFS = () => {
+      const fs = !!(
+        document.fullscreenElement || document.webkitFullscreenElement ||
+        document.mozFullScreenElement || document.msFullscreenElement
+      );
+      setIsFullscreen(fs);
+      if (fs) lockLandscape();
+      else { unlockOrientation(); setIsLocked(false); setShowLockPeek(false); }
+    };
+    const evts = ["fullscreenchange","webkitfullscreenchange","mozfullscreenchange","MSFullscreenChange"];
+    evts.forEach(e => document.addEventListener(e, onFS));
+    return () => evts.forEach(e => document.removeEventListener(e, onFS));
+  }, []);
+
+  // ─── Destroy players ──────────────────────────────────────────────────────
+  const destroyPlayers = useCallback(() => {
+    try { hlsRef.current?.destroy(); }    catch {} hlsRef.current    = null;
+    try { mpegtsRef.current?.destroy(); } catch {} mpegtsRef.current = null;
+  }, []);
+
+  // ─── Go to episode ────────────────────────────────────────────────────────
+  const goToEpisode = useCallback((index) => {
+    if (!isSeries || index < 0 || index >= playlist.length) return;
+    destroyPlayers();
+    clearInterval(countdownRef.current); countdownRef.current = null;
+    endTriggeredRef.current = false;
+    lastSaveRef.current = 0;
+    setCountdown(null); setCurrentIndex(index); setMode("loading"); setLoading(true);
+    setError(""); setDirectUrl(""); setIframeUrl(""); setPlayerEngine("");
+    setCurrentTime(0); setDuration(0); setIsBuffering(false);
+    setShowResumePrompt(false); setResumeTime(0);
+    setEpBarFocused(false); setTvFocus("play");
+  }, [isSeries, playlist, destroyPlayers]);
+
+  // ─── Auto-play countdown ──────────────────────────────────────────────────
+  const startAutoPlayCountdown = useCallback(() => {
+    if (!hasNext || countdownRef.current || endTriggeredRef.current) return;
+    endTriggeredRef.current = true;
+    setCountdown(TOTAL_SECS);
+    setTimeout(() => focusId("autoplay-now"), 80);
+    countdownRef.current = setInterval(() => {
+      setCountdown(prev => {
+        if (prev <= 1) { clearInterval(countdownRef.current); countdownRef.current = null; return 0; }
+        return prev - 1;
+      });
+    }, 1000);
+  }, [hasNext, focusId]);
+
+  useEffect(() => { if (countdown === 0) goToEpisode(currentIndex + 1); }, [countdown]); // eslint-disable-line
+
+  const cancelAutoPlay = useCallback(() => {
+    clearInterval(countdownRef.current); countdownRef.current = null;
+    setCountdown(null); endTriggeredRef.current = false;
+    setTimeout(() => focusId("play"), 50);
+  }, [focusId]);
+
+  // ─── Playback controls ────────────────────────────────────────────────────
+  const showPlayFlash = useCallback((type) => {
+    clearTimeout(flashTimerRef.current);
+    setPlayFlash(type);
+    setFlashKey(k => k + 1);
+    flashTimerRef.current = setTimeout(() => setPlayFlash(null), 850);
+  }, []);
+
+  function togglePlay() {
+    const v = videoRef.current; if (!v) return;
+    if (v.paused) { v.play().catch(() => {}); showPlayFlash("play"); }
+    else          { v.pause();               showPlayFlash("pause"); }
+    resetControlsTimer();
+  }
+  function toggleMute() {
+    const v = videoRef.current; if (!v) return;
+    v.muted = !v.muted; setIsMuted(v.muted);
+  }
+  function setVolumeLevel(val) {
+    const v = videoRef.current; if (!v) return;
+    const vol = clamp(val); v.volume = vol; setVolume(vol);
+    if (vol === 0) v.muted = true;
+    else if (v.muted) { v.muted = false; setIsMuted(false); }
+    setShowVolumeBar(true);
+    clearTimeout(controlsTimerRef._volTimer);
+    controlsTimerRef._volTimer = setTimeout(() => setShowVolumeBar(false), 2000);
+  }
+  function seekBy(delta) {
+    const v = videoRef.current; if (!v) return;
+    v.currentTime = clamp(v.currentTime + delta, 0, v.duration || 0);
+    showSeekFn(v.currentTime);
+    setShowControls(true);
+    resetControlsTimer();
+  }
+  function showSeekFn(t) {
+    setSeekPreview(t);
+    clearTimeout(controlsTimerRef._seekTimer);
+  }
+
+  async function toggleFullscreen() {
+    const el = containerRef.current || document.documentElement;
+    try {
+      const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement ||
+        document.mozFullScreenElement || document.msFullscreenElement);
+      if (!isFs) {
+        if      (el.requestFullscreen)       await el.requestFullscreen({ navigationUI: "hide" });
+        else if (el.webkitRequestFullscreen) await el.webkitRequestFullscreen();
+        else if (el.mozRequestFullScreen)    await el.mozRequestFullScreen();
+        else if (el.msRequestFullscreen)     await el.msRequestFullscreen();
+        try { await lockLandscape(); setTimeout(() => window.dispatchEvent(new Event("resize")), 300); } catch {}
+      } else {
+        if      (document.exitFullscreen)       await document.exitFullscreen();
+        else if (document.webkitExitFullscreen) await document.webkitExitFullscreen();
+        else if (document.mozCancelFullScreen)  await document.mozCancelFullScreen();
+        else if (document.msExitFullscreen)     await document.msExitFullscreen();
+        await unlockOrientation();
+      }
+    } catch (e) { console.warn("[FS]", e); }
+  }
+
+  // ─── Resume handlers ──────────────────────────────────────────────────────
+  const handleResume = useCallback(() => {
+    const v = videoRef.current; if (!v) return;
+    const seek = () => {
+      v.currentTime = resumeTime;
+      v.play().catch(() => {});
+      setShowResumePrompt(false);
+      setTvFocus("play");
+    };
+    if (v.readyState >= 1) seek();
+    else v.addEventListener("loadedmetadata", seek, { once: true });
+  }, [resumeTime]);
+
+  const handleStartOver = useCallback(() => {
+    const v = videoRef.current; if (!v) return;
+    clearPos(currentEpisode?.title);
+    v.currentTime = 0; v.play().catch(() => {});
+    setShowResumePrompt(false); setTvFocus("play");
+  }, [currentEpisode]);
+
+  useEffect(() => {
+    if (showResumePrompt) setTimeout(() => focusId("resume-btn"), 80);
+  }, [showResumePrompt, focusId]);
+
+  // ─── Lock peek ────────────────────────────────────────────────────────────
+  const triggerLockPeek = useCallback(() => {
+    setShowLockPeek(true);
+    clearTimeout(lockBtnTimerRef.current);
+    lockBtnTimerRef.current = setTimeout(() => setShowLockPeek(false), LOCK_BTN_SHOW_MS);
+  }, []);
+
+  useEffect(() => () => clearTimeout(lockBtnTimerRef.current), []);
+
+  // ══════════════════════════════════════════════════════════════════════════
+  //  GESTURE TOUCH HANDLERS
+  // ══════════════════════════════════════════════════════════════════════════
+
+  const handleGestureTouchStart = useCallback((e) => {
+    if (isLocked) { triggerLockPeek(); return; }
+    if (!isMobileRef.current) return;
+    const t = e.target;
+    if (
+      t.closest("button") || t.closest(".mp-track") ||
+      t.closest(".mp-ctrl-bar") || t.closest(".mp-ep-bar") ||
+      t.closest(".mp-header") || t.closest(".mp-top-right") ||
+      t.closest(".mp-resume-overlay") || t.closest(".mp-autoplay-bg")
+    ) return;
+    const touch = e.touches[0];
+    const isLeft = touch.clientX < window.innerWidth / 2;
+    const vidVol = videoRef.current
+      ? (videoRef.current.muted ? 0 : videoRef.current.volume * 100)
+      : volume * 100;
+    gestureRef.current = {
+      active: true, moved: false,
+      startX: touch.clientX, startY: touch.clientY,
+      side: isLeft ? "left" : "right",
+      type: isLeft ? "brightness" : "volume",
+      startValue: isLeft ? brightness : vidVol,
+    };
+  }, [isLocked, brightness, volume, triggerLockPeek]);
+
+  const handleGestureTouchMove = useCallback((e) => {
+    const g = gestureRef.current;
+    if (!g.active || isLocked || !isMobileRef.current) return;
+    const touch = e.touches[0];
+    const absDeltaX = Math.abs(touch.clientX - g.startX);
+    const deltaY    = g.startY - touch.clientY;
+    if (!g.moved) {
+      const absDeltaY = Math.abs(deltaY);
+      if (absDeltaY >= GESTURE_THRESHOLD && absDeltaY > absDeltaX * 1.5) g.moved = true;
+      else if (absDeltaX > 18) { g.active = false; return; }
+      else return;
+    }
+    if (isFullscreen) e.preventDefault();
+    const change = deltaY * GESTURE_SENSITIVITY;
+if (g.type === "volume") {
+
+  const newPct = Math.max(0, Math.min(100, g.startValue + change));
+  const newVol = newPct / 100;
+
+  const v = videoRef.current;
+
+  if (v) {
+    v.volume = newVol;
+
+    if (newVol === 0) {
+      v.muted = true;
+    } else if (v.muted) {
+      v.muted = false;
+      setIsMuted(false);
+    }
+  }
+
+  setVolume(newVol);
+
+  DeviceControl.setVolume({
+    volume: newVol
+  }).catch(console.error);
+
+  setGestureOverlay({
+    type: "volume",
+    value: Math.round(newPct)
+  });
+
+} else {
+
+  const newBrightness =
+    Math.max(20, Math.min(150, g.startValue + change));
+
+  setBrightness(newBrightness);
+
+  DeviceControl.setBrightness({
+    brightness: newBrightness / 100
+  }).catch(console.error);
+
+  setGestureOverlay({
+    type: "brightness",
+    value: Math.round(newBrightness)
+  });
+}
+    clearTimeout(gestureTimerRef.current);
+  }, [isLocked, isFullscreen]);
+
+  const handleGestureTouchEnd = useCallback(() => {
+    const g = gestureRef.current;
+    lastTouchEndRef.current = Date.now();
+    if (isLocked) {
+      gestureRef.current = { ...gestureRef.current, active: false, moved: false };
+      return;
+    }
+    if (g.active && !g.moved && isMobileRef.current) {
+      if (controlsBeforeTouchRef.current) {
+        setShowControls(false);
+        clearTimeout(controlsTimerRef.current);
+      } else {
+        resetControlsTimer();
+      }
+    }
+    if (g.moved) {
+      gestureTimerRef.current = setTimeout(() => setGestureOverlay(null), 1600);
+    }
+    gestureRef.current = { ...gestureRef.current, active: false, moved: false };
+  }, [isLocked, resetControlsTimer]);
+
+  // Attach gesture listeners
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    viewport.addEventListener("touchstart", handleGestureTouchStart, { passive: true });
+    viewport.addEventListener("touchmove",  handleGestureTouchMove,  { passive: false });
+    viewport.addEventListener("touchend",   handleGestureTouchEnd,   { passive: true });
+    return () => {
+      viewport.removeEventListener("touchstart", handleGestureTouchStart);
+      viewport.removeEventListener("touchmove",  handleGestureTouchMove);
+      viewport.removeEventListener("touchend",   handleGestureTouchEnd);
+    };
+  }, [handleGestureTouchStart, handleGestureTouchMove, handleGestureTouchEnd]);
+
+  useEffect(() => () => clearTimeout(gestureTimerRef.current), []);
+  useEffect(() => () => clearTimeout(flashTimerRef.current), []);
+
+  // ─── TV D-pad keyboard handler ────────────────────────────────────────────
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+      const key = e.key;
+
+      if (key === "Escape" || key === "GoBack" || key === "XF86Back") {
+        e.preventDefault();
+        if (epBarFocused) { setEpBarFocused(false); focusId("play"); return; }
+        if (countdown !== null) { cancelAutoPlay(); return; }
+        if (showResumePrompt) { handleStartOver(); return; }
+        if (isLocked) { setIsLocked(false); setShowLockPeek(false); setShowControls(true); return; }
+        if (isFullscreen) { toggleFullscreen(); return; }
+        handleGoBack(); return;
+      }
+
+      if (isLocked) return;
+
+      if (key === "MediaPlayPause")     { e.preventDefault(); togglePlay(); return; }
+      if (key === "MediaRewind")        { e.preventDefault(); seekBy(-10); return; }
+      if (key === "MediaFastForward")   { e.preventDefault(); seekBy(30); return; }
+      if (key === "MediaStop")          { e.preventDefault(); const v=videoRef.current; if(v){v.pause();v.currentTime=0;} return; }
+      if (key === "MediaTrackNext")     { e.preventDefault(); if(hasNext) goToEpisode(currentIndex+1); return; }
+      if (key === "MediaTrackPrevious") { e.preventDefault(); if(hasPrev) goToEpisode(currentIndex-1); return; }
+
+      if (key === "ArrowUp" && !epBarFocused) {
+        e.preventDefault(); setVolumeLevel((videoRef.current?.volume ?? 1) + 0.1); resetControlsTimer(); return;
+      }
+      if (key === "ArrowDown" && !epBarFocused) {
+        e.preventDefault(); setVolumeLevel((videoRef.current?.volume ?? 1) - 0.1); resetControlsTimer(); return;
+      }
+
+      if (showResumePrompt) {
+        if (key === "ArrowLeft" || key === "ArrowRight") { e.preventDefault(); focusId(tvFocus === "resume-btn" ? "startover-btn" : "resume-btn"); }
+        if (key === "Enter" || key === " ") { e.preventDefault(); if (tvFocus === "resume-btn") handleResume(); else if (tvFocus === "startover-btn") handleStartOver(); }
+        return;
+      }
+
+      if (countdown !== null) {
+        if (key === "ArrowLeft" || key === "ArrowRight") { e.preventDefault(); focusId(tvFocus === "autoplay-now" ? "autoplay-cancel" : "autoplay-now"); }
+        if (key === "Enter" || key === " ") { e.preventDefault(); if (tvFocus === "autoplay-now") { cancelAutoPlay(); goToEpisode(currentIndex + 1); } else if (tvFocus === "autoplay-cancel") cancelAutoPlay(); }
+        return;
+      }
+
+      if (epBarFocused && isSeries) {
+        if (key === "ArrowLeft") {
+          e.preventDefault();
+          const next = Math.max(0, epFocus - 1); setEpFocus(next);
+          const el = focusRefs.current[`ep-${next}`];
+          if (el) { el.focus(); el.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" }); }
+          return;
+        }
+        if (key === "ArrowRight") {
+          e.preventDefault();
+          const next = Math.min(playlist.length - 1, epFocus + 1); setEpFocus(next);
+          const el = focusRefs.current[`ep-${next}`];
+          if (el) { el.focus(); el.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" }); }
+          return;
+        }
+        if (key === "ArrowUp") { e.preventDefault(); setEpBarFocused(false); focusId("play"); return; }
+        if (key === "Enter" || key === " ") { e.preventDefault(); goToEpisode(epFocus); return; }
+        return;
+      }
+
+      if (key === "ArrowDown" && isSeries) {
+        e.preventDefault();
+        setEpBarFocused(true); setEpFocus(currentIndex);
+        const el = focusRefs.current[`ep-${currentIndex}`];
+        if (el) { el.focus(); el.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" }); }
+        return;
+      }
+
+      const mainOrder = [
+        "back",
+        ...(hasPrev ? ["prev"] : []),
+        "rewind", "play", "forward",
+        ...(hasNext ? ["next"] : []),
+        "mute", "fullscreen",
+      ];
+
+      if (key === "ArrowLeft") {
+        e.preventDefault(); resetControlsTimer();
+        const idx = mainOrder.indexOf(tvFocus);
+        if (idx > 0) focusId(mainOrder[idx - 1]); else seekBy(-10);
+        return;
+      }
+      if (key === "ArrowRight") {
+        e.preventDefault(); resetControlsTimer();
+        const idx = mainOrder.indexOf(tvFocus);
+        if (idx < mainOrder.length - 1) focusId(mainOrder[idx + 1]); else seekBy(30);
+        return;
+      }
+
+      if (key === "Enter" || key === " ") { e.preventDefault(); activateMainControl(tvFocus); resetControlsTimer(); return; }
+      if (key === "k" || key === "K") togglePlay();
+      if (key === "f" || key === "F") toggleFullscreen();
+      if (key === "m" || key === "M") toggleMute();
+    };
+
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, isFullscreen, hasNext, hasPrev, currentIndex, tvFocus, showResumePrompt, countdown, epBarFocused, epFocus, isSeries, isLocked]);
+
+  function activateMainControl(id) {
+    switch (id) {
+      case "back":       handleGoBack(); break;
+      case "prev":       if (hasPrev) goToEpisode(currentIndex - 1); break;
+      case "rewind":     seekBy(-10); break;
+      case "play":       togglePlay(); break;
+      case "forward":    seekBy(30); break;
+      case "next":       if (hasNext) goToEpisode(currentIndex + 1); break;
+      case "mute":       toggleMute(); break;
+      case "fullscreen": toggleFullscreen(); break;
+      default: break;
+    }
+  }
+
+  // ─── Scrub bar ────────────────────────────────────────────────────────────
+  const getPct = useCallback((e) => {
+    const track = progressTrackRef.current; if (!track) return null;
+    const rect = track.getBoundingClientRect();
+    const x = e.clientX ?? e.touches?.[0]?.clientX ?? 0;
+    return clamp((x - rect.left) / rect.width);
+  }, []);
+
+  const applySeek = useCallback((pct) => {
+    const v = videoRef.current; if (!v || !isFinite(v.duration)) return;
+    const t = pct * v.duration;
+    try { v.currentTime = t; } catch {}
+    setScrubPercent(pct * 100);
+    setCurrentTime(t);
+    setSeekPreview(t);
+  }, []);
+
+  const onScrubStart = useCallback((e) => {
+    e.preventDefault();
+    isScrubbingRef.current = true;
+    clearTimeout(controlsTimerRef.current);
+    clearTimeout(controlsTimerRef._seekTimer);
+    setShowControls(true);
+    setIsScrubbing(true);
+    const pct = getPct(e); if (pct !== null) applySeek(pct);
+    try { progressTrackRef.current?.setPointerCapture(e.pointerId); } catch {}
+  }, [getPct, applySeek]);
+
+  const onScrubMove = useCallback((e) => {
+    if (!isScrubbing) return;
+    const pct = getPct(e); if (pct !== null) applySeek(pct);
+  }, [isScrubbing, getPct, applySeek]);
+
+  const onScrubEnd = useCallback((e) => {
+    if (!isScrubbing) return;
+    isScrubbingRef.current = false;
+    setIsScrubbing(false); setScrubPercent(null);
+    setShowControls(true);
+    resetControlsTimer();
+    try { progressTrackRef.current?.releasePointerCapture(e.pointerId); } catch {}
+  }, [isScrubbing, resetControlsTimer]);
+
+  const onTouchScrubStart = useCallback((e) => {
+    e.preventDefault();
+    isScrubbingRef.current = true;
+    clearTimeout(controlsTimerRef.current);
+    clearTimeout(controlsTimerRef._seekTimer);
+    setShowControls(true);
+    setIsScrubbing(true);
+    const pct = getPct(e.touches[0]); if (pct !== null) applySeek(pct);
+  }, [getPct, applySeek]);
+  const onTouchScrubMove = useCallback((e) => {
+    e.preventDefault(); if (!isScrubbing) return;
+    const pct = getPct(e.touches[0]); if (pct !== null) applySeek(pct);
+  }, [isScrubbing, getPct, applySeek]);
+  const onTouchScrubEnd = useCallback(() => {
+    isScrubbingRef.current = false;
+    setIsScrubbing(false); setScrubPercent(null);
+    setShowControls(true);
+    resetControlsTimer();
+  }, [resetControlsTimer]);
+
+  const onProgressKey = useCallback((e) => {
+    const v = videoRef.current; if (!v) return;
+    const dur = v.duration || 0;
+    if (e.key === "ArrowLeft")  { e.preventDefault(); v.currentTime = Math.max(0, v.currentTime - 5); showSeekFn(v.currentTime); }
+    if (e.key === "ArrowRight") { e.preventDefault(); v.currentTime = Math.min(dur, v.currentTime + 5); showSeekFn(v.currentTime); }
+    if (e.key === "Home")       { e.preventDefault(); v.currentTime = 0; }
+    if (e.key === "End")        { e.preventDefault(); v.currentTime = dur; }
+  }, []);
+
+  // ─── Source discovery ─────────────────────────────────────────────────────
+  useEffect(() => {
+    const src = currentEpisode;
+    if (!src?.link) { setError("No source found."); setLoading(false); return; }
+
+    let cancelled = false;
+    const discover = async () => {
+      setLoading(true); setError(""); setShowResumePrompt(false); setResumeTime(0);
+      const url = src.link;
+      try {
+        const yt = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|v\/|shorts\/))([\w-]{11})/);
+        if (yt) {
+          if (cancelled) return;
+          setIframeUrl(`https://www.youtube-nocookie.com/embed/${yt[1]}?autoplay=1&modestbranding=1&rel=0&enablejsapi=1`);
+          setMode("iframe"); setPlayerEngine("iframe"); setLoading(false); return;
+        }
+        if (FORMAT_DIRECT_RE.test(url) || FORMAT_DASH_RE.test(url)) {
+          if (cancelled) return;
+          setDirectUrl(url); setMode("direct"); return;
+        }
+        let scraped = null;
+        try {
+          const resp = await fetch(url, { signal: AbortSignal.timeout(8000) });
+          if (resp.ok) {
+            const html = await resp.text();
+            for (const re of [
+              /["'`](https?:\/\/[^"'`\s]+\.m3u8[^"'`\s]*?)["'`]/i,
+              /["'`](https?:\/\/[^"'`\s]+\.mp4[^"'`\s]*?)["'`]/i,
+              /["'`](https?:\/\/[^"'`\s]+\.mkv[^"'`\s]*?)["'`]/i,
+              /["'`](https?:\/\/[^"'`\s]+\.webm[^"'`\s]*?)["'`]/i,
+              /["'`](https?:\/\/[^"'`\s]+\.mpd[^"'`\s]*?)["'`]/i,
+            ]) { const m = html.match(re); if (m) { scraped = m[1].replace(/\\/g,""); break; } }
+          }
+        } catch {}
+        if (cancelled) return;
+        if (scraped) { setDirectUrl(scraped); setMode("direct"); }
+        else { setIframeUrl(url); setMode("iframe"); setPlayerEngine("iframe"); setLoading(false); }
+      } catch {
+        if (!cancelled) { setIframeUrl(src.link); setMode("iframe"); setPlayerEngine("iframe"); setLoading(false); }
+      }
+    };
+
+    discover();
+    return () => { cancelled = true; destroyPlayers(); };
+  }, [currentIndex, movie]); // eslint-disable-line
+
+  // ─── Direct player engine init ────────────────────────────────────────────
+  useEffect(() => {
+    if (mode !== "direct" || !directUrl || !videoRef.current) return;
+    if (isCrossOrigin(directUrl) && swStatus === "loading") return;
+
+    const video = videoRef.current;
+    try { hlsRef.current?.destroy(); }    catch {} hlsRef.current    = null;
+    try { mpegtsRef.current?.destroy(); } catch {} mpegtsRef.current = null;
+
+    const saved = loadPos(currentEpisode?.title);
+    if (saved > 10) { setResumeTime(saved); setShowResumePrompt(true); }
+
+    if (FORMAT_HLS_RE.test(directUrl)) {
+      if (Hls.isSupported()) {
+        const hls = new Hls({
+          enableWorker: true, lowLatencyMode: false,
+          maxBufferLength: 60, maxMaxBufferLength: 120,
+          maxBufferSize: 60 * 1000 * 1000, maxBufferHole: 0.5,
+          highBufferWatchdogPeriod: 2, nudgeOffset: 0.2, nudgeMaxRetry: 5,
+          startFragPrefetch: true, fragLoadingTimeOut: 20000, manifestLoadingTimeOut: 15000,
+        });
+        hlsRef.current = hls;
+        hls.loadSource(directUrl); hls.attachMedia(video);
+        hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}));
+        hls.on(Hls.Events.ERROR, (_, d) => {
+          if (d.fatal) {
+            if      (d.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad();
+            else if (d.type === Hls.ErrorTypes.MEDIA_ERROR)   hls.recoverMediaError();
+            else { setError("HLS stream error."); setLoading(false); }
+          }
+        });
+        setPlayerEngine("HLS");
+      } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+        video.src = directUrl; video.play().catch(() => {}); setPlayerEngine("HLS");
+      }
+      return;
+    }
+
+    if ((FORMAT_FLV_RE.test(directUrl) || FORMAT_TS_RE.test(directUrl)) && !isCrossOrigin(directUrl)) {
+      loadMpegts().then(mpegts => {
+        if (!mpegts.isSupported()) throw new Error("MSE unsupported");
+        const type = FORMAT_FLV_RE.test(directUrl) ? "flv" : "mpegts";
+        const p = mpegts.createPlayer({ type, url: directUrl, isLive: false, enableWorker: true, lazyLoad: false });
+        mpegtsRef.current = p;
+        p.attachMediaElement(video); p.load(); p.play().catch(() => {});
+        p.on(mpegts.Events.ERROR, (_, d) => { setError("Media error: " + (d?.msg ?? "")); setLoading(false); });
+        setPlayerEngine("MPEG-TS");
+      }).catch(() => { video.src = directUrl; video.play().catch(() => {}); setPlayerEngine("Native"); });
+      return;
+    }
+
+    if (swReadyRef.current && isCrossOrigin(directUrl)) video.crossOrigin = "anonymous";
+    else video.removeAttribute("crossOrigin");
+    video.src = directUrl; video.load(); video.play().catch(() => {});
+    setPlayerEngine(FORMAT_MKV_RE.test(directUrl) ? "MKV" : (getExtension(directUrl).toUpperCase() || "Native"));
+  }, [mode, directUrl, swStatus]); // eslint-disable-line
+
+  // ─── iframe postMessage ───────────────────────────────────────────────────
+  useEffect(() => {
+    if (mode !== "iframe" || !hasNext) return;
+    const onMsg = (e) => {
+      try {
+        const d = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
+        if (d?.event === "onStateChange" && (d?.info === 0 || d?.info === "0")) startAutoPlayCountdown();
+        if (d?.event === "ended" || d?.type === "ended") startAutoPlayCountdown();
+        if (d?.currentTime && d?.duration > 0 && d.currentTime >= d.duration - 2) startAutoPlayCountdown();
+      } catch {}
+    };
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
+  }, [mode, hasNext, startAutoPlayCountdown]);
+
+  // ─── Cleanup ──────────────────────────────────────────────────────────────
+  useEffect(() => () => {
+    destroyPlayers();
+    clearInterval(countdownRef.current);
+    clearTimeout(controlsTimerRef.current);
+    clearTimeout(lockBtnTimerRef.current);
+    unlockOrientation();
+  }, []); // eslint-disable-line
+
+  // ─── Video event listeners ────────────────────────────────────────────────
+  useEffect(() => {
+    const video = videoRef.current; if (!video) return;
+    const onTimeUpdate = () => {
+      setCurrentTime(video.currentTime);
+      if (Math.abs(video.currentTime - lastSaveRef.current) >= SAVE_EVERY) {
+        savePos(currentEpisode?.title, video.currentTime);
+        lastSaveRef.current = video.currentTime;
+      }
+    };
+    const onDuration = () => setDuration(video.duration);
+    const onPlay     = () => { setIsPlaying(true); setIsBuffering(false); };
+    const onPause    = () => setIsPlaying(false);
+    const onWaiting  = () => setIsBuffering(true);
+    const onPlaying  = () => setIsBuffering(false);
+    const onCanPlay  = () => { setLoading(false); setError(""); setIsBuffering(false); };
+    const onEnded    = () => { clearPos(currentEpisode?.title); startAutoPlayCountdown(); };
+    const onVolume   = () => { setVolume(video.volume); setIsMuted(video.muted); };
+
+    video.addEventListener("timeupdate",     onTimeUpdate);
+    video.addEventListener("durationchange", onDuration);
+    video.addEventListener("play",           onPlay);
+    video.addEventListener("pause",          onPause);
+    video.addEventListener("waiting",        onWaiting);
+    video.addEventListener("playing",        onPlaying);
+    video.addEventListener("canplay",        onCanPlay);
+    video.addEventListener("ended",          onEnded);
+    video.addEventListener("volumechange",   onVolume);
+    return () => {
+      video.removeEventListener("timeupdate",     onTimeUpdate);
+      video.removeEventListener("durationchange", onDuration);
+      video.removeEventListener("play",           onPlay);
+      video.removeEventListener("pause",          onPause);
+      video.removeEventListener("waiting",        onWaiting);
+      video.removeEventListener("playing",        onPlaying);
+      video.removeEventListener("canplay",        onCanPlay);
+      video.removeEventListener("ended",          onEnded);
+      video.removeEventListener("volumechange",   onVolume);
+    };
+  }, [mode, currentEpisode]); // eslint-disable-line
+
+  // ─── Derived values ───────────────────────────────────────────────────────
+  const episodeLabel = isSeries
+    ? currentEpisode?.episode
+      ? `S${currentEpisode.season ?? 1} · E${currentEpisode.episode}`
+      : `Episode ${currentIndex + 1} of ${playlist.length}`
+    : null;
+  const progress    = duration > 0 ? (currentTime / duration) * 100 : 0;
+  const displayPct  = scrubPercent !== null ? scrubPercent : progress;
+  const ringOffset  = countdown !== null ? ((TOTAL_SECS - countdown) / TOTAL_SECS) * 125.7 : 0;
+  const isFocused   = (id) => tvFocus === id;
+
+  const gestureBarHeight = gestureOverlay
+    ? gestureOverlay.type === "brightness"
+      ? Math.min(100, Math.max(0, (gestureOverlay.value - 20) / 1.3))
+      : Math.min(100, Math.max(0, gestureOverlay.value))
+    : 0;
+
+  const lockAvailable = isFullscreen && isMobile && mode === "direct" &&
+    !showResumePrompt && countdown === null;
+
+  // ══════════════════════════════════════════════════════════════════════════
+  //  RENDER
+  // ══════════════════════════════════════════════════════════════════════════
+  return (
+    <div
+      ref={containerRef}
+      className="mp-root"
+      onMouseMove={() => { if (!isMobileRef.current) resetControlsTimer(); }}
+      onTouchStart={handleRootTouchStart} 
+      onClick={() => { if (!isMobileRef.current && !isLocked) resetControlsTimer(); }}
+    >
+      <div className={`mp-card${isLocked ? " mp-locked" : ""}`}>
+
+        {/* ══ HEADER ══ */}
+        <div className={`mp-header ${showControls && !isLocked ? "ctrl-show" : "ctrl-hide"}`}>
+          <button
+            ref={setFocusRef("back")}
+            className={`mp-back-btn${isFocused("back") && !showResumePrompt && countdown === null ? " tv-focus" : ""}`}
+            onClick={e => { e.stopPropagation(); handleGoBack(); }}
+            onFocus={() => { setTvFocus("back"); resetControlsTimer(); }}
+            type="button"
+          >
+            <FaChevronLeft size={12} />
+            <span>Back</span>
+          </button>
+
+          <div className="mp-title-row">
+            <span className="mp-title">{currentEpisode?.title || movie?.title}</span>
+            {episodeLabel && <span className="mp-ep-badge">{episodeLabel}</span>}
+            {playerEngine && playerEngine !== "iframe" && (
+              <span className="mp-engine-badge">{playerEngine}</span>
+            )}
+          </div>
+        </div>
+
+        {/* ══ VIEWPORT ══ */}
+        <div
+          className="mp-viewport"
+          ref={viewportRef}
+          onClick={(e) => {
+            if (isLocked) return;
+            if (Date.now() - lastTouchEndRef.current < 400) return;
+            if (mode === "direct") { togglePlay(); resetControlsTimer(); }
+          }}
+        >
+
+          {/* Initial loader */}
+          {loading && (
+            <div className="mp-loader">
+              <div className="mp-spinner"><div/><div/><div/><div/></div>
+              <p className="mp-loader-text">
+                {playerEngine ? `${playerEngine} · Loading` : "Loading"}
+              </p>
+            </div>
+          )}
+
+          {/* Mid-playback buffer ring */}
+          {!loading && isBuffering && mode === "direct" && (
+            <div className="mp-buffering"><div className="mp-buf-ring"/></div>
+          )}
+
+          {/* ── Native video ── */}
+          {mode === "direct" && (
+            <video
+              ref={videoRef}
+              className="mp-video"
+              autoPlay
+              playsInline
+              preload="auto"
+              webkit-playsinline="true"
+              x5-playsinline="true"
+              x5-video-player-type="h5"
+              x5-video-orientation="landscape"
+              style={{
+                objectFit: isStretched ? "cover" : "contain",
+                ...(brightness !== 100 && { filter: `brightness(${brightness / 100})` })
+              }}
+              onCanPlay={() => { setLoading(false); setError(""); setIsBuffering(false); }}
+              onError={e => {
+                const code = e.target?.error?.code;
+                const msg = {
+                  1: "Playback aborted.",
+                  2: "Network error — check connection.",
+                  3: "Decoding failed — unsupported codec.",
+                  4: FORMAT_MKV_RE.test(directUrl)
+                    ? swReadyRef.current ? "MKV unsupported codec (HEVC/H.265)." : "MKV blocked by CORS."
+                    : "Format not supported.",
+                }[code] ?? "Playback error.";
+                setError(msg); setLoading(false);
+              }}
+            />
+          )}
+
+          {/* ── Center play/pause flash ── */}
+          {playFlash && !isLocked && (
+            <div className="mp-play-flash" key={flashKey}>
+              <div className="mp-play-flash-ring" />
+              <div className="mp-play-flash-icon">
+                {playFlash === "play" ? <FaPlay size={28} /> : <FaPause size={28} />}
+              </div>
+            </div>
+          )}
+
+          {/* ── Center controls overlay ── */}
+          {mode === "direct" && (showControls || isScrubbing) && !isLocked && !showResumePrompt && countdown === null && (
+            <div className="mp-center-controls" onClick={e => e.stopPropagation()}>
+              {hasPrev && (
+                <button
+                  ref={setFocusRef("prev")}
+                  className={`mp-ovr-btn mp-ovr-side${isFocused("prev") ? " tv-focus" : ""}`}
+                  onClick={() => goToEpisode(currentIndex - 1)}
+                  onFocus={() => { setTvFocus("prev"); resetControlsTimer(); }}
+                  title="Previous Episode"
+                >
+                  <FaStepBackward size={16} />
+                  <span className="mp-ovr-label">Prev</span>
+                </button>
+              )}
+              <button
+                ref={setFocusRef("rewind")}
+                className={`mp-ovr-btn mp-ovr-side${isFocused("rewind") ? " tv-focus" : ""}`}
+                onClick={() => { seekBy(-10); resetControlsTimer(); }}
+                onFocus={() => { setTvFocus("rewind"); resetControlsTimer(); }}
+                title="Rewind 10s"
+              >
+                <FaUndo size={17} />
+                <span className="mp-ovr-label">10s</span>
+              </button>
+              <button
+                ref={setFocusRef("play")}
+                className={`mp-ovr-btn mp-ovr-play${isFocused("play") ? " tv-focus" : ""}`}
+                onClick={e => { e.stopPropagation(); togglePlay(); }}
+                onFocus={() => { setTvFocus("play"); resetControlsTimer(); }}
+                title={isPlaying ? "Pause" : "Play"}
+              >
+                {isPlaying ? <FaPause size={26} /> : <FaPlay size={26} />}
+              </button>
+              <button
+                ref={setFocusRef("forward")}
+                className={`mp-ovr-btn mp-ovr-side${isFocused("forward") ? " tv-focus" : ""}`}
+                onClick={() => { seekBy(30); resetControlsTimer(); }}
+                onFocus={() => { setTvFocus("forward"); resetControlsTimer(); }}
+                title="Forward 30s"
+              >
+                <FaRedo size={17} />
+                <span className="mp-ovr-label">30s</span>
+              </button>
+              {hasNext && (
+                <button
+                  ref={setFocusRef("next")}
+                  className={`mp-ovr-btn mp-ovr-side${isFocused("next") ? " tv-focus" : ""}`}
+                  onClick={() => goToEpisode(currentIndex + 1)}
+                  onFocus={() => { setTvFocus("next"); resetControlsTimer(); }}
+                  title="Next Episode"
+                >
+                  <FaStepForward size={16} />
+                  <span className="mp-ovr-label">Next</span>
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* ══ TOP-RIGHT: Lock · Mute · Fullscreen ══ */}
+          {mode === "direct" && (
+            <div
+              className={`mp-top-right ${(showControls || isScrubbing) && !isLocked ? "ctrl-show" : "ctrl-hide"}`}
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Lock button — mobile fullscreen only */}
+              {lockAvailable && (
+                <button
+                  className={[
+                    "mp-corner-btn",
+                    "mp-corner-btn--lock",
+                    isLocked    ? "mp-corner-btn--lock-active" : "",
+                    showLockPeek && isLocked ? "mp-corner-btn--lock-peek" : "",
+                  ].filter(Boolean).join(" ")}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (isLocked) {
+                      setIsLocked(false);
+                      setShowLockPeek(false);
+                      clearTimeout(lockBtnTimerRef.current);
+                      resetControlsTimer();
+                    } else {
+                      setIsLocked(true);
+                      setShowControls(false);
+                      clearTimeout(controlsTimerRef.current);
+                    }
+                  }}
+                  title={isLocked ? "Unlock controls" : "Lock controls"}
+                >
+                  {isLocked ? <FaUnlock size={14} /> : <FaLock size={13} />}
+                </button>
+              )}
+
+              {/* Stretch/Zoom */}
+              {mode === "direct" && (
+                <button
+                  ref={setFocusRef("stretch")}
+                  className={`mp-corner-btn${isStretched ? " mp-corner-btn--active" : ""}${isFocused("stretch") && !showResumePrompt && countdown === null ? " tv-focus" : ""}`}
+                  onClick={() => { setIsStretched(!isStretched); resetControlsTimer(); }}
+                  onFocus={() => { setTvFocus("stretch"); resetControlsTimer(); }}
+                  title={isStretched ? "Fit to screen" : "Stretch to fill"}
+                >
+                  <FaArrowsAlt size={14} />
+                </button>
+              )}
+
+              {/* Mute */}
+              <button
+                ref={setFocusRef("mute")}
+                className={`mp-corner-btn${isFocused("mute") && !showResumePrompt && countdown === null ? " tv-focus" : ""}`}
+                onClick={toggleMute}
+                onFocus={() => { setTvFocus("mute"); resetControlsTimer(); }}
+                title={isMuted ? "Unmute" : "Mute"}
+              >
+                <VolumeIcon muted={isMuted} volume={volume} size={15} />
+              </button>
+
+              {/* Fullscreen */}
+              <button
+                ref={setFocusRef("fullscreen")}
+                className={`mp-corner-btn${isFocused("fullscreen") && !showResumePrompt && countdown === null ? " tv-focus" : ""}`}
+                onClick={() => { toggleFullscreen(); resetControlsTimer(); }}
+                onFocus={() => { setTvFocus("fullscreen"); resetControlsTimer(); }}
+                title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
+              >
+                {isFullscreen ? <FaCompress size={14} /> : <FaExpand size={14} />}
+              </button>
+            </div>
+          )}
+
+          {/* ══ LOCKED PEEK: isolated lock button ══ */}
+          {isLocked && showLockPeek && mode === "direct" && (
+            <div className="mp-top-right-peek" onClick={e => e.stopPropagation()}>
+              <button
+                className="mp-corner-btn mp-corner-btn--lock mp-corner-btn--lock-active mp-corner-btn--lock-peek"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsLocked(false);
+                  setShowLockPeek(false);
+                  clearTimeout(lockBtnTimerRef.current);
+                  resetControlsTimer();
+                }}
+                title="Unlock controls"
+              >
+                <FaUnlock size={14} />
+              </button>
+            </div>
+          )}
+
+          {/* ── iframe ── */}
+          {mode === "iframe" && (
+            <div className="mp-iframe-wrap">
+              <div className="mp-ad-shield mp-ad-top" />
+              <div className="mp-ad-shield mp-ad-btm" />
+              <iframe
+                src={iframeUrl}
+                title={currentEpisode?.title}
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowFullScreen
+                sandbox="allow-scripts allow-same-origin allow-presentation allow-forms"
+                className="mp-iframe"
+                onLoad={() => setLoading(false)}
+              />
+            </div>
+          )}
+
+          {/* ── Seek bubble ── */}
+          {mode === "direct" && isScrubbing && seekPreview !== null && !isLocked && (
+            <div className="mp-seek-bubble">
+              {seekPreview < currentTime
+                ? <FaStepBackward size={14} style={{ opacity: 0.55 }} />
+                : <FaStepForward  size={14} style={{ opacity: 0.55 }} />
+              }
+              <span className="mp-seek-time">{fmt(seekPreview)}</span>
+            </div>
+          )}
+
+          {/* ── Gesture Overlays ── */}
+          {gestureOverlay && !isLocked && (
+            <div className={`mp-gesture-side mp-gesture-side--${gestureOverlay.type === "brightness" ? "left" : "right"}`}>
+              <span className="mp-gesture-icon">
+                {gestureOverlay.type === "brightness"
+                  ? <FaSun size={15} />
+                  : <VolumeIcon muted={gestureOverlay.value === 0} volume={gestureOverlay.value / 100} size={15} />
+                }
+              </span>
+              <div className="mp-gesture-track">
+                <div className="mp-gesture-fill" style={{ height: `${gestureBarHeight}%` }} />
+              </div>
+              <span className="mp-gesture-value">{gestureOverlay.value}%</span>
+            </div>
+          )}
+
+          {/* ── Resume Prompt ── */}
+          {showResumePrompt && mode === "direct" && (
+            <div className="mp-resume-overlay" onClick={e => e.stopPropagation()}>
+              <div className="mp-resume-card">
+                <div className="mp-resume-icon"><FaPlay size={16} /></div>
+                <h3 className="mp-resume-title">Continue Watching?</h3>
+                <p className="mp-resume-sub">Paused at {fmt(resumeTime)}</p>
+                <div className="mp-resume-bar">
+                  <div
+                    className="mp-resume-bar-fill"
+                    style={{ width: duration > 0 ? `${(resumeTime / duration) * 100}%` : "30%" }}
+                  />
+                </div>
+                <p className="mp-tv-hint">← → navigate · Enter select</p>
+                <div className="mp-resume-actions">
+                  <button
+                    ref={setFocusRef("resume-btn")}
+                    className={`mp-resume-btn mp-resume-primary${isFocused("resume-btn") ? " tv-focus" : ""}`}
+                    onClick={handleResume}
+                    onFocus={() => setTvFocus("resume-btn")}
+                  >
+                    <FaPlay size={10} /> Resume
+                  </button>
+                  <button
+                    ref={setFocusRef("startover-btn")}
+                    className={`mp-resume-btn mp-resume-secondary${isFocused("startover-btn") ? " tv-focus" : ""}`}
+                    onClick={handleStartOver}
+                    onFocus={() => setTvFocus("startover-btn")}
+                  >
+                    Start Over
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── Autoplay Overlay ── */}
+          {countdown !== null && hasNext && (
+            <div className="mp-autoplay-bg">
+              <div className="mp-autoplay-card">
+                <p className="mp-ap-label">Up Next</p>
+                <p className="mp-ap-title">{playlist[currentIndex + 1]?.title || `Episode ${currentIndex + 2}`}</p>
+                <div className="mp-ap-ring">
+                  <svg viewBox="0 0 48 48">
+                    <circle cx="24" cy="24" r="20" className="ap-ring-track" />
+                    <circle cx="24" cy="24" r="20" className="ap-ring-fill" style={{ strokeDashoffset: `${ringOffset}px` }} />
+                  </svg>
+                  <span className="ap-ring-num">{countdown}</span>
+                </div>
+                <p className="mp-ap-hint">Auto-playing in {countdown}s</p>
+                <p className="mp-tv-hint">← → navigate · Enter select</p>
+                <div className="mp-ap-actions">
+                  <button
+                    ref={setFocusRef("autoplay-now")}
+                    className={`mp-ap-now${isFocused("autoplay-now") ? " tv-focus" : ""}`}
+                    onClick={() => { cancelAutoPlay(); goToEpisode(currentIndex + 1); }}
+                    onFocus={() => setTvFocus("autoplay-now")}
+                  >
+                    <FaPlay size={10} /> Play Now
+                  </button>
+                  <button
+                    ref={setFocusRef("autoplay-cancel")}
+                    className={`mp-ap-cancel${isFocused("autoplay-cancel") ? " tv-focus" : ""}`}
+                    onClick={cancelAutoPlay}
+                    onFocus={() => setTvFocus("autoplay-cancel")}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>{/* end viewport */}
+
+        {/* ══ CONTROLS BAR ══ */}
+        {mode === "direct" && (
+          <div className={`mp-ctrl-bar ${(showControls || isScrubbing) && !isLocked ? "ctrl-show" : "ctrl-hide"}`}>
+            <div className="mp-progress-row">
+              <span className="mp-time">{fmt(currentTime)}</span>
+              <div
+                className="mp-track"
+                ref={progressTrackRef}
+                tabIndex={0}
+                role="slider"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={Math.round(displayPct)}
+                aria-label="Seek"
+                onPointerDown={onScrubStart}
+                onPointerMove={onScrubMove}
+                onPointerUp={onScrubEnd}
+                onPointerCancel={onScrubEnd}
+                onTouchStart={onTouchScrubStart}
+                onTouchMove={onTouchScrubMove}
+                onTouchEnd={onTouchScrubEnd}
+                onKeyDown={onProgressKey}
+                onClick={e => { if (!isScrubbing) { const p = getPct(e); if (p !== null) applySeek(p); } }}
+              >
+                <div className="mp-track-bg" />
+                <div className="mp-track-fill" style={{ width: `${displayPct}%` }} />
+                <div className={`mp-track-thumb${isScrubbing ? " scrubbing" : ""}`} style={{ left: `${displayPct}%` }} />
+              </div>
+              <span className="mp-time">{fmt(duration)}</span>
+            </div>
+          </div>
+        )}
+
+        {/* ══ VOLUME OVERLAY ══ */}
+        {showVolumeBar && !gestureOverlay && !isLocked && (
+          <div className="mp-vol-overlay">
+            <VolumeIcon muted={isMuted} volume={volume} size={15} />
+            <div className="mp-vol-track">
+              <div className="mp-vol-fill" style={{ height: `${isMuted ? 0 : volume * 100}%` }} />
+            </div>
+            <span className="mp-vol-pct">{isMuted ? "0" : Math.round(volume * 100)}%</span>
+          </div>
+        )}
+
+        {/* ══ EPISODE NAV BAR ══ */}
+        {isSeries && (
+          <div className={`mp-ep-bar ${(showControls || isScrubbing) && !isLocked ? "ctrl-show" : "ctrl-hide"}`}>
+            <button
+              className={`mp-ep-nav${hasPrev ? "" : " mp-ep-nav--off"}`}
+              onClick={() => hasPrev && goToEpisode(currentIndex - 1)}
+              disabled={!hasPrev}
+            >
+              <FaStepBackward size={11} />
+              <span className="mp-ep-nav-lbl">Prev</span>
+            </button>
+            <div className="mp-ep-scroll">
+              {playlist.map((ep, idx) => (
+                <button
+                  key={ep.id || idx}
+                  ref={setFocusRef(`ep-${idx}`)}
+                  className={`mp-ep-dot${idx === currentIndex ? " active" : ""}${epBarFocused && epFocus === idx ? " tv-focus" : ""}`}
+                  onClick={() => goToEpisode(idx)}
+                  onFocus={() => setEpFocus(idx)}
+                  title={ep.title || `Episode ${idx + 1}`}
+                >
+                  {ep.episode || idx + 1}
+                </button>
+              ))}
+            </div>
+            <button
+              className={`mp-ep-nav${hasNext ? "" : " mp-ep-nav--off"}`}
+              onClick={() => hasNext && goToEpisode(currentIndex + 1)}
+              disabled={!hasNext}
+            >
+              <span className="mp-ep-nav-lbl">Next</span>
+              <FaStepForward size={11} />
+            </button>
+          </div>
+        )}
+
+        {/* ══ ERROR TOAST ══ */}
+        {error && (
+          <div className="mp-error-toast">
+            <FaExclamationTriangle size={13} />
+            <span>{error}</span>
+            <a href={directUrl} target="_blank" rel="noreferrer" className="mp-dl-btn">
+              <FaDownload size={11} /> Download
+            </a>
+          </div>
+        )}
+
+      </div>
+    </div>
+  );
+}
+
+
+========
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   HM CINEMA PLAYER — PREMIUM v7
+   Full Fixed · All Platforms · Silky 60fps Animations
+   Void Black · Crimson · Liquid Glass
+   ═══════════════════════════════════════════════════════════════════════ */
+
+@import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+/* ══════════════════════════════════════════════
+   DESIGN TOKENS
+══════════════════════════════════════════════ */
+:root {
+  --c-red:          #e50914;
+  --c-red-bright:   #ff2535;
+  --c-red-deep:     #b0000e;
+  --c-red-dim:      rgba(229,9,20,0.20);
+  --c-red-glow:     rgba(229,9,20,0.50);
+  --c-red-subtle:   rgba(229,9,20,0.10);
+  --c-red-ring:     rgba(229,9,20,0.40);
+  --c-red-halo:     rgba(229,9,20,0.15);
+
+  --c-void:         #000000;
+  --c-bg:           #060606;
+  --c-surface:      #0d0d0d;
+  --c-surface2:     #141414;
+  --c-surface3:     #1c1c1c;
+  --c-surface4:     #242424;
+  --c-border:       rgba(255,255,255,0.06);
+  --c-border2:      rgba(255,255,255,0.10);
+
+  --c-white:        #ffffff;
+  --c-text:         #e8e8e8;
+  --c-text-dim:     rgba(255,255,255,0.46);
+  --c-text-muted:   rgba(255,255,255,0.26);
+  --c-text-faint:   rgba(255,255,255,0.10);
+
+  --glass-00:       rgba(4,4,4,0.40);
+  --glass-01:       rgba(10,10,10,0.65);
+  --glass-02:       rgba(14,14,14,0.80);
+  --glass-03:       rgba(18,18,18,0.94);
+  --glass-border:   rgba(255,255,255,0.07);
+  --glass-border2:  rgba(255,255,255,0.13);
+  --glass-shine:    rgba(255,255,255,0.06);
+  --glass-blur:     blur(28px) saturate(180%);
+  --glass-blur-sm:  blur(16px) saturate(155%);
+  --glass-blur-xs:  blur(8px)  saturate(130%);
+
+  --safe-top:       env(safe-area-inset-top,    0px);
+  --safe-bottom:    env(safe-area-inset-bottom, 0px);
+  --safe-left:      env(safe-area-inset-left,   0px);
+  --safe-right:     env(safe-area-inset-right,  0px);
+
+  --r-xs:   4px;
+  --r-sm:   8px;
+  --r:      12px;
+  --r-lg:   18px;
+  --r-xl:   24px;
+  --r-2xl:  32px;
+  --r-full: 999px;
+
+  /* Easing curves — all hand-tuned for cinematic feel */
+  --ease-out:       cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out:    cubic-bezier(0.45, 0, 0.55, 1);
+  --ease-spring:    cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-snap:      cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-cinema:    cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  --ease-bounce:    cubic-bezier(0.34, 1.72, 0.64, 1);
+  --ease-soft:      cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Duration scale */
+  --dur-micro: 0.06s;
+  --dur-fast:  0.12s;
+  --dur:       0.20s;
+  --dur-med:   0.34s;
+  --dur-slow:  0.52s;
+  --dur-xslow: 0.80s;
+
+  --font:      'Sora', 'Helvetica Neue', Helvetica, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', monospace;
+}
+
+/* ══════════════════════════════════════════════
+   RESET
+══════════════════════════════════════════════ */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0; padding: 0;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+button {
+  font-family: var(--font);
+  cursor: pointer;
+  border: none;
+  background: none;
+  color: inherit;
+}
+
+/* ══════════════════════════════════════════════
+   ROOT & CARD
+══════════════════════════════════════════════ */
+.mp-root {
+  position: fixed;
+  inset: 0;
+  width: 100%; height: 100%;
+  background: var(--c-void);
+  overflow: hidden;
+  font-family: var(--font);
+  z-index: 9999;
+  cursor: default;
+  padding-top:    var(--safe-top);
+  padding-bottom: var(--safe-bottom);
+  padding-left:   var(--safe-left);
+  padding-right:  var(--safe-right);
+}
+.mp-root:fullscreen,
+.mp-root:-webkit-full-screen {
+  padding: 0 !important;
+}
+
+.mp-card {
+  position: relative;
+  width: 100%; height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--c-void);
+  user-select: none;
+  -webkit-user-select: none;
+  overflow: hidden;
+}
+
+/* ══════════════════════════════════════════════
+   VISIBILITY SYSTEM — smooth ctrl show/hide
+══════════════════════════════════════════════ */
+.ctrl-show {
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  transform: translateY(0) scale(1) !important;
+  transition:
+    opacity  var(--dur-med) var(--ease-out),
+    transform var(--dur-med) var(--ease-out);
+}
+.ctrl-hide {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transform: translateY(10px) scale(0.99) !important;
+  transition:
+    opacity  var(--dur-slow) var(--ease-in-out) 0.04s,
+    transform var(--dur-med) var(--ease-in-out) 0.04s;
+}
+.mp-header.ctrl-hide {
+  transform: translateY(-10px) scale(0.99) !important;
+}
+
+/* ══════════════════════════════════════════════
+   HEADER
+══════════════════════════════════════════════ */
+.mp-header {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 88px;
+  display: flex;
+  align-items: center;
+  padding: 0 22px;
+  gap: 14px;
+  background: linear-gradient(
+    180deg,
+    rgba(0,0,0,0.97) 0%,
+    rgba(0,0,0,0.74) 42%,
+    rgba(0,0,0,0.22) 72%,
+    transparent 100%
+  );
+  z-index: 600;
+  pointer-events: none;
+}
+
+/* Back Button */
+.mp-back-btn {
+  pointer-events: auto !important;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--glass-01);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  color: var(--c-white);
+  border: 1px solid var(--glass-border2);
+  padding: 10px 18px 10px 12px;
+  border-radius: var(--r-full);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  line-height: 1;
+  flex-shrink: 0;
+  min-height: 42px;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition:
+    background var(--dur) var(--ease-out),
+    border-color var(--dur) var(--ease-out),
+    transform var(--dur-fast) var(--ease-bounce),
+    box-shadow var(--dur) var(--ease-out);
+  will-change: transform;
+}
+.mp-back-btn::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 48%;
+  background: linear-gradient(180deg, rgba(255,255,255,0.10) 0%, transparent 100%);
+  border-radius: inherit;
+  pointer-events: none;
+}
+.mp-back-btn:hover {
+  background: rgba(28,28,28,0.94);
+  border-color: rgba(255,255,255,0.22);
+  box-shadow: 0 6px 26px rgba(0,0,0,0.60), inset 0 1px 0 rgba(255,255,255,0.12);
+  transform: translateY(-2px);
+}
+.mp-back-btn:active {
+  transform: scale(0.90) translateY(0);
+  transition-duration: var(--dur-micro);
+}
+
+/* Title row */
+.mp-title-row {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex: 1;
+  min-width: 0;
+}
+.mp-title {
+  color: var(--c-white);
+  font-size: 1.00rem;
+  font-weight: 800;
+  text-shadow: 0 2px 22px rgba(0,0,0,0.98);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: min(300px, 38vw);
+  letter-spacing: -0.3px;
+}
+.mp-ep-badge {
+  background: linear-gradient(135deg, var(--c-red) 0%, var(--c-red-deep) 100%);
+  color: #fff;
+  font-size: 0.56rem;
+  font-weight: 800;
+  padding: 4px 9px;
+  border-radius: var(--r-xs);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  flex-shrink: 0;
+  box-shadow: 0 2px 14px var(--c-red-dim);
+}
+.mp-engine-badge {
+  background: rgba(255,255,255,0.05);
+  color: var(--c-text-muted);
+  font-size: 0.50rem;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  padding: 3px 7px;
+  border-radius: var(--r-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+  flex-shrink: 0;
+  border: 1px solid rgba(255,255,255,0.05);
+}
+
+/* ══════════════════════════════════════════════
+   VIEWPORT
+══════════════════════════════════════════════ */
+.mp-viewport {
+  flex: 1;
+  position: relative;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+  overflow: hidden;
+  min-height: 0;
+}
+.mp-video {
+  position: absolute;
+  inset: 0;
+  width: 100%; height: 100%;
+  object-fit: contain;
+  background: #000;
+  display: block;
+  transition: filter 0.08s linear;
+}
+.mp-root:fullscreen .mp-video,
+.mp-root:-webkit-full-screen .mp-video { object-fit: cover; }
+@media (pointer: coarse) {
+  .mp-video { object-fit: contain; }
+  .mp-root:fullscreen .mp-video,
+  .mp-root:-webkit-full-screen .mp-video { object-fit: contain; }
+}
+
+/* iframe */
+.mp-iframe-wrap { position: absolute; inset: 0; }
+.mp-iframe { width: 100%; height: 100%; border: none; background: #000; display: block; }
+.mp-ad-shield { position: absolute; left: 0; right: 0; z-index: 10; pointer-events: none; }
+.mp-ad-top { top: 0;    height: 68px; }
+.mp-ad-btm { bottom: 0; height: 64px; }
+
+/* ══════════════════════════════════════════════
+   LOADER
+══════════════════════════════════════════════ */
+.mp-loader {
+  position: absolute; inset: 0;
+  background: var(--c-void);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  gap: 26px;
+  animation: hm-fade-in 0.30s var(--ease-out);
+}
+.mp-spinner {
+  position: relative;
+  width: 60px; height: 60px;
+}
+.mp-spinner div {
+  position: absolute;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  animation: hm-spin 1.1s var(--ease-in-out) infinite;
+}
+.mp-spinner div:nth-child(1) {
+  inset: 0;
+  border-top-color: var(--c-red);
+  border-right-color: rgba(229,9,20,0.18);
+  animation-duration: 0.82s;
+}
+.mp-spinner div:nth-child(2) {
+  inset: 9px;
+  border-top-color: rgba(229,9,20,0.42);
+  animation-direction: reverse;
+  animation-duration: 1.08s;
+}
+.mp-spinner div:nth-child(3) {
+  inset: 18px;
+  border-top-color: rgba(229,9,20,0.20);
+  animation-duration: 1.42s;
+}
+.mp-spinner div:nth-child(4) {
+  inset: 24px;
+  width: 8px; height: 8px;
+  background: var(--c-red);
+  border: none;
+  border-radius: 50%;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  animation: hm-dot-pulse 1.1s var(--ease-in-out) infinite;
+}
+@keyframes hm-spin      { to { transform: rotate(360deg); } }
+@keyframes hm-dot-pulse {
+  0%,100% { transform: translate(-50%,-50%) scale(1); opacity: 1; }
+  50%     { transform: translate(-50%,-50%) scale(0.35); opacity: 0.20; }
+}
+.mp-loader-text {
+  color: var(--c-text-muted);
+  font-size: 0.63rem;
+  font-family: var(--font-mono);
+  letter-spacing: 2.5px;
+  font-weight: 500;
+  text-transform: uppercase;
+  animation: hm-text-pulse 2.2s ease-in-out infinite;
+}
+@keyframes hm-text-pulse {
+  0%,100% { opacity: 0.28; }
+  50%     { opacity: 0.72; }
+}
+
+/* Buffer ring */
+.mp-buffering {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  z-index: 190;
+  pointer-events: none;
+}
+.mp-buf-ring {
+  width: 46px; height: 46px;
+  border: 2px solid rgba(255,255,255,0.06);
+  border-top-color: var(--c-red);
+  border-radius: 50%;
+  animation: hm-spin 0.68s linear infinite;
+}
+
+/* ══════════════════════════════════════════════
+   ★★★ PLAY/PAUSE FLASH — CINEMATIC PREMIUM ★★★
+   Full cross-platform, buttery smooth
+   Inspired by Apple TV+ & Netflix
+══════════════════════════════════════════════ */
+
+/* Root container — centered, no overflow clip */
+.mp-play-flash {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 96px; height: 96px;
+  margin: -48px 0 0 -48px;
+  pointer-events: none;
+  z-index: 380;
+  /* isolate compositing context for GPU acceleration */
+  will-change: opacity;
+  isolation: isolate;
+}
+
+/* ── Layer 1: Ambient halo — wide soft glow underneath everything ── */
+.mp-play-flash-halo {
+  position: absolute;
+  inset: -60px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 50% 50%,
+    rgba(229,9,20,0.28) 0%,
+    rgba(229,9,20,0.12) 35%,
+    rgba(229,9,20,0.04) 60%,
+    transparent 72%
+  );
+  animation: hm-halo-bloom var(--dur-xslow) var(--ease-out) forwards;
+  pointer-events: none;
+  z-index: 0;
+}
+
+@keyframes hm-halo-bloom {
+  0%   { opacity: 0;    transform: scale(0.40); }
+  18%  { opacity: 1;    transform: scale(0.82); }
+  55%  { opacity: 0.65; transform: scale(1.10); }
+  100% { opacity: 0;    transform: scale(1.55); }
+}
+
+/* ── Layer 2: Outer ripple ring — wide ── */
+.mp-play-flash::before {
+  content: '';
+  position: absolute;
+  inset: -22px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255,255,255,0.28);
+  animation: hm-ripple-outer 0.72s var(--ease-out) forwards;
+  pointer-events: none;
+  z-index: 1;
+}
+
+@keyframes hm-ripple-outer {
+  0%   { opacity: 0.75; transform: scale(0.60); }
+  100% { opacity: 0;    transform: scale(2.20); }
+}
+
+/* ── Layer 3: Inner crimson ripple ── */
+.mp-play-flash::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(229,9,20,0.55);
+  animation: hm-ripple-inner 0.58s var(--ease-out) 0.04s forwards;
+  pointer-events: none;
+  z-index: 2;
+}
+
+@keyframes hm-ripple-inner {
+  0%   { opacity: 0.70; transform: scale(0.72); }
+  100% { opacity: 0;    transform: scale(1.85); }
+}
+
+/* ── Layer 4: Glass disc — main button shape ── */
+.mp-play-flash-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: radial-gradient(
+    ellipse at 36% 28%,
+    rgba(255,68,78,0.97) 0%,
+    rgba(225,10,20,0.99) 48%,
+    rgba(145,0,8,1.00) 100%
+  );
+  border: 1px solid rgba(255,255,255,0.55);
+  box-shadow:
+    inset 0  1px 0 rgba(255,255,255,0.32),
+    inset 0 -1px 0 rgba(0,0,0,0.45),
+    0 0 0 1px rgba(229,9,20,0.30),
+    0 0  28px rgba(229,9,20,0.45),
+    0 8px 36px rgba(0,0,0,0.70);
+  animation: hm-disc-morph 0.78s var(--ease-out) forwards;
+  overflow: hidden;
+  z-index: 3;
+  will-change: transform, opacity;
+}
+
+/* Top gloss */
+.mp-play-flash-ring::before {
+  content: '';
+  position: absolute;
+  top: 3%; left: 6%;
+  width: 88%; height: 48%;
+  background: linear-gradient(
+    180deg,
+    rgba(255,255,255,0.36) 0%,
+    rgba(255,255,255,0.12) 52%,
+    transparent 100%
+  );
+  border-radius: 50% 50% 50% 50% / 80% 80% 20% 20%;
+  pointer-events: none;
+}
+
+/* Travelling light streak */
+.mp-play-flash-ring::after {
+  content: '';
+  position: absolute;
+  top: -85%; left: -52%;
+  width: 42%; height: 270%;
+  background: linear-gradient(
+    110deg,
+    transparent 14%,
+    rgba(255,255,255,0.50) 50%,
+    transparent 86%
+  );
+  transform: rotate(8deg);
+  animation: hm-streak-travel 0.72s var(--ease-out) forwards;
+  pointer-events: none;
+}
+
+@keyframes hm-disc-morph {
+  0%   { opacity: 0; transform: scale(0.42) rotate(-8deg); }
+  14%  { opacity: 1; transform: scale(1.12) rotate(1deg); }
+  30%  { transform: scale(0.96) rotate(0deg); }
+  50%  { opacity: 1; transform: scale(1.03); }
+  72%  { opacity: 0.90; }
+  100% { opacity: 0; transform: scale(1.35); }
+}
+
+@keyframes hm-streak-travel {
+  0%   { opacity: 0; left: -52%; }
+  16%  { opacity: 0.95; }
+  100% { opacity: 0;  left: 108%; }
+}
+
+/* ── Layer 5: Icon — play/pause symbol ── */
+.mp-play-flash-icon {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  filter:
+    drop-shadow(0 1px 0 rgba(0,0,0,0.60))
+    drop-shadow(0 2px 8px rgba(0,0,0,0.40));
+  animation: hm-icon-entrance 0.68s var(--ease-bounce) forwards;
+  z-index: 5;
+  will-change: transform, opacity;
+}
+
+@keyframes hm-icon-entrance {
+  0%   { opacity: 0; transform: scale(0.38) rotate(-10deg); }
+  32%  { opacity: 1; transform: scale(1.22) rotate(2deg); }
+  55%  { transform: scale(0.95) rotate(0deg); }
+  72%  { opacity: 1; transform: scale(1.02); }
+  88%  { opacity: 0.75; }
+  100% { opacity: 0; transform: scale(1.10); }
+}
+
+/* ── Layer 6: Top glow overlay ── */
+.mp-play-flash-glow {
+  position: absolute;
+  inset: -48px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 50%,
+    rgba(255,60,70,0.30) 0%,
+    rgba(229,9,20,0.14) 40%,
+    transparent 66%
+  );
+  animation: hm-glow-pulse 0.78s var(--ease-out) forwards;
+  pointer-events: none;
+  z-index: -1;
+  will-change: transform, opacity;
+}
+
+@keyframes hm-glow-pulse {
+  0%   { opacity: 0; transform: scale(0.55); }
+  22%  { opacity: 1; }
+  55%  { opacity: 0.80; transform: scale(1.05); }
+  100% { opacity: 0; transform: scale(1.60); }
+}
+
+/* ── PAUSE variant: slightly different tint ── */
+.mp-play-flash--pause .mp-play-flash-ring {
+  background: radial-gradient(
+    ellipse at 36% 28%,
+    rgba(200,200,210,0.97) 0%,
+    rgba(140,140,155,0.99) 48%,
+    rgba(80,80,90,1.00) 100%
+  );
+  border-color: rgba(255,255,255,0.45);
+  box-shadow:
+    inset 0  1px 0 rgba(255,255,255,0.30),
+    inset 0 -1px 0 rgba(0,0,0,0.45),
+    0 0 22px rgba(180,180,200,0.28),
+    0 8px 32px rgba(0,0,0,0.70);
+}
+.mp-play-flash--pause .mp-play-flash-halo {
+  background: radial-gradient(
+    circle at 50% 50%,
+    rgba(200,200,220,0.18) 0%,
+    rgba(160,160,180,0.08) 40%,
+    transparent 62%
+  );
+}
+.mp-play-flash--pause .mp-play-flash-glow {
+  background: radial-gradient(circle at 50% 50%,
+    rgba(200,200,220,0.22) 0%,
+    transparent 55%
+  );
+}
+.mp-play-flash--pause::after {
+  border-color: rgba(200,200,220,0.45);
+}
+
+/* ══════════════════════════════════════════════
+   ★ CENTER CONTROLS — Netflix/Apple Cluster ★
+══════════════════════════════════════════════ */
+.mp-center-controls {
+  position: absolute; inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(12px, 2.4vw, 28px);
+  pointer-events: auto;
+  z-index: 350;
+}
+
+/* Unified cluster wrapper */
+.mp-ctrl-cluster {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  background: var(--glass-01);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border2);
+  border-radius: var(--r-2xl);
+  padding: 10px 14px;
+  box-shadow:
+    0 18px 52px rgba(0,0,0,0.70),
+    0 0 0 1px rgba(255,255,255,0.04),
+    inset 0 1px 0 rgba(255,255,255,0.09);
+  position: relative;
+  overflow: hidden;
+  /* Entrance animation */
+  animation: hm-cluster-in var(--dur-med) var(--ease-spring) both;
+}
+@keyframes hm-cluster-in {
+  0%   { opacity: 0; transform: scale(0.88) translateY(6px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+.mp-ctrl-cluster::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 46%;
+  background: linear-gradient(180deg, rgba(255,255,255,0.08) 0%, transparent 100%);
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+/* Side step button */
+.mp-ovr-side {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  color: #fff;
+  border-radius: var(--r-lg);
+  width: 58px; height: 58px;
+  cursor: pointer;
+  position: relative;
+  transition:
+    color       var(--dur) var(--ease-out),
+    background  var(--dur) var(--ease-out),
+    transform   var(--dur-fast) var(--ease-bounce);
+  will-change: transform;
+  background: #171717;
+  border: 1px solid #3a3a3a;
+  box-shadow: 0 10px 26px rgba(0,0,0,0.72), inset 0 1px 0 rgba(255,255,255,0.12);
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+.mp-ovr-side:hover {
+  color: var(--c-white);
+  background: #242424;
+  border-color: rgba(255,255,255,0.42);
+  box-shadow: 0 14px 34px rgba(0,0,0,0.82), inset 0 1px 0 rgba(255,255,255,0.18);
+  transform: scale(1.10);
+}
+.mp-ovr-side:focus-visible {
+  outline: 3px solid rgba(255,255,255,0.92);
+  outline-offset: 4px;
+  background: #242424;
+}
+.mp-ovr-side:active {
+  background: #0f0f0f;
+  border-color: rgba(255,255,255,0.34);
+  transform: scale(0.92);
+  transition-duration: var(--dur-micro);
+}
+.mp-ovr-label {
+  font-size: 0.50rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: inherit;
+  opacity: 1;
+  text-transform: uppercase;
+  line-height: 1;
+}
+
+/* Episode step separators */
+.mp-ovr-ep-sep,
+.mp-ovr-divider {
+  width: 1px;
+  background: rgba(255,255,255,0.08);
+  flex-shrink: 0;
+  margin: 0 5px;
+}
+.mp-ovr-ep-sep { height: 32px; }
+.mp-ovr-divider { height: 28px; }
+
+/* PLAY button — centered hero */
+.mp-ovr-play {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 66px; height: 66px;
+  border-radius: 50%;
+  background: var(--c-red);
+  border: none;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  margin: 0 7px;
+  flex-shrink: 0;
+  transition:
+    transform    var(--dur-fast) var(--ease-bounce),
+    box-shadow   var(--dur) var(--ease-out),
+    background   var(--dur) var(--ease-out);
+  will-change: transform, box-shadow;
+  box-shadow:
+    inset 0  1px 0 rgba(255,255,255,0.24),
+    inset 0 -1px 0 rgba(0,0,0,0.32),
+    0 0 0 1px rgba(229,9,20,0.38),
+    0 6px 26px rgba(229,9,20,0.38),
+    0 2px 8px rgba(0,0,0,0.55);
+  color: #fff;
+}
+.mp-ovr-play::before {
+  content: '';
+  position: absolute;
+  top: 4%; left: 8%;
+  width: 84%; height: 46%;
+  background: linear-gradient(
+    180deg,
+    rgba(255,255,255,0.26) 0%,
+    rgba(255,255,255,0.06) 55%,
+    transparent 100%
+  );
+  border-radius: 50% 50% 50% 50% / 80% 80% 20% 20%;
+  pointer-events: none;
+}
+/* Animated shine sweep on hover */
+.mp-ovr-play::after {
+  content: '';
+  position: absolute;
+  top: -80%; left: -60%;
+  width: 40%; height: 260%;
+  background: linear-gradient(110deg, transparent 20%, rgba(255,255,255,0.35) 50%, transparent 80%);
+  opacity: 0;
+  transform: rotate(10deg);
+  transition: opacity var(--dur-fast) var(--ease-out), left var(--dur-slow) var(--ease-cinema);
+}
+.mp-ovr-play:hover::after {
+  opacity: 1;
+  left: 110%;
+}
+.mp-ovr-play:hover {
+  background: var(--c-red-bright);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.30),
+    0 0 0 1px rgba(229,9,20,0.48),
+    0 10px 40px rgba(229,9,20,0.50),
+    0 2px 8px rgba(0,0,0,0.58);
+  transform: scale(1.07);
+}
+.mp-ovr-play:active {
+  transform: scale(0.88);
+  transition-duration: var(--dur-micro);
+}
+
+/* TV focus rings */
+.mp-ovr-play.tv-focus {
+  outline: 2.5px solid rgba(255,255,255,0.92) !important;
+  outline-offset: 7px !important;
+  box-shadow:
+    0 0 0 9px rgba(229,9,20,0.14),
+    0 10px 40px rgba(229,9,20,0.55) !important;
+}
+.mp-ovr-side.tv-focus {
+  outline: 2px solid rgba(255,255,255,0.88) !important;
+  outline-offset: 3px !important;
+  background: #262626 !important;
+  border-color: rgba(255,255,255,0.52) !important;
+}
+
+/* ══════════════════════════════════════════════
+   TOP-RIGHT CORNER BUTTONS
+══════════════════════════════════════════════ */
+.mp-top-right {
+  position: absolute;
+  top: 20px; right: 20px;
+  display: flex;
+  gap: 8px;
+  z-index: 620;
+  pointer-events: auto;
+}
+
+.mp-corner-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--glass-01);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border2);
+  color: var(--c-text);
+  border-radius: var(--r);
+  width: 42px; height: 42px;
+  cursor: pointer;
+  overflow: hidden;
+  transition:
+    background    var(--dur) var(--ease-out),
+    border-color  var(--dur) var(--ease-out),
+    transform     var(--dur-fast) var(--ease-bounce),
+    box-shadow    var(--dur) var(--ease-out);
+  will-change: transform;
+}
+.mp-corner-btn::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 50%;
+  background: linear-gradient(180deg, rgba(255,255,255,0.09) 0%, transparent 100%);
+  border-radius: inherit;
+  pointer-events: none;
+}
+.mp-corner-btn:hover {
+  background: rgba(32,32,32,0.96);
+  border-color: rgba(255,255,255,0.22);
+  box-shadow: 0 5px 22px rgba(0,0,0,0.60), inset 0 1px 0 rgba(255,255,255,0.10);
+  transform: translateY(-2px);
+}
+.mp-corner-btn:active {
+  transform: scale(0.87);
+  transition-duration: var(--dur-micro);
+}
+.mp-corner-btn.tv-focus {
+  outline: 2px solid rgba(255,255,255,0.90) !important;
+  outline-offset: 3px !important;
+}
+
+/* Active / Lock */
+.mp-corner-btn--lock-active {
+  background: rgba(155,0,0,0.92) !important;
+  border-color: rgba(229,9,20,0.55) !important;
+  color: #fff !important;
+  box-shadow:
+    0 0 0 1px rgba(229,9,20,0.42),
+    0 0 26px rgba(229,9,20,0.38),
+    0 5px 20px rgba(0,0,0,0.65) !important;
+}
+.mp-corner-btn--lock-active:hover {
+  background: var(--c-red) !important;
+}
+
+/* Lock peek button animation */
+.mp-top-right-peek {
+  position: absolute;
+  top: 20px; right: 20px;
+  z-index: 820;
+  pointer-events: auto;
+  animation: hm-peek-in 0.32s var(--ease-bounce) both;
+}
+@keyframes hm-peek-in {
+  0%   { opacity: 0; transform: scale(0.65) translateY(-10px); }
+  62%  { transform: scale(1.10) translateY(1px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+.mp-corner-btn--lock-peek {
+  animation: hm-lock-breathe 2.4s ease-in-out infinite;
+}
+@keyframes hm-lock-breathe {
+  0%,100% { box-shadow: 0 0 0 1px rgba(229,9,20,0.42), 0 0 22px rgba(229,9,20,0.36); }
+  50%     { box-shadow: 0 0 0 3px rgba(229,9,20,0.20), 0 0 48px rgba(229,9,20,0.55); }
+}
+
+/* ══════════════════════════════════════════════
+   LOCKED STATE
+══════════════════════════════════════════════ */
+.mp-locked .mp-header,
+.mp-locked .mp-center-controls,
+.mp-locked .mp-top-right,
+.mp-locked .mp-ctrl-bar,
+.mp-locked .mp-ep-bar,
+.mp-locked .mp-autoplay-bg,
+.mp-locked .mp-vol-overlay,
+.mp-locked .mp-seek-bubble {
+  display: none !important;
+  pointer-events: none !important;
+}
+
+/* ══════════════════════════════════════════════
+   SEEK BUBBLE
+══════════════════════════════════════════════ */
+.mp-seek-bubble {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  background: #111;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  color: var(--c-white);
+  border: 1px solid var(--glass-border2);
+  border-radius: var(--r-lg);
+  padding: 16px 26px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  z-index: 400;
+  pointer-events: none;
+  animation: none;
+  box-shadow: 0 16px 52px rgba(0,0,0,0.88), inset 0 1px 0 rgba(255,255,255,0.11);
+}
+.mp-seek-time {
+  font-size: 1.08rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono);
+  letter-spacing: -0.2px;
+}
+@keyframes hm-bubble-in {
+  0%   { opacity: 0; transform: translate(-50%,-50%) scale(0.75); }
+  10%  { opacity: 1; transform: translate(-50%,-50%) scale(1.04); }
+  20%  { transform: translate(-50%,-50%) scale(1.00); }
+  65%  { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%,-50%) scale(0.94); }
+}
+
+/* ══════════════════════════════════════════════
+   GESTURE SIDE OVERLAYS
+══════════════════════════════════════════════ */
+.mp-gesture-side {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  background: var(--glass-02);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border2);
+  border-radius: var(--r-xl);
+  padding: 18px 12px;
+  min-width: 52px;
+  color: var(--c-white);
+  z-index: 750;
+  pointer-events: none;
+  box-shadow: 0 16px 44px rgba(0,0,0,0.72), inset 0 1px 0 rgba(255,255,255,0.10);
+  animation: hm-gesture-slide-in 0.18s var(--ease-spring) both;
+}
+.mp-gesture-side--left  { left: 20px; }
+.mp-gesture-side--right { right: 20px; }
+
+@keyframes hm-gesture-slide-in {
+  0%   { opacity: 0; transform: translateY(-50%) scale(0.75); }
+  60%  { transform: translateY(-50%) scale(1.04); }
+  100% { opacity: 1; transform: translateY(-50%) scale(1); }
+}
+
+.mp-gesture-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.78;
+}
+.mp-gesture-track {
+  width: 5px; height: 90px;
+  background: rgba(255,255,255,0.08);
+  border-radius: var(--r-full);
+  position: relative;
+  overflow: hidden;
+}
+.mp-gesture-fill {
+  position: absolute;
+  bottom: 0; left: 0; width: 100%;
+  border-radius: var(--r-full);
+  transition: height 0.04s linear;
+}
+.mp-gesture-side--right .mp-gesture-fill {
+  background: linear-gradient(to top, var(--c-red) 0%, rgba(255,90,90,0.40) 100%);
+}
+.mp-gesture-side--left .mp-gesture-fill {
+  background: linear-gradient(to top, rgba(255,255,255,0.94) 0%, rgba(255,255,255,0.28) 100%);
+}
+.mp-gesture-value {
+  font-size: 0.62rem;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: var(--c-text);
+  letter-spacing: 0.3px;
+}
+
+/* ══════════════════════════════════════════════
+   RESUME PROMPT
+══════════════════════════════════════════════ */
+.mp-resume-overlay {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,0.82);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  z-index: 460;
+  animation: hm-fade-in 0.28s var(--ease-out);
+}
+.mp-resume-card {
+  background: linear-gradient(158deg, var(--c-surface2) 0%, var(--c-surface) 100%);
+  border: 1px solid var(--c-border2);
+  border-radius: var(--r-lg);
+  padding: 32px 36px;
+  text-align: center;
+  max-width: 340px; width: 92%;
+  box-shadow:
+    0 40px 96px rgba(0,0,0,0.98),
+    0 0 0 1px rgba(255,255,255,0.04),
+    inset 0 1px 0 rgba(255,255,255,0.08);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  animation: hm-card-rise 0.36s var(--ease-bounce) both;
+}
+@keyframes hm-card-rise {
+  0%   { opacity: 0; transform: scale(0.84) translateY(18px); }
+  65%  { transform: scale(1.02) translateY(-2px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+.mp-resume-icon {
+  width: 52px; height: 52px;
+  border-radius: 50%;
+  background: var(--c-red-subtle);
+  border: 1px solid rgba(229,9,20,0.30);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--c-red);
+  margin-bottom: 18px;
+}
+.mp-resume-title {
+  color: var(--c-white);
+  font-size: 1.06rem;
+  font-weight: 800;
+  margin-bottom: 7px;
+  letter-spacing: -0.3px;
+}
+.mp-resume-sub {
+  color: var(--c-text-dim);
+  font-size: 0.73rem;
+  font-weight: 500;
+  margin-bottom: 16px;
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono);
+}
+.mp-resume-bar {
+  width: 100%; height: 3px;
+  background: rgba(255,255,255,0.06);
+  border-radius: var(--r-full);
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+.mp-resume-bar-fill {
+  height: 100%;
+  background: linear-gradient(to right, var(--c-red), var(--c-red-bright));
+  border-radius: var(--r-full);
+  transition: width 0.36s var(--ease-out);
+}
+.mp-resume-actions {
+  display: flex;
+  gap: 9px; width: 100%;
+  justify-content: center;
+  margin-top: 4px;
+}
+.mp-resume-btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border-radius: var(--r);
+  padding: 12px 16px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.1px;
+  font-family: var(--font);
+  min-height: 46px;
+  cursor: pointer;
+  transition:
+    background  var(--dur) var(--ease-out),
+    transform   var(--dur-fast) var(--ease-bounce),
+    box-shadow  var(--dur) var(--ease-out);
+  will-change: transform;
+}
+.mp-resume-btn:active {
+  transform: scale(0.92);
+  transition-duration: var(--dur-micro);
+}
+.mp-resume-primary {
+  background: linear-gradient(135deg, var(--c-red-bright) 0%, var(--c-red) 100%);
+  color: #fff;
+  box-shadow: 0 3px 18px var(--c-red-dim), inset 0 1px 0 rgba(255,255,255,0.20);
+}
+.mp-resume-primary:hover {
+  box-shadow: 0 7px 28px var(--c-red-glow), inset 0 1px 0 rgba(255,255,255,0.24);
+  transform: translateY(-2px);
+}
+.mp-resume-secondary {
+  background: rgba(255,255,255,0.05);
+  color: var(--c-text);
+  border: 1px solid rgba(255,255,255,0.09);
+}
+.mp-resume-secondary:hover {
+  background: rgba(255,255,255,0.10);
+  border-color: rgba(255,255,255,0.17);
+}
+.mp-resume-btn.tv-focus {
+  outline: 2px solid rgba(255,255,255,0.90) !important;
+  outline-offset: 2px !important;
+}
+.mp-tv-hint {
+  color: var(--c-text-muted);
+  font-size: 0.60rem;
+  font-weight: 500;
+  letter-spacing: 0.3px;
+  margin-bottom: 16px;
+  text-align: center;
+}
+
+/* ══════════════════════════════════════════════
+   CONTROLS BAR
+══════════════════════════════════════════════ */
+.mp-ctrl-bar {
+  position: absolute !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 60px !important;
+  z-index: 600 !important;
+  padding: 52px 22px 14px;
+  padding-bottom: calc(14px + var(--safe-bottom));
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  box-shadow: none !important;
+  border: none !important;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow: visible;
+  pointer-events: none;
+}
+/* Let progress row capture pointer */
+.mp-ctrl-bar .mp-progress-row {
+  pointer-events: auto;
+}
+
+/* Remove old ep-bar overrides */
+.mp-card .mp-ep-bar ~ .mp-ctrl-bar,
+.mp-ctrl-bar.has-ep-bar {
+  bottom: 60px !important;
+}
+
+.mp-progress-row {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+/* Time labels */
+.mp-time {
+  color: #fff !important;
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono);
+  min-width: 52px;
+  text-align: center;
+  flex-shrink: 0;
+  letter-spacing: 0.3px;
+  line-height: 1;
+  text-shadow: 0 1px 6px rgba(0,0,0,0.9);
+}
+
+/* ──────────────────────────────────
+   SEEK TRACK — Premium Feel
+────────────────────────────────── */
+.mp-track {
+  position: relative;
+  flex: 1;
+  height: 28px !important;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  touch-action: none;
+  border-radius: var(--r-sm);
+  /* Expanded hit area via pseudo-element */
+}
+.mp-track:focus {
+  outline: 2px solid rgba(255,255,255,0.50);
+  outline-offset: 5px;
+  border-radius: var(--r-sm);
+}
+
+.mp-track-bg {
+  position: absolute;
+  left: 0; right: 0; top: 50%;
+  height: 4px !important;
+  transform: translateY(-50%);
+  background: rgba(255,255,255,0.18) !important;
+  border-radius: var(--r-full);
+  pointer-events: none;
+  transition: height var(--dur-fast) var(--ease-bounce);
+}
+.mp-track:hover .mp-track-bg,
+.mp-track:active .mp-track-bg { height: 6px !important; }
+
+.mp-track-buffer {
+  position: absolute;
+  left: 0; top: 50%;
+  height: 4px !important;
+  transform: translateY(-50%);
+  background: rgba(255,255,255,0.30);
+  border-radius: var(--r-full);
+  pointer-events: none;
+  transition: width 0.6s linear, height var(--dur-fast) var(--ease-bounce);
+}
+.mp-track:hover .mp-track-buffer,
+.mp-track:active .mp-track-buffer { height: 6px !important; }
+
+.mp-track-fill {
+  position: absolute;
+  left: 0; top: 50%;
+  height: 4px !important;
+  transform: translateY(-50%);
+  background: #e50914 !important;
+  background: linear-gradient(to right, var(--c-red) 0%, var(--c-red-bright) 100%) !important;
+  border-radius: var(--r-full);
+  pointer-events: none;
+  box-shadow: 0 0 12px var(--c-red-dim);
+  transition: none;
+  will-change: width;
+}
+.mp-track:hover .mp-track-fill,
+.mp-track:active .mp-track-fill { height: 6px !important; }
+
+.mp-track-thumb {
+  position: absolute;
+  top: 50%;
+  width: 16px !important; height: 16px !important;
+  background: var(--c-white);
+  border-radius: 50%;
+  transform: translate(-50%, -50%) scale(0);
+  pointer-events: none;
+  box-shadow:
+    0 2px 12px rgba(0,0,0,0.82),
+    0 0 0 2.5px rgba(229,9,20,0.38);
+  opacity: 0;
+  transition:
+    opacity   120ms var(--ease-out),
+    transform 120ms var(--ease-bounce);
+  will-change: left, transform, opacity;
+}
+.mp-track:hover .mp-track-thumb,
+.mp-track:focus .mp-track-thumb,
+.mp-track-thumb.scrubbing {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+.mp-track-thumb.scrubbing {
+  transform: translate(-50%, -50%) scale(1.42) !important;
+  box-shadow:
+    0 2px 16px rgba(0,0,0,0.88),
+    0 0 0 3px rgba(229,9,20,0.58);
+}
+
+/* ══════════════════════════════════════════════
+   VOLUME OVERLAY
+══════════════════════════════════════════════ */
+.mp-vol-overlay {
+  position: absolute;
+  top: 50%; right: 26px;
+  transform: translateY(-50%);
+  background: var(--glass-02);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border2);
+  border-radius: var(--r-lg);
+  padding: 16px 11px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  z-index: 600;
+  color: var(--c-white);
+  min-width: 48px;
+  pointer-events: none;
+  animation: hm-gesture-slide-in 0.20s var(--ease-spring) both;
+  box-shadow: 0 16px 44px rgba(0,0,0,0.72), inset 0 1px 0 rgba(255,255,255,0.10);
+}
+.mp-vol-track {
+  width: 4px; height: 100px;
+  background: rgba(255,255,255,0.09);
+  border-radius: var(--r-full);
+  position: relative;
+  overflow: hidden;
+}
+.mp-vol-fill {
+  position: absolute;
+  bottom: 0; left: 0; width: 100%;
+  background: linear-gradient(to top, var(--c-red), rgba(229,9,20,0.40));
+  border-radius: var(--r-full);
+  transition: height 0.08s linear;
+}
+.mp-vol-pct {
+  font-size: 0.60rem;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  color: var(--c-text-dim);
+}
+
+/* ══════════════════════════════════════════════
+   ★ EPISODE BAR — Netflix/Disney+ Style ★
+══════════════════════════════════════════════ */
+.mp-ep-bar {
+  position: absolute !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  z-index: 550 !important;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  padding-bottom: calc(10px + var(--safe-bottom));
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border: none !important;
+  box-shadow: none !important;
+  min-height: 60px;
+  pointer-events: auto;
+}
+
+.mp-ep-scroll {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  flex: 1;
+  scrollbar-width: none;
+  padding: 4px 2px 6px;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x mandatory;
+  scroll-behavior: smooth;
+  background: transparent !important;
+}
+.mp-ep-scroll::-webkit-scrollbar { display: none; }
+
+/* Episode dot */
+.mp-ep-dot {
+  flex-shrink: 0;
+  min-width: 40px; height: 40px;
+  padding: 0 12px;
+  background: rgba(0,0,0,0.22) !important;
+  border: 1px solid rgba(255,255,255,0.12) !important;
+  border-radius: var(--r);
+  color: var(--c-text-muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  scroll-snap-align: start;
+  transition:
+    background  var(--dur) var(--ease-out),
+    border-color var(--dur) var(--ease-out),
+    color       var(--dur) var(--ease-out),
+    transform   var(--dur-fast) var(--ease-bounce),
+    box-shadow  var(--dur) var(--ease-out);
+  will-change: transform;
+  position: relative;
+  white-space: nowrap;
+  box-shadow: none !important;
+}
+.mp-ep-dot:hover {
+  transform: translateY(-3px);
+  border-color: rgba(255,255,255,0.20) !important;
+  background: rgba(255,255,255,0.10) !important;
+  color: var(--c-text);
+}
+.mp-ep-dot:active {
+  transform: scale(0.92);
+  transition-duration: var(--dur-micro);
+}
+.mp-ep-dot.active {
+  background: #e50914 !important;
+  border-color: #ff3b4c !important;
+  color: #fff !important;
+  transform: translateY(-3px);
+  box-shadow:
+    0 0 0 1px rgba(229,9,20,0.48),
+    0 0 18px rgba(229,9,20,0.42) !important;
+  font-weight: 800;
+}
+.mp-ep-dot.tv-focus {
+  outline: 2px solid rgba(255,255,255,0.90);
+  outline-offset: 2px;
+}
+.mp-ep-dot.active.tv-focus {
+  outline-color: var(--c-red-bright);
+}
+
+/* Nav arrows */
+.mp-ep-nav {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px; height: 38px;
+  background: rgba(0,0,0,0.22) !important;
+  border: 1px solid rgba(255,255,255,0.12) !important;
+  border-radius: 50%;
+  color: var(--c-white);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition:
+    background  var(--dur) var(--ease-out),
+    transform   var(--dur-fast) var(--ease-bounce);
+  box-shadow: none !important;
+}
+.mp-ep-nav:hover:not(.mp-ep-nav--off) {
+  background: rgba(255,255,255,0.12) !important;
+  transform: scale(1.08);
+}
+.mp-ep-nav:active { transform: scale(0.90); }
+.mp-ep-nav--off { opacity: 0.16; cursor: not-allowed; }
+
+/* ══════════════════════════════════════════════
+   AUTOPLAY COUNTDOWN
+══════════════════════════════════════════════ */
+.mp-autoplay-bg {
+  position: absolute; inset: 0;
+  background: rgba(0,0,0,0.84);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 450;
+  backdrop-filter: blur(14px) saturate(148%);
+  -webkit-backdrop-filter: blur(14px) saturate(148%);
+  animation: hm-fade-in 0.30s var(--ease-out);
+}
+.mp-autoplay-card {
+  background: linear-gradient(158deg, var(--c-surface2) 0%, var(--c-surface) 100%);
+  border: 1px solid var(--c-border2);
+  border-radius: var(--r-lg);
+  padding: 36px 44px;
+  text-align: center;
+  max-width: 330px; width: 92%;
+  box-shadow:
+    0 40px 96px rgba(0,0,0,0.98),
+    0 0 0 1px rgba(255,255,255,0.04),
+    inset 0 1px 0 rgba(255,255,255,0.08);
+  animation: hm-card-rise 0.36s var(--ease-bounce) both;
+}
+.mp-ap-label {
+  color: var(--c-red);
+  font-size: 0.56rem;
+  font-weight: 800;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  margin-bottom: 11px;
+}
+.mp-ap-title {
+  color: var(--c-white);
+  font-size: 1.04rem;
+  font-weight: 800;
+  margin-bottom: 22px;
+  line-height: 1.38;
+  letter-spacing: -0.24px;
+}
+.mp-ap-ring {
+  position: relative;
+  width: 62px; height: 62px;
+  margin: 0 auto 12px;
+}
+.mp-ap-ring svg {
+  width: 62px; height: 62px;
+  transform: rotate(-90deg);
+}
+.ap-ring-track { fill: none; stroke: rgba(255,255,255,0.07); stroke-width: 4; }
+.ap-ring-fill {
+  fill: none;
+  stroke: var(--c-red);
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-dasharray: 125.7;
+  transition: stroke-dashoffset 0.92s linear;
+  filter: drop-shadow(0 0 6px rgba(229,9,20,0.55));
+}
+.ap-ring-num {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--c-white);
+  font-size: 1.24rem;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+.mp-ap-hint {
+  color: var(--c-text-dim);
+  font-size: 0.73rem;
+  font-weight: 400;
+  margin-bottom: 7px;
+}
+.mp-ap-actions { display: flex; gap: 9px; justify-content: center; }
+
+.mp-ap-now {
+  display: inline-flex; align-items: center; gap: 7px;
+  background: var(--c-white); color: var(--c-void);
+  border: none; border-radius: var(--r);
+  padding: 11px 20px;
+  font-size: 0.82rem; font-weight: 800;
+  font-family: var(--font);
+  cursor: pointer; min-height: 44px;
+  transition:
+    background  var(--dur) var(--ease-out),
+    transform   var(--dur-fast) var(--ease-bounce);
+}
+.mp-ap-now:hover {
+  background: rgba(255,255,255,0.86);
+  transform: translateY(-2px);
+}
+.mp-ap-now:active {
+  transform: scale(0.92);
+  transition-duration: var(--dur-micro);
+}
+.mp-ap-now.tv-focus {
+  outline: 2px solid rgba(255,255,255,0.90) !important;
+  outline-offset: 2px !important;
+}
+
+.mp-ap-cancel {
+  background: rgba(36,36,36,0.92);
+  color: var(--c-text);
+  border: 1px solid rgba(255,255,255,0.11);
+  border-radius: var(--r);
+  padding: 11px 18px;
+  font-size: 0.82rem; font-weight: 700;
+  font-family: var(--font);
+  cursor: pointer; min-height: 44px;
+  transition:
+    background  var(--dur) var(--ease-out),
+    transform   var(--dur-fast) var(--ease-bounce);
+}
+.mp-ap-cancel:hover {
+  background: rgba(58,58,58,0.96);
+  transform: translateY(-1px);
+}
+.mp-ap-cancel:active {
+  transform: scale(0.92);
+  transition-duration: var(--dur-micro);
+}
+.mp-ap-cancel.tv-focus {
+  outline: 2px solid rgba(255,255,255,0.90) !important;
+  outline-offset: 2px !important;
+}
+
+/* ══════════════════════════════════════════════
+   ERROR TOAST
+══════════════════════════════════════════════ */
+.mp-error-toast {
+  position: absolute;
+  bottom: calc(82px + var(--safe-bottom));
+  left: 50%; transform: translateX(-50%);
+  background: rgba(135,0,0,0.98);
+  color: #fff;
+  padding: 12px 18px;
+  border-radius: var(--r);
+  font-size: 0.78rem;
+  font-weight: 600;
+  z-index: 700;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.82), 0 0 0 1px rgba(255,255,255,0.07);
+  backdrop-filter: blur(10px);
+  max-width: min(90vw, 480px);
+  border: 1px solid rgba(255,255,255,0.07);
+  animation: hm-toast-up 0.28s var(--ease-bounce) both;
+}
+@keyframes hm-toast-up {
+  0%   { opacity: 0; transform: translateX(-50%) translateY(14px); }
+  60%  { transform: translateX(-50%) translateY(-2px); }
+  100% { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+.mp-dl-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  color: #fff;
+  background: rgba(255,255,255,0.14);
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: var(--r-sm);
+  padding: 5px 10px;
+  text-decoration: none;
+  font-size: 0.70rem; font-weight: 700;
+  font-family: var(--font);
+  flex-shrink: 0;
+  transition: background var(--dur) var(--ease-out);
+}
+.mp-dl-btn:hover { background: rgba(255,255,255,0.26); }
+
+/* ══════════════════════════════════════════════
+   SHARED KEYFRAMES
+══════════════════════════════════════════════ */
+@keyframes hm-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ══════════════════════════════════════════════
+   TOUCH (MOBILE) OVERRIDES
+   — Larger hit targets, no outlines, crisp
+══════════════════════════════════════════════ */
+@media (pointer: coarse) {
+  button, .mp-ovr-side, .mp-ovr-play, .mp-corner-btn,
+  .mp-track, .mp-ep-dot, .mp-ep-nav {
+    outline: none !important;
+    -webkit-tap-highlight-color: transparent !important;
+  }
+  button:focus, button:active, button:focus-visible,
+  .mp-ovr-side:focus, .mp-ovr-play:focus, .mp-corner-btn:focus,
+  .mp-track:focus, .mp-ep-dot:focus, .mp-ep-nav:focus {
+    outline: none !important;
+  }
+  /* Slightly larger buttons for thumb comfort */
+  .mp-ovr-play   { width: 70px; height: 70px; }
+  .mp-ovr-side   { width: 60px; height: 60px; }
+  .mp-corner-btn { width: 46px; height: 46px; }
+  .mp-track      { height: 38px !important; }
+
+  /* Flash is extra punchy on mobile */
+  .mp-play-flash { width: 104px; height: 104px; margin: -52px 0 0 -52px; }
+}
+
+/* ══════════════════════════════════════════════
+   TV / D-PAD ENHANCEMENTS
+   — Larger, higher-contrast focus rings
+══════════════════════════════════════════════ */
+@media (hover: hover) and (pointer: fine) {
+  .mp-ovr-play.tv-focus {
+    outline: 3px solid rgba(255,255,255,0.95) !important;
+    outline-offset: 8px !important;
+  }
+  .mp-ovr-side.tv-focus,
+  .mp-corner-btn.tv-focus {
+    outline: 2.5px solid rgba(255,255,255,0.90) !important;
+    outline-offset: 4px !important;
+  }
+  .mp-ep-dot.tv-focus {
+    outline: 2.5px solid rgba(255,255,255,0.88) !important;
+    outline-offset: 3px !important;
+  }
+}
+
+/* ══════════════════════════════════════════════
+   RESPONSIVE
+══════════════════════════════════════════════ */
+
+/* ── Tiny phones ── */
+@media (max-width: 400px) {
+  .mp-header     { height: 56px; padding: 0 10px; }
+  .mp-title      { font-size: 0.82rem; max-width: 105px; }
+  .mp-back-btn   { padding: 7px 11px 7px 8px; font-size: 0.70rem; }
+  .mp-ovr-play   { width: 60px; height: 60px; }
+  .mp-ovr-side   { width: 50px; height: 50px; }
+  .mp-ctrl-cluster { padding: 7px 10px; }
+  .mp-time       { font-size: 11px !important; min-width: 30px; }
+  .mp-ctrl-bar   { padding: 28px 10px 0; padding-bottom: calc(6px + var(--safe-bottom)); bottom: 54px !important; }
+  .mp-corner-btn { width: 36px; height: 36px; }
+  .mp-top-right  { top: 10px; right: 10px; gap: 5px; }
+  .mp-ep-dot     { min-width: 34px; height: 34px; font-size: 0.74rem; }
+  .mp-play-flash { width: 80px; height: 80px; margin: -40px 0 0 -40px; }
+}
+
+/* ── Small phones ── */
+@media (max-width: 600px) {
+  .mp-header     { height: 64px; padding: 0 14px; }
+  .mp-title      { font-size: 0.88rem; max-width: 140px; }
+  .mp-back-btn   { padding: 8px 13px 8px 9px; font-size: 0.73rem; }
+  .mp-ovr-play   { width: 64px; height: 64px; }
+  .mp-ovr-side   { width: 54px; height: 54px; }
+  .mp-time       { font-size: 12px !important; min-width: 36px; }
+  .mp-ctrl-bar   { padding: 28px 13px 0; padding-bottom: calc(8px + var(--safe-bottom)); bottom: 56px !important; }
+  .mp-resume-card { padding: 26px 22px; }
+  .mp-corner-btn { width: 40px; height: 40px; }
+  .mp-top-right  { top: 12px; right: 12px; gap: 6px; }
+  .mp-tv-hint    { display: none; }
+}
+
+/* ── Landscape mobile ── */
+@media (max-height: 480px) and (orientation: landscape) {
+  .mp-header     { height: 50px; background: transparent; }
+  .mp-ctrl-bar   { padding: 22px 14px 0; padding-bottom: calc(5px + var(--safe-bottom)); bottom: 52px !important; }
+  .mp-ep-bar     { padding: 4px 10px; padding-bottom: calc(4px + var(--safe-bottom)); min-height: 52px; }
+  .mp-time       { font-size: 11px !important; }
+  .mp-ovr-play   { width: 56px; height: 56px; }
+  .mp-ovr-side   { width: 48px; height: 48px; }
+  .mp-ctrl-cluster { padding: 7px 10px; }
+  .mp-gesture-track { height: 60px; }
+  .mp-play-flash { width: 80px; height: 80px; margin: -40px 0 0 -40px; }
+}
+
+/* ── Tablet ── */
+@media (min-width: 601px) and (max-width: 1024px) {
+  .mp-title { max-width: 320px; font-size: 0.98rem; }
+}
+
+/* ── Desktop ── */
+@media (min-width: 1025px) {
+  .mp-title      { max-width: 480px; font-size: 1.10rem; }
+  .mp-header     { height: 84px; padding: 0 30px; }
+  .mp-time       { font-size: 14px !important; min-width: 58px; }
+  .mp-track-bg, .mp-track-fill { height: 5px !important; }
+  .mp-ep-dot     { min-width: 44px; height: 44px; }
+  .mp-ctrl-bar   { padding: 44px 30px 0; padding-bottom: calc(20px + var(--safe-bottom)); bottom: 68px !important; }
+  .mp-ovr-play   { width: 70px; height: 70px; }
+  .mp-play-flash { width: 104px; height: 104px; margin: -52px 0 0 -52px; }
+}
+
+/* ── TV / large screen ── */
+@media (min-width: 1920px) {
+  .mp-header     { height: 100px; padding: 0 48px; }
+  .mp-back-btn   { padding: 13px 24px 13px 16px; font-size: 0.96rem; min-height: 50px; }
+  .mp-title      { font-size: 1.48rem; max-width: 660px; }
+  .mp-ep-badge   { font-size: 0.72rem; padding: 4px 11px; }
+  .mp-time       { font-size: 16px !important; min-width: 64px; }
+  .mp-track-bg, .mp-track-fill { height: 6px !important; }
+  .mp-track-thumb { width: 22px !important; height: 22px !important; }
+  .mp-ep-dot     { min-width: 54px; height: 54px; font-size: 0.94rem; }
+  .mp-autoplay-card { padding: 52px 64px; max-width: 480px; }
+  .mp-ovr-play   { width: 82px; height: 82px; }
+  .mp-ovr-side   { width: 68px; height: 68px; }
+  .mp-corner-btn { width: 52px; height: 52px; }
+  .mp-ctrl-bar   { bottom: 80px !important; }
+  .mp-play-flash { width: 120px; height: 120px; margin: -60px 0 0 -60px; }
+  .mp-play-flash-icon svg { width: 38px !important; height: 38px !important; }
+}
+
+/* ── Full landscape fill ── */
+@media screen and (orientation: landscape) {
+  .mp-root, .mp-card, .mp-viewport { width: 100%; height: 100%; }
+  .mp-video, .mp-iframe { width: 100%; height: 100%; }
+}
+
+/* Mobile responsive bottom bars */
+@media (max-width: 768px) {
+  .mp-ctrl-bar { bottom: 55px !important; }
+  .mp-card .mp-ep-bar ~ .mp-ctrl-bar,
+  .mp-ctrl-bar.has-ep-bar { bottom: 55px !important; }
+}
+
+@media (min-width: 1200px) {
+  .mp-ctrl-bar { bottom: 70px !important; }
+  .mp-card .mp-ep-bar ~ .mp-ctrl-bar,
+  .mp-ctrl-bar.has-ep-bar { bottom: 70px !important; }
+}

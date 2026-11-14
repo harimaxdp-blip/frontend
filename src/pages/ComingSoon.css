@@ -1,0 +1,193 @@
+.coming-soon-container {
+  position: relative;
+  width: 100%;
+  min-height: 100vh;
+  overflow: hidden;
+  background-color: #000;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── LOADER EFFECT STYLING ── */
+.video-loader-screen {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: #050505;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  z-index: 10;
+}
+
+.loader-logo-wrapper {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+/* Pulses the logo width scaling matching the neon glow */
+.loader-logo-pulse {
+  width: 100px;
+  height: auto;
+  animation: logoPulse 1.8s ease-in-out infinite;
+  z-index: 11;
+}
+
+/* Circular breathing aura behind the logo matching the logo color scheme */
+.loader-glow-ring {
+  position: absolute;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 0, 255, 0.4) 0%, rgba(255, 136, 0, 0) 70%);
+  animation: glowPulse 1.8s ease-in-out infinite;
+}
+
+.loader-text {
+  color: #888;
+  font-size: 0.9rem;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  animation: textFade 1.8s ease-in-out infinite;
+}
+
+/* ── ANIMATIONS FOR THE LOADER ── */
+@keyframes logoPulse {
+  0% { transform: scale(0.95); opacity: 0.8; }
+  50% { transform: scale(1.05); opacity: 1; }
+  100% { transform: scale(0.95); opacity: 0.8; }
+}
+
+@keyframes glowPulse {
+  0% { transform: scale(0.8); opacity: 0.3; }
+  50% { transform: scale(1.3); opacity: 0.8; }
+  100% { transform: scale(0.8); opacity: 0.3; }
+}
+
+@keyframes textFade {
+  0% { opacity: 0.4; }
+  50% { opacity: 1; }
+  100% { opacity: 0.4; }
+}
+
+/* ── VIDEO BACKGROUND BACKGROUND LAYERS ── */
+.video-background-wrapper {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.8s ease-in-out;
+}
+
+.video-background-wrapper.visible {
+  opacity: 1;
+}
+
+.coming-soon-bg-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* ── MAIN LAYOUT CONTENT ── */
+.coming-soon-content {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  color: white;
+  text-align: center;
+  padding: 40px 20px;
+  box-sizing: border-box;
+  flex-grow: 1;
+  opacity: 0;
+}
+
+.coming-soon-content.fade-in {
+  opacity: 1;
+  transition: opacity 1s ease-in-out;
+}
+
+.coming-soon-content.hidden {
+  display: none;
+}
+
+.coming-soon-logo {
+  width: 120px;
+  margin-bottom: 2rem;
+}
+
+.coming-soon-title {
+  font-size: 3.5rem;
+  font-weight: 800;
+  background: linear-gradient(90deg, #ff00ff, #ff8800);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin-bottom: 1rem;
+}
+
+.coming-soon-divider {
+  color: #ff00ff;
+  margin-bottom: 1.5rem;
+}
+
+.coming-soon-desc {
+  color: #e0e0e0;
+  font-size: 1.2rem;
+  line-height: 1.6;
+  margin-bottom: 0.5rem;
+}
+
+.coming-soon-tagline {
+  color: #ff8800;
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-bottom: 3rem;
+}
+
+.notify-btn {
+  background: transparent;
+  border: 1px solid #ff8800;
+  color: white;
+  padding: 15px 35px;
+  border-radius: 50px;
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: all 0.3s ease;
+}
+
+.notify-btn:hover {
+  background: rgba(255, 136, 0, 0.15);
+  transform: translateY(-2px);
+}
+
+.footer-section {
+  margin-top: auto;
+  padding-top: 60px;
+  opacity: 0.7;
+  font-size: 0.85rem;
+  letter-spacing: 2px;
+}
+
+.heart {
+  color: #ff00ff;
+  display: block;
+  margin-bottom: 5px;
+  font-size: 1.2rem;
+}

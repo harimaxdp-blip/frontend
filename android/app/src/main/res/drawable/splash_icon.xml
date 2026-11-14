@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!--
+        This trick uses the full-page splash.png but centers it without scaling.
+        Since the logo is tiny in the full-page PNG, it will now appear
+        at its natural size, making it look much larger in the splash icon area.
+    -->
+    <item>
+        <bitmap
+            android:src="@drawable/splash"
+            android:gravity="center" />
+    </item>
+</layer-list>

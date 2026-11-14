@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    bg_next_ep_card.xml
+    Background for the "Up Next" episode card shown at >= 90% playback.
+    Very dark translucent surface with a subtle border and rounded corners.
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#ED0C0C12" />
+            <stroke
+                android:width="0.5dp"
+                android:color="#1FFFFFFF" />
+            <corners android:radius="12dp" />
+        </shape>
+    </item>
+
+</layer-list>
