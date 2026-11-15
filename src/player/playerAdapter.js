@@ -1,183 +1,155 @@
 import { Capacitor } from "@capacitor/core";
 import DeviceControl from "../plugins/deviceControl";
 import IOSPlayer from "../plugins/iosPlayer";
+import { resolveMediaSource } from "../utils/mediaSourceResolver";
 
-/**
- * Checks if the video URL is a direct media file / stream
- */
 export function isDirectVideo(url) {
   if (!url) return false;
-  return (
-    /\.(mp4|m3u8|mkv|webm|ts|avi|mov|flv|mpd)($|\?)/i.test(url) ||
-    /[?&]stream=1/i.test(url) ||
-    /\/hls\//i.test(url) ||
-    /\/dash\//i.test(url) ||
-    /\/manifest\//i.test(url) ||
-    /\/playlist\//i.test(url) ||
-    /\.m3u8/i.test(url) ||
-    /\.mpd/i.test(url)
-  );
+  return /\.(mp4|m3u8|mkv|webm|ts|avi|mov|flv|mpd|ogv|3gp|wmv)(?:$|[?#])/i.test(url) ||
+    /[?&]stream=1/i.test(url) || /\/(?:hls|dash|manifest|playlist)\//i.test(url);
 }
 
-/**
- * Checks if the video URL is natively supported by Apple AVPlayer (MP4, HLS, MOV, M4V)
- */
 export function isSupportedIOSFormat(url) {
   if (!url) return false;
-  const isHls = /\.m3u8($|\?)/i.test(url) || /\/hls\//i.test(url);
-  const isMp4 = /\.(mp4|m4v|mov)($|\?)/i.test(url);
-  return isHls || isMp4;
+  return /\.(m3u8|mp4|m4v|mov)(?:$|[?#])/i.test(url) || /\/hls\//i.test(url);
 }
 
-/**
- * Normalizes playlist entries for consistent cross-platform use
- */
 export function cleanPlaylist(playlist) {
   if (!Array.isArray(playlist)) return null;
   return playlist.map((ep) => ({
-    link:    ep.link || ep.url || ep.episodeLink || "",
-    title:   ep.title || ep.episodeTitle || ep.name || "",
+    link: ep.link || ep.url || ep.episodeLink || "",
+    title: ep.title || ep.episodeTitle || ep.name || "",
     episode: ep.episode || ep.episodeNo || ep.ep || "",
-    season:  ep.season || "1",
-    id:      ep.id || ""
+    season: ep.season || "1",
+    id: ep.id || "",
   }));
 }
 
-/**
- * Platform-Aware Player Adapter
- * - Android: Uses existing native DeviceControl (ExoPlayer, TorrentPlayer, WebPlayer)
- * - iOS: Uses dedicated native IOSPlayer (AVPlayerViewController) for MP4/HLS,
- *        with graceful GlobalPlayer fallback for MKV, AVI, FLV, web & magnet links.
- * - Web: Falls back to GlobalPlayer
- */
+function asFallback(url, error) {
+  return {
+    status: "iframe_fallback",
+    embedUrl: url,
+    provider: "External source",
+    fallbackReason: error?.message || "The media source could not be resolved safely.",
+  };
+}
+
 export const playerAdapter = {
-  getPlatform() {
-    return Capacitor.getPlatform(); // 'android' | 'ios' | 'web'
-  },
+  getPlatform() { return Capacitor.getPlatform(); },
+  isAndroid() { return this.getPlatform() === "android"; },
+  isIOS() { return this.getPlatform() === "ios"; },
+  isWeb() { return this.getPlatform() === "web"; },
 
-  isAndroid() {
-    return this.getPlatform() === "android";
-  },
-
-  isIOS() {
-    return this.getPlatform() === "ios";
-  },
-
-  isWeb() {
-    return this.getPlatform() === "web";
-  },
-
-  /**
-   * Dispatches playback based on the platform
-   * @param {Object} params
-   * @param {Object} params.movie - Selected movie or video item
-   * @param {Array}  params.playlist - Array of episodes if series
-   * @param {number} params.startIndex - Current episode index
-   * @param {Function} params.onDone - Callback when native player finishes
-   * @param {Function} params.onFallback - Callback to render GlobalPlayer fallback
-   */
   async play({ movie, playlist, startIndex = 0, onDone, onFallback }) {
     const isSeries = Array.isArray(playlist) && playlist.length > 1;
+    const sourcePlaylist = cleanPlaylist(playlist);
     const currentEpisode = isSeries ? playlist[startIndex] : movie;
-    const url = currentEpisode?.link || currentEpisode?.url || currentEpisode?.episodeLink;
+    const sourceUrl = currentEpisode?.link || currentEpisode?.url || currentEpisode?.episodeLink || "";
     const title = currentEpisode?.title || currentEpisode?.episodeTitle || "";
-
-    if (!url) {
-      throw new Error("No playable video URL provided");
-    }
-
-    const cleanedPlaylist = cleanPlaylist(playlist);
-    const fallbackPayload = {
-      url,
-      title,
-      playlist: cleanedPlaylist?.length > 0 ? cleanedPlaylist : null,
-      index: startIndex
-    };
+    if (!sourceUrl) throw new Error("No playable video URL provided");
 
     const platform = this.getPlatform();
+    const fallbackPayload = {
+      url: sourceUrl,
+      title,
+      playlist: sourcePlaylist?.length ? sourcePlaylist : null,
+      index: startIndex,
+    };
 
-    // ─── 1. ANDROID: 100% untouched native integration ───
-    if (platform === "android") {
-      // 1.1. Magnet links -> TorrentPlayerActivity
-      if (url.startsWith("magnet:")) {
-        try {
-          await DeviceControl.openTorrentPlayer({ magnet: url, title });
-          onDone?.();
-          return;
-        } catch (err) {
-          console.warn("[PlayerAdapter:Android] Torrent player failed:", err);
-          onDone?.();
-          return;
-        }
-      }
-
-      // 1.2. Normal HTTP/HLS/direct or web flow
-      const payload = {
-        url,
-        title,
-        playlist: cleanedPlaylist?.length > 0 ? JSON.stringify(cleanedPlaylist) : null,
-        index: startIndex
-      };
-
-      try {
-        if (isDirectVideo(url)) {
-          await DeviceControl.openExoPlayer(payload);
-        } else {
-          await DeviceControl.openWebPlayer(payload);
-        }
-        onDone?.();
-      } catch (err) {
-        console.warn("[PlayerAdapter:Android] Native player failed, falling back to GlobalPlayer:", err);
-        onFallback?.(err, fallbackPayload);
-      }
-      return;
-    }
-
-    // ─── 2. IOS: Dedicated IOSPlayer plugin with AVPlayerViewController ───
-    if (platform === "ios") {
-      // 2.1. Magnet links: Not supported natively by AVPlayer -> GlobalPlayer fallback
-      if (url.startsWith("magnet:")) {
-        console.warn("[PlayerAdapter:iOS] Magnet links not supported natively by AVPlayer, routing to fallback");
-        onFallback?.(new Error("Magnet streams not supported natively on iOS"), fallbackPayload);
-        return;
-      }
-
-      // 2.2. MKV, AVI, FLV, WMV: Unsupported container formats for AVPlayer -> graceful fallback to GlobalPlayer
-      if (/\.(mkv|avi|flv|wmv)($|\?)/i.test(url)) {
-        console.warn("[PlayerAdapter:iOS] Format not supported natively by AVPlayer, routing to GlobalPlayer fallback");
-        onFallback?.(new Error("Format not supported natively by iOS AVPlayer"), fallbackPayload);
-        return;
-      }
-
-      // 2.3. Supported native formats: MP4 and HLS (M3U8)
-      if (isSupportedIOSFormat(url)) {
-        const payload = {
-          url,
-          title,
-          playlist: cleanedPlaylist?.length > 0 ? cleanedPlaylist : null,
-          index: startIndex
-        };
-
-        try {
-          await IOSPlayer.openPlayer(payload);
-          onDone?.();
-        } catch (err) {
-          console.warn("[PlayerAdapter:iOS] IOSPlayer failed, falling back to GlobalPlayer:", err);
-          onFallback?.(err, fallbackPayload);
-        }
-        return;
-      }
-
-      // 2.4. Other web / embed video links -> fallback to GlobalPlayer
-      console.log("[PlayerAdapter:iOS] Routing web video link to GlobalPlayer fallback");
+    // The browser GlobalPlayer owns source discovery for web playback.
+    if (platform === "web") {
       onFallback?.(null, fallbackPayload);
       return;
     }
 
-    // ─── 3. WEB / DESKTOP: In-browser GlobalPlayer ───
-    console.log("[PlayerAdapter:Web] Using GlobalPlayer for Web platform");
+    if (/^magnet:\?/i.test(sourceUrl)) {
+      if (platform === "android") {
+        try {
+          await DeviceControl.openTorrentPlayer({ magnet: sourceUrl, title });
+          onDone?.();
+        } catch (error) {
+          console.warn("[PlayerAdapter:Android] Torrent player failed:", error);
+          onDone?.();
+        }
+      } else {
+        onFallback?.(new Error("Magnet streams are not supported by iOS AVPlayer"), fallbackPayload);
+      }
+      return;
+    }
+
+    const sources = isSeries ? sourcePlaylist : [{ link: sourceUrl, title }];
+    const resolutions = await Promise.all(sources.map(async (source) => {
+      try {
+        return await resolveMediaSource(source.link, { preferNativeBridge: true });
+      } catch (error) {
+        if (error?.name === "AbortError") throw error;
+        return asFallback(source.link, error);
+      }
+    }));
+    const allResolved = resolutions.every((result) => result?.status === "resolved" && result.streamUrl);
+
+    if (!allResolved) {
+      // Keep each episode's resolution result so GlobalPlayer does not repeat provider requests.
+      onFallback?.(null, {
+        ...fallbackPayload,
+        initialResolution: isSeries ? resolutions[startIndex] : resolutions[0],
+        initialResolutions: isSeries ? resolutions : null,
+      });
+      return;
+    }
+
+    const resolvedPlaylist = isSeries
+      ? sourcePlaylist.map((episode, index) => ({ ...episode, link: resolutions[index].streamUrl }))
+      : null;
+    const selectedResolution = resolutions[startIndex] || resolutions[0];
+    const playbackUrl = selectedResolution.streamUrl;
+    const resolvedFallbackPayload = {
+      ...fallbackPayload,
+      initialResolution: selectedResolution,
+      initialResolutions: isSeries ? resolutions : null,
+    };
+
+    if (platform === "android") {
+      const payload = {
+        url: playbackUrl,
+        title,
+        playlist: resolvedPlaylist?.length ? JSON.stringify(resolvedPlaylist) : null,
+        index: startIndex,
+      };
+      try {
+        if (isDirectVideo(playbackUrl)) await DeviceControl.openExoPlayer(payload);
+        else await DeviceControl.openWebPlayer(payload);
+        onDone?.();
+      } catch (error) {
+        console.warn("[PlayerAdapter:Android] Native player failed, falling back to GlobalPlayer:", error);
+        onFallback?.(error, resolvedFallbackPayload);
+      }
+      return;
+    }
+
+    if (platform === "ios") {
+      const nativePlaylistSupported = !resolvedPlaylist || resolvedPlaylist.every((episode) => isSupportedIOSFormat(episode.link));
+      if (isSupportedIOSFormat(playbackUrl) && nativePlaylistSupported) {
+        try {
+          await IOSPlayer.openPlayer({
+            url: playbackUrl,
+            title,
+            playlist: resolvedPlaylist,
+            index: startIndex,
+          });
+          onDone?.();
+        } catch (error) {
+          console.warn("[PlayerAdapter:iOS] IOSPlayer failed, falling back to GlobalPlayer:", error);
+          onFallback?.(error, resolvedFallbackPayload);
+        }
+      } else {
+        onFallback?.(null, resolvedFallbackPayload);
+      }
+      return;
+    }
+
     onFallback?.(null, fallbackPayload);
-  }
+  },
 };
 
 export default playerAdapter;

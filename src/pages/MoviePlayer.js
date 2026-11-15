@@ -91,6 +91,8 @@ export default function MoviePlayer() {
         title={fallbackPayload.title}
         playlist={fallbackPayload.playlist}
         startIndex={fallbackPayload.index ?? 0}
+        initialResolution={fallbackPayload.initialResolution}
+        initialResolutions={fallbackPayload.initialResolutions}
         onClose={handleGoBack}
       />
     );
