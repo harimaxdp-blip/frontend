@@ -294,16 +294,39 @@
 .fp-btn-apply:active{transform:scale(0.97);opacity:0.80}
 
 .tv-mode .fp-pill:focus,
-.android-mode .fp-pill:focus{
-  outline:none;
-  border-color:rgba(255,255,255,0.55)!important;
-  box-shadow:0 0 0 3px rgba(255,255,255,0.18)!important;
-  transform:scale(1.03);z-index:2;
+.android-mode .fp-pill:focus,
+[data-input="key"] .fp-pill:focus {
+  outline: 3px solid #e50914 !important;
+  outline-offset: 2px !important;
+  border-color: #e50914 !important;
+  box-shadow: 0 0 16px rgba(229, 9, 20, 0.7) !important;
+  transform: scale(1.05) !important;
+  z-index: 50 !important;
 }
+
 .tv-mode .fp-tab:focus,
-.android-mode .fp-tab:focus{outline:2px solid rgba(255,255,255,0.40);outline-offset:2px}
+.android-mode .fp-tab:focus,
+[data-input="key"] .fp-tab:focus {
+  outline: 3px solid #e50914 !important;
+  outline-offset: 2px !important;
+  box-shadow: 0 0 14px rgba(229, 9, 20, 0.6) !important;
+  z-index: 30 !important;
+}
+
 .tv-mode .fp-sheet-close:focus,
-.android-mode .fp-sheet-close:focus{outline:2px solid rgba(255,255,255,0.40);outline-offset:3px}
+.android-mode .fp-sheet-close:focus,
+[data-input="key"] .fp-sheet-close:focus,
+.tv-mode .fp-btn-apply:focus,
+.android-mode .fp-btn-apply:focus,
+[data-input="key"] .fp-btn-apply:focus,
+.tv-mode .fp-btn-reset:focus,
+.android-mode .fp-btn-reset:focus,
+[data-input="key"] .fp-btn-reset:focus {
+  outline: 3px solid #e50914 !important;
+  outline-offset: 3px !important;
+  box-shadow: 0 0 16px rgba(229, 9, 20, 0.7) !important;
+  z-index: 50 !important;
+}
 
 .fp-trigger{
   position:relative;

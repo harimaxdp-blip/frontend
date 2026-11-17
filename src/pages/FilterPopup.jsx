@@ -153,6 +153,55 @@ export function FilterPopup({
     onReset?.();
   };
 
+  const handleTabKeyDown = (e, index) => {
+    if (e.key === "ArrowRight") {
+      e.preventDefault();
+      const nextIdx = (index + 1) % tabs.length;
+      setActiveTab(tabs[nextIdx].id);
+      setTimeout(() => {
+        const tabEls = document.querySelectorAll(".fp-tab");
+        if (tabEls[nextIdx]) tabEls[nextIdx].focus();
+      }, 30);
+    } else if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      const prevIdx = (index - 1 + tabs.length) % tabs.length;
+      setActiveTab(tabs[prevIdx].id);
+      setTimeout(() => {
+        const tabEls = document.querySelectorAll(".fp-tab");
+        if (tabEls[prevIdx]) tabEls[prevIdx].focus();
+      }, 30);
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      const firstPill = document.querySelector(".fp-panel--active .fp-pill");
+      if (firstPill) firstPill.focus();
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      document.querySelector(".fp-sheet-close")?.focus();
+    }
+  };
+
+  const handlePillKeyDown = (e) => {
+    if (e.key === "ArrowUp") {
+      const activePanel = document.querySelector(".fp-panel--active");
+      const pills = Array.from(activePanel?.querySelectorAll(".fp-pill") || []);
+      const idx = pills.indexOf(e.currentTarget);
+      const cols = activeTab === "year" ? 3 : 2;
+      if (idx < cols) {
+        e.preventDefault();
+        document.querySelector(".fp-tab--active")?.focus();
+      }
+    } else if (e.key === "ArrowDown") {
+      const activePanel = document.querySelector(".fp-panel--active");
+      const pills = Array.from(activePanel?.querySelectorAll(".fp-pill") || []);
+      const idx = pills.indexOf(e.currentTarget);
+      const cols = activeTab === "year" ? 3 : 2;
+      if (idx >= pills.length - cols) {
+        e.preventDefault();
+        document.querySelector(".fp-btn-apply")?.focus();
+      }
+    }
+  };
+
   if (!open) return null;
 
   const langs = [
@@ -204,14 +253,15 @@ export function FilterPopup({
         </div>
 
         <div className="fp-tabs" role="tablist">
-          {tabs.map((t) => (
+          {tabs.map((t, idx) => (
             <button
               key={t.id}
               role="tab"
-              ref={activeTab === t.id ? activeTabRef : null} // Assign ref to active tab
+              ref={activeTab === t.id ? activeTabRef : null}
               aria-selected={activeTab === t.id}
               className={`fp-tab${activeTab === t.id ? " fp-tab--active" : ""}`}
               onClick={() => setActiveTab(t.id)}
+              onKeyDown={(e) => handleTabKeyDown(e, idx)}
             >
               {t.label}
               {t.active && <span className="fp-tab-badge" aria-hidden="true" />}
@@ -236,6 +286,7 @@ export function FilterPopup({
                     key={l.value}
                     className={`fp-pill${active ? " fp-pill--active" : ""}`}
                     onClick={() => handleLang(l.value)}
+                    onKeyDown={handlePillKeyDown}
                     aria-pressed={active}
                   >
                     {scriptChar
@@ -267,6 +318,7 @@ export function FilterPopup({
                     key={g.value}
                     className={`fp-pill${active ? " fp-pill--active" : ""}`}
                     onClick={() => handleGenre(g.value)}
+                    onKeyDown={handlePillKeyDown}
                     aria-pressed={active}
                   >
                     <i className={`ti ${g.icon} fp-pill-icon`} aria-hidden="true" />
@@ -295,6 +347,7 @@ export function FilterPopup({
                     key={y.value}
                     className={`fp-pill fp-pill-year${active ? " fp-pill--active" : ""}`}
                     onClick={() => handleYear(y.value)}
+                    onKeyDown={handlePillKeyDown}
                     aria-pressed={active}
                   >
                     {active && <i className="ti ti-check fp-check" aria-hidden="true" />}
