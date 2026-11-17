@@ -1,6 +1,10 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import Hls from "hls.js";
-import { normalizeLanguageLabel, resolveMediaSource } from "../utils/mediaSourceResolver";
+import {
+  detectDirectMediaType,
+  normalizeLanguageLabel,
+  resolveMediaSource,
+} from "../utils/mediaSourceResolver";
 
 const PROXY_BASE = process.env.REACT_APP_MEDIA_PROXY_URL || "http://localhost:4000";
 const EMPTY_LIST = Object.freeze([]);
@@ -81,8 +85,6 @@ const RE_DASH    = /\.mpd($|\?)/i;
 const RE_MAGNET  = /^magnet:\?/i;
 const RE_ARCHIVE = /\.(zip|rar|7z|tar|gz|iso|torrent|exe|apk)($|\?)/i;
 const RE_MKV_AVI = /\.(mkv|avi|wmv|flv)($|\?)/i;
-const RE_DIRECT  = /\.(mp4|m3u8|webm|mkv|avi|mov|ts|flv|ogv|3gp|wmv)($|\?)/i;
-
 function getCleanFileName(url) {
   try {
     if (RE_MAGNET.test(url)) {
@@ -102,18 +104,6 @@ function getFileExtension(url) {
   if (RE_MAGNET.test(url)) return "MAGNET";
   const m = url.match(/\.([a-z0-9]{2,5})(?:$|\?)/i);
   return m ? m[1].toUpperCase() : "FILE";
-}
-
-function isDirectUrl(url) {
-  return (
-    RE_DIRECT.test(url) ||
-    /[?&]stream=1/i.test(url) ||
-    /\/hls\//i.test(url) ||
-    /\/dash\//i.test(url) ||
-    /\/manifest\//i.test(url) ||
-    /\.m3u8/i.test(url) ||
-    /\.mpd/i.test(url)
-  );
 }
 
 function useAdBlock(iframeRef) {
@@ -279,6 +269,7 @@ export default function GlobalPlayer({
   const isScrubbingRef    = useRef(false);
   const lastSaveRef       = useRef(0);
   const pendingSeekRef    = useRef(null);
+  const dashRef           = useRef(null);
   const showResumeRef     = useRef(false);
   const gestureRef        = useRef({ active: false, moved: false, type: null, startX: 0, startY: 0, startValue: 0 });
   const gestureTimer      = useRef(null);
@@ -311,6 +302,8 @@ export default function GlobalPlayer({
 
   const [mode, setMode]                       = useState("discovering");
   const [directUrl, setDirectUrl]             = useState("");
+  const [directMediaType, setDirectMediaType] = useState("");
+  const [directReferrerPolicy, setDirectReferrerPolicy] = useState("");
   const [iframeUrl, setIframeUrl]             = useState("");
   const [embedFallback, setEmbedFallback]     = useState(null);
   const [resolvedFallbackSource, setResolvedFallbackSource] = useState(null);
@@ -563,6 +556,7 @@ export default function GlobalPlayer({
 
       setDiscoverMsg("Transcoding DD5.1 audio to AAC…");
       const startParam = startAtSec > 0 ? `&start=${Math.floor(startAtSec)}` : "";
+      setDirectMediaType("hls");
       setDirectUrl(
         `${PROXY_BASE}/api/hls/master.m3u8?url=${encodeURIComponent(mediaHttpUrl)}&audio=0${startParam}`
       );
@@ -590,6 +584,8 @@ export default function GlobalPlayer({
     setError("");
     setTrackNotice("");
     setDirectUrl("");
+    setDirectMediaType("");
+    setDirectReferrerPolicy("");
     setIframeUrl("");
     setEmbedFallback(null);
     setResolvedFallbackSource(null);
@@ -671,6 +667,7 @@ export default function GlobalPlayer({
             }
 
             probeDirectSource(streamUrl);
+            setDirectMediaType(detectDirectMediaType(streamUrl) || "");
             setDirectUrl(streamUrl);
             setEngine("Magnet");
             setMode("direct");
@@ -727,18 +724,7 @@ export default function GlobalPlayer({
         }
       }
 
-      // 5. Direct Media URL
-      if (isDirectUrl(rawUrl)) {
-        setResolvedFallbackSource(null);
-        if (ctrl.signal.aborted) return;
-        probeDirectSource(rawUrl);
-        setDirectUrl(rawUrl);
-        setEngine("");
-        setMode("direct");
-        return;
-      }
-
-      // 6. Resolve direct media or a provider's documented public API.
+      // Resolve every web source through the common classifier and provider resolver.
       setDiscoverMsg("Checking supported source…");
       const initialForEpisode = initialResolutions?.[currentIndex] ||
         (currentIndex === startIndex ? initialResolution : null);
@@ -770,6 +756,8 @@ export default function GlobalPlayer({
           })));
         }
         probeDirectSource(result.streamUrl);
+        setDirectMediaType(result.mediaType || detectDirectMediaType(result.streamUrl) || "");
+        setDirectReferrerPolicy(result.referrerPolicy || "");
         setDirectUrl(result.streamUrl);
         setEngine(result.provider || "Direct Stream");
         setMode("direct");
@@ -820,8 +808,83 @@ export default function GlobalPlayer({
     const video = videoRef.current;
     try { hlsRef.current?.destroy(); } catch {}
     hlsRef.current = null;
+    try { dashRef.current?.reset(); } catch {}
+    dashRef.current = null;
+    const fallbackToProvider = () => {
+      if (!resolvedFallbackSource) return false;
+      setEmbedFallback({
+        provider: resolvedFallbackSource.provider,
+        reason: "The resolved stream could not be played; returning to the provider player.",
+      });
+      setIframeUrl(resolvedFallbackSource.url);
+      setMode("iframe");
+      setError("");
+      return true;
+    };
 
-    if (RE_HLS.test(directUrl)) {
+    if (directMediaType === "dash" || RE_DASH.test(directUrl)) {
+      let disposed = false;
+      let dashPlayer = null;
+      setDiscoverMsg("Loading DASH playback engine…");
+      import("dashjs").then(({ default: dashjs }) => {
+        if (disposed) return;
+        dashPlayer = dashjs.MediaPlayer().create();
+        dashRef.current = dashPlayer;
+        dashPlayer.on(dashjs.MediaPlayer.events.STREAM_INITIALIZED, () => {
+          const bitrates = dashPlayer.getBitrateInfoListFor("video") || [];
+          if (bitrates.length) {
+            setQualityList([
+              { id: -1, label: "Auto" },
+              ...bitrates.map((item) => ({
+                id: item.qualityIndex,
+                label: item.height ? `${item.height}p` : `${Math.round((item.bitrate || 0) / 1000)} kbps`,
+              })),
+            ]);
+            setActiveQuality(-1);
+          }
+
+          const audioTracks = dashPlayer.getTracksFor("audio") || [];
+          setAudioList(audioTracks.map((track, idx) => ({
+            id: idx,
+            dashTrack: track,
+            label: normalizeLanguageLabel(track.lang || track.label, track.lang, idx),
+            lang: track.lang || "",
+            source: "dash",
+          })));
+
+          const textTracks = dashPlayer.getTracksFor("text") || [];
+          setSubtitleList((prev) => [
+            ...prev.filter((sub) => ["prop", "upload", "proxy-sub", "provider"].includes(sub.source)),
+            ...textTracks.map((track, idx) => ({
+              id: `dash-${idx}`,
+              dashIdx: idx,
+              dashTrack: track,
+              label: normalizeLanguageLabel(track.lang || track.label, track.lang, idx),
+              lang: track.lang || "",
+              source: "dash",
+            })),
+          ]);
+        });
+        dashPlayer.on(dashjs.MediaPlayer.events.ERROR, () => {
+          setError(
+            resolvedFallbackSource
+              ? "DASH playback failed. Retry or choose the provider player."
+              : "DASH playback failed. Check stream availability and CORS access, then retry."
+          );
+        });
+        dashPlayer.initialize(video, directUrl, !showResumeRef.current);
+        setEngine("DASH");
+      }).catch(() => {
+        if (!disposed) setError("The DASH playback engine could not be loaded.");
+      });
+      return () => {
+        disposed = true;
+        dashPlayer?.reset();
+        if (dashRef.current === dashPlayer) dashRef.current = null;
+      };
+    }
+
+    if (directMediaType === "hls" || RE_HLS.test(directUrl)) {
       if (Hls.isSupported()) {
         const hls = new Hls({
           enableWorker: true,
@@ -901,9 +964,14 @@ export default function GlobalPlayer({
 
         hls.on(Hls.Events.ERROR, (_, d) => {
           if (d.fatal) {
-            if (d.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad();
-            else if (d.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
-            else setError("HLS stream error.");
+            if (resolvedFallbackSource) {
+              setError("Direct playback failed. Retry or choose the provider player.");
+            } else if (d.type === Hls.ErrorTypes.NETWORK_ERROR) {
+              setError("HLS network error. Retry playback.");
+            } else if (d.type === Hls.ErrorTypes.MEDIA_ERROR) {
+              hls.recoverMediaError();
+              setError("HLS media error. Retry playback.");
+            } else setError("HLS stream error. Retry playback.");
           }
         });
         if (!directUrl.includes("/api/hls/")) setEngine("HLS");
@@ -911,14 +979,9 @@ export default function GlobalPlayer({
         video.src = directUrl;
         if (!showResumeRef.current) video.play().catch(() => {});
         setEngine("HLS-Native");
-      } else {
+      } else if (!fallbackToProvider()) {
         setError("HLS not supported on this browser.");
       }
-    } else if (RE_DASH.test(directUrl)) {
-      video.src = directUrl;
-      video.load();
-      if (!showResumeRef.current) video.play().catch(() => {});
-      setEngine("DASH");
     } else {
       video.src = directUrl;
       video.load();
@@ -929,13 +992,15 @@ export default function GlobalPlayer({
     return () => {
       try { hlsRef.current?.destroy(); } catch {}
       hlsRef.current = null;
+      try { dashRef.current?.reset(); } catch {}
+      dashRef.current = null;
     };
-  }, [mode, directUrl]);
+  }, [mode, directUrl, directMediaType, resolvedFallbackSource]);
 
   // ── Detect Native HTML5 Audio & Subtitle Tracks ────────────────────────
   const syncNativeTracks = useCallback(() => {
     const v = videoRef.current;
-    if (!v || hlsRef.current) return;
+    if (!v || hlsRef.current || dashRef.current) return;
 
     if (v.audioTracks && v.audioTracks.length > 0 && propAudioTracks.length === 0) {
       const list = [];
@@ -998,9 +1063,15 @@ export default function GlobalPlayer({
     setActiveQuality(item.id);
     if (hlsRef.current) {
       hlsRef.current.currentLevel = item.id;
+    } else if (dashRef.current) {
+      dashRef.current.updateSettings({
+        streaming: { abr: { autoSwitchBitrate: { video: item.id === -1 } } },
+      });
+      if (item.id >= 0) dashRef.current.setQualityFor("video", item.id);
     } else if (item.url && videoRef.current) {
       const v = videoRef.current;
       pendingSeekRef.current = v.currentTime;
+      setDirectMediaType(detectDirectMediaType(item.url) || "");
       setDirectUrl(item.url);
     }
     setSettingsTab("main");
@@ -1014,15 +1085,19 @@ export default function GlobalPlayer({
       const seekSec = Math.floor(v.currentTime || 0);
       pendingSeekRef.current = seekSec;
       setIsBuffering(true);
+      setDirectMediaType("hls");
       setDirectUrl(`${item.baseStreamUrl}&start=${seekSec}`);
     } else if (hlsRef.current) {
       hlsRef.current.audioTrack = item.id;
+    } else if (item.source === "dash" && dashRef.current && item.dashTrack) {
+      dashRef.current.setCurrentTrack(item.dashTrack);
     } else if (v?.audioTracks && v.audioTracks.length > item.id) {
       for (let i = 0; i < v.audioTracks.length; i++) {
         v.audioTracks[i].enabled = i === item.id;
       }
     } else if (item.url && v) {
       pendingSeekRef.current = v.currentTime;
+      setDirectMediaType(detectDirectMediaType(item.url) || "");
       setDirectUrl(item.url);
     } else if (item.source === "detected") {
       setTrackNotice(`Start the Node.js media proxy (port 4000) to switch to "${item.label}" in-browser, or open in VLC.`);
@@ -1035,6 +1110,7 @@ export default function GlobalPlayer({
     if (!subItem) {
       setActiveSub(-1);
       if (hlsRef.current) hlsRef.current.subtitleTrack = -1;
+      if (dashRef.current) dashRef.current.setTextTrack(-1);
       if (v?.textTracks) {
         for (let i = 0; i < v.textTracks.length; i++) v.textTracks[i].mode = "disabled";
       }
@@ -1045,6 +1121,8 @@ export default function GlobalPlayer({
     setActiveSub(subItem.id);
     if (subItem.source === "hls" && hlsRef.current) {
       hlsRef.current.subtitleTrack = subItem.hlsIdx;
+    } else if (subItem.source === "dash" && dashRef.current) {
+      dashRef.current.setTextTrack(subItem.dashIdx);
     } else if (v?.textTracks) {
       for (let i = 0; i < v.textTracks.length; i++) {
         const track = v.textTracks[i];
@@ -1077,6 +1155,7 @@ export default function GlobalPlayer({
 
     if (activeSub === -1) {
       if (hlsRef.current) hlsRef.current.subtitleTrack = -1;
+      if (dashRef.current) dashRef.current.setTextTrack(-1);
       return;
     }
 
@@ -1084,6 +1163,10 @@ export default function GlobalPlayer({
     if (!selected) return;
     if (selected.source === "hls" && hlsRef.current) {
       hlsRef.current.subtitleTrack = selected.hlsIdx;
+      return;
+    }
+    if (selected.source === "dash" && dashRef.current) {
+      dashRef.current.setTextTrack(selected.dashIdx);
       return;
     }
 
@@ -1165,12 +1248,7 @@ export default function GlobalPlayer({
     const onLeavePiP = () => setIsPiP(false);
     const onEnd = () => { clearPos(currentTitle); startCountdown(); };
     const onErr = () => {
-      if (resolvedFallbackSource) {
-        setEmbedFallback({ provider: resolvedFallbackSource.provider, reason: "The resolved stream could not be played; returning to the provider embed." });
-        setIframeUrl(resolvedFallbackSource.url);
-        setMode("iframe");
-        setError("");
-      } else if (parsedMeta.isMkv || parsedMeta.isSurround) {
+      if (parsedMeta.isMkv || parsedMeta.isSurround) {
         setUnsupportedInfo({
           ext: getFileExtension(rawUrl),
           isMagnet: false,
@@ -1181,7 +1259,11 @@ export default function GlobalPlayer({
         });
         setMode("unsupported");
       } else {
-        setError("Playback error — codec unsupported or expired link.");
+        setError(
+          resolvedFallbackSource
+            ? "Direct playback failed. Retry or choose the provider player."
+            : "Playback error — codec unsupported or expired link."
+        );
       }
     };
 
@@ -1253,6 +1335,7 @@ export default function GlobalPlayer({
   // ── Cleanup ───────────────────────────────────────────────────────────
   useEffect(() => () => {
     try { hlsRef.current?.destroy(); } catch {}
+    try { dashRef.current?.reset(); } catch {}
     clearTimeout(controlsTimer.current);
     clearTimeout(lockTimer.current);
     clearInterval(countdownRef.current);
@@ -1437,6 +1520,7 @@ export default function GlobalPlayer({
     if (currentAudioObj?.source === "proxy" && currentAudioObj.baseStreamUrl) {
       pendingSeekRef.current = targetSec;
       setIsBuffering(true);
+      setDirectMediaType("hls");
       setDirectUrl(`${currentAudioObj.baseStreamUrl}&start=${targetSec}`);
       return;
     }
@@ -1579,22 +1663,86 @@ export default function GlobalPlayer({
     gestureRef.current = { ...g, active: false, moved: false };
   }, []);
 
-  // ── Keyboard ──────────────────────────────────────────────────────────
+  // ── Keyboard & Android TV Remote Handler ──────────────────────────
   useEffect(() => {
     const onKey = (e) => {
-      if (e.target.tagName === "INPUT" || isLocked) return;
-      if (e.key === " " || e.key === "k") { e.preventDefault(); if (mode === "direct") togglePlay(); }
-      if (e.key === "f") toggleFullscreen();
-      if (e.key === "p") togglePiP();
-      if (e.key === "m") toggleMute();
-      if (e.key === "ArrowLeft")  { e.preventDefault(); triggerSkipRipple("left", -10); }
-      if (e.key === "ArrowRight") { e.preventDefault(); triggerSkipRipple("right", 10); }
-      if (e.key === "ArrowUp")    { e.preventDefault(); setVol((videoRef.current?.volume ?? 1) + 0.1); }
-      if (e.key === "ArrowDown")  { e.preventDefault(); setVol((videoRef.current?.volume ?? 1) - 0.1); }
-      if (e.key === "Escape")     {
-        if (showSettings || showSpeedPop) { setShowSettings(false); setShowSpeedPop(false); }
-        else if (document.fullscreenElement) toggleFullscreen();
-        else onClose?.();
+      const tag = e.target.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+
+      const key = e.key;
+      const isMediaPlayKey = key === "MediaPlayPause" || key === "MediaPlay" || key === "MediaPause" || key === " " || key === "k";
+      const isMediaRewind  = key === "MediaRewind" || key === "MediaTrackPrevious";
+      const isMediaForward = key === "MediaFastForward" || key === "MediaTrackNext";
+      const isBackKey      = key === "Escape" || key === "GoBack" || key === "Backspace" || e.keyCode === 10009;
+
+      if (isLocked) {
+        if (isBackKey) {
+          e.preventDefault();
+          setIsLocked(false);
+        }
+        return;
+      }
+
+      if (isMediaPlayKey) {
+        e.preventDefault();
+        setShowControls(true);
+        if (mode === "direct") togglePlay();
+        return;
+      }
+
+      if (isMediaRewind) {
+        e.preventDefault();
+        setShowControls(true);
+        triggerSkipRipple("left", -10);
+        return;
+      }
+
+      if (isMediaForward) {
+        e.preventDefault();
+        setShowControls(true);
+        triggerSkipRipple("right", 10);
+        return;
+      }
+
+      if (key === "f") { e.preventDefault(); toggleFullscreen(); return; }
+      if (key === "p") { e.preventDefault(); togglePiP(); return; }
+      if (key === "m") { e.preventDefault(); toggleMute(); return; }
+
+      if (key === "ArrowLeft") {
+        e.preventDefault();
+        setShowControls(true);
+        triggerSkipRipple("left", -10);
+        return;
+      }
+      if (key === "ArrowRight") {
+        e.preventDefault();
+        setShowControls(true);
+        triggerSkipRipple("right", 10);
+        return;
+      }
+      if (key === "ArrowUp") {
+        e.preventDefault();
+        setShowControls(true);
+        setVol((videoRef.current?.volume ?? 1) + 0.1);
+        return;
+      }
+      if (key === "ArrowDown") {
+        e.preventDefault();
+        setShowControls(true);
+        setVol((videoRef.current?.volume ?? 1) - 0.1);
+        return;
+      }
+
+      if (isBackKey) {
+        e.preventDefault();
+        if (showSettings || showSpeedPop) {
+          setShowSettings(false);
+          setShowSpeedPop(false);
+        } else if (document.fullscreenElement) {
+          toggleFullscreen();
+        } else {
+          onClose?.();
+        }
       }
     };
     window.addEventListener("keydown", onKey);
@@ -1688,7 +1836,7 @@ export default function GlobalPlayer({
       {(mode === "direct" || mode === "discovering") && (
         <video
           ref={videoRef}
-          crossOrigin="anonymous"
+          referrerPolicy={directReferrerPolicy || undefined}
           style={{
             ...S.video,
             objectFit: isStretched ? "cover" : "contain",
@@ -1791,7 +1939,7 @@ export default function GlobalPlayer({
         </button>
       )}
 
-      {/* ── IFRAME / EMBED ── */}
+{/* ── IFRAME / EMBED ── */}
       {mode === "iframe" && (
         <div style={{ ...S.iframeWrap, bottom: isSeries ? EP_BAR_H : 0 }}>
           <iframe
@@ -1805,8 +1953,47 @@ export default function GlobalPlayer({
             onLoad={() => setError("")}
           />
           {embedFallback && (
-            <div role="status" style={{ position: "absolute", top: 16, left: 16, zIndex: 40, maxWidth: "min(520px, calc(100% - 32px))", padding: "9px 12px", borderRadius: 8, background: "rgba(0,0,0,0.72)", color: "#fff", fontSize: 12, lineHeight: 1.4, pointerEvents: "none" }}>
-              Using {embedFallback.provider}'s player: {embedFallback.reason}
+            <div
+              role="status"
+              style={{
+                position: "absolute",
+                top: 78,
+                left: 26,
+                zIndex: 450,
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                maxWidth: "min(520px, calc(100% - 52px))",
+                padding: "9px 14px",
+                borderRadius: 10,
+                background: "rgba(12, 12, 15, 0.88)",
+                backdropFilter: "blur(12px)",
+                border: "1px solid rgba(255, 255, 255, 0.14)",
+                color: "#f5f5f7",
+                fontSize: 12,
+                lineHeight: 1.4,
+                boxShadow: "0 8px 24px rgba(0,0,0,0.6)",
+              }}
+            >
+              <span style={{ flex: 1 }}>
+                Using <strong>{embedFallback.provider}</strong>'s player: {embedFallback.reason}
+              </span>
+              <button
+                onClick={() => setEmbedFallback(null)}
+                style={{
+                  background: "rgba(255,255,255,0.1)",
+                  border: "none",
+                  color: "#fff",
+                  borderRadius: 6,
+                  padding: "4px 8px",
+                  fontSize: 11,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  flexShrink: 0,
+                }}
+              >
+                Dismiss
+              </button>
             </div>
           )}
         </div>
@@ -2481,6 +2668,43 @@ export default function GlobalPlayer({
         <div style={{ ...S.errorToast, bottom: isSeries ? EP_BAR_H + 16 : 96 }}>
           <Icons.Warning />
           <span style={{ flex: 1, lineHeight: 1.35 }}>{error}</span>
+          {mode === "direct" && directUrl && (
+            <button
+              type="button"
+              style={S.dlBtn}
+              onClick={() => {
+                setError("");
+                if (hlsRef.current) {
+                  hlsRef.current.startLoad();
+                } else if (dashRef.current) {
+                  dashRef.current.attachSource(directUrl);
+                } else if (videoRef.current) {
+                  videoRef.current.src = directUrl;
+                  videoRef.current.load();
+                  videoRef.current.play().catch(() => {});
+                }
+              }}
+            >
+              Retry
+            </button>
+          )}
+          {mode === "direct" && resolvedFallbackSource && (
+            <button
+              type="button"
+              style={S.dlBtn}
+              onClick={() => {
+                setEmbedFallback({
+                  provider: resolvedFallbackSource.provider,
+                  reason: "Direct playback failed; the provider player is available as a fallback.",
+                });
+                setIframeUrl(resolvedFallbackSource.url);
+                setMode("iframe");
+                setError("");
+              }}
+            >
+              Provider
+            </button>
+          )}
           <a href={externalVlc} style={S.dlBtn} title="Open in VLC Player">
             <Icons.External /> VLC
           </a>

@@ -85,6 +85,8 @@ public class DeviceControlPlugin extends Plugin {
         JSObject data = call.getData();
         String url = data.optString("url");
         String title = data.optString("title");
+        String mediaType = data.optString("mediaType", "");
+        String referer = data.optString("referer", "");
         String playlist = data.optString("playlist", null);
         int index = data.optInt("index", 0);
 
@@ -93,7 +95,6 @@ public class DeviceControlPlugin extends Plugin {
             return;
         }
 
-        // --- SMART ROUTING ---
         // 1. Magnet links
         if (url.startsWith("magnet:") || url.contains(".torrent")) {
             Intent intent = new Intent(getActivity(), TorrentPlayerActivity.class);
@@ -104,32 +105,21 @@ public class DeviceControlPlugin extends Plugin {
             return;
         }
 
-        // 2. Titles (Forum links) containing spaces or TamilMV keywords
-        if (url.contains(" ") || url.toLowerCase().contains("tamilmv")) {
-            String targetUrl = url;
-            if (url.contains(" ")) {
-                // Default to a mirror if it looks like a 1TamilMV title
-                targetUrl = "https://www.1TamilMV.cards";
-                String[] parts = url.split(" ", 2);
-                if (parts.length > 0 && parts[0].contains(".")) targetUrl = "https://" + parts[0];
-            }
-            
-            Intent intent = new Intent(getActivity(), WebPlayerActivity.class);
-            intent.putExtra("url", targetUrl);
-            intent.putExtra("title", title);
-            if (playlist != null) {
-                intent.putExtra("playlist", playlist);
-                intent.putExtra("index", index);
-            }
-            getActivity().startActivity(intent);
-            call.resolve();
+        if (!StreamResolver.isHttpUrl(url)) {
+            call.reject("A valid HTTP/HTTPS media URL is required");
             return;
         }
 
-        // 3. Normal Video Files
+        // Always route media playback to PlayerActivity (ExoPlayer) on Android
         Intent intent = new Intent(getActivity(), PlayerActivity.class);
         intent.putExtra("url", url);
-        intent.putExtra("title", title);
+        intent.putExtra("title", title != null ? title : "");
+        if (mediaType != null && !mediaType.isEmpty()) {
+            intent.putExtra(PlayerActivity.EXTRA_MEDIA_TYPE, mediaType);
+        }
+        if (StreamResolver.isHttpUrl(referer)) {
+            intent.putExtra(PlayerActivity.EXTRA_REFERER, referer);
+        }
         if (playlist != null && !playlist.equals("null") && !playlist.isEmpty()) {
             intent.putExtra("playlist", playlist);
             intent.putExtra("index", index);
@@ -152,30 +142,23 @@ public class DeviceControlPlugin extends Plugin {
         if (!url.startsWith("http") && !url.startsWith("magnet:")) {
             url = "https://" + url;
         }
+        if (!StreamResolver.isHttpUrl(url)) {
+            call.reject("A valid HTTP/HTTPS provider URL is required");
+            return;
+        }
 
-        // --- SMART ROUTING FOR WEB PLAYER ---
-        // If it's a Telegram or YouTube link, route it to PlayerActivity instead of WebPlayer
-        if (StreamResolver.isTelegram(url) || StreamResolver.isYouTube(url)) {
-            Intent intent = new Intent(getActivity(), PlayerActivity.class);
+        // Forum or web links with spaces / TamilMV keywords open in WebPlayerActivity
+        if (url.contains(" ") || url.toLowerCase().contains("tamilmv")) {
+            Intent intent = new Intent(getActivity(), WebPlayerActivity.class);
             intent.putExtra("url", url);
-            intent.putExtra("title", title);
-
-            String playlistStr = call.getString("playlist");
-            if (playlistStr == null) {
-                com.getcapacitor.JSArray playlistArr = call.getArray("playlist");
-                if (playlistArr != null) playlistStr = playlistArr.toString();
-            }
-            if (playlistStr != null) {
-                intent.putExtra("playlist", playlistStr);
-                intent.putExtra("index", call.getInt("index", 0));
-            }
-            
+            intent.putExtra("title", title != null ? title : "");
             getActivity().startActivity(intent);
             call.resolve();
             return;
         }
 
-        Intent intent = new Intent(getActivity(), WebPlayerActivity.class);
+        // Video playback routes to PlayerActivity (ExoPlayer) on Android
+        Intent intent = new Intent(getActivity(), PlayerActivity.class);
         intent.putExtra("url",   url);
         intent.putExtra("title", title != null ? title : "");
 

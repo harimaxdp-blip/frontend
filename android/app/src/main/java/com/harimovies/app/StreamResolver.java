@@ -1,6 +1,8 @@
 package com.harimovies.app;
 
 import android.util.Log;
+import java.net.URI;
+import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -8,18 +10,84 @@ public class StreamResolver {
     private static final String TAG = "STREAM_RESOLVED";
 
     public static boolean isDirectStream(String url) {
-        if (url == null) return false;
-        String lower = url.toLowerCase();
-        return lower.endsWith(".mp4") || lower.endsWith(".mkv") || lower.endsWith(".webm") 
-                || lower.endsWith(".avi") || lower.endsWith(".mov") || lower.contains(".mp4?");
+        String path = getHttpPath(url);
+        return hasExtension(path, ".mp4", ".mkv", ".webm", ".avi", ".mov", ".ogv", ".3gp", ".wmv", ".flv", ".ts");
     }
 
     public static boolean isHls(String url) {
-        return url != null && url.toLowerCase().contains(".m3u8");
+        return hasExtension(getHttpPath(url), ".m3u8");
     }
 
     public static boolean isDash(String url) {
-        return url != null && url.toLowerCase().contains(".mpd");
+        return hasExtension(getHttpPath(url), ".mpd");
+    }
+
+    public static boolean isSupportedMediaUrl(String url) {
+        return isDirectStream(url) || isHls(url) || isDash(url);
+    }
+
+    public static boolean isSupportedMediaType(String mediaType) {
+        if (mediaType == null) return false;
+        switch (mediaType.toLowerCase(Locale.ROOT)) {
+            case "mp4":
+            case "hls":
+            case "dash":
+            case "webm":
+            case "mkv":
+            case "avi":
+            case "mov":
+            case "ogv":
+            case "3gp":
+            case "wmv":
+            case "flv":
+            case "ts":
+            case "remux":
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    public static boolean isSupportedMediaTypeForUrl(String url, String mediaType) {
+        if (!isHttpUrl(url) || !isSupportedMediaType(mediaType)) return false;
+        try {
+            URI parsed = URI.create(url.trim());
+            String host = parsed.getHost() != null ? parsed.getHost().toLowerCase(Locale.ROOT) : "";
+            String path = parsed.getPath() != null ? parsed.getPath().toLowerCase(Locale.ROOT) : "";
+            if (hasExtension(path, ".html", ".htm", ".json", ".txt")) return false;
+            boolean isOnestreamPage = (host.equals("onestream.today") || host.endsWith(".onestream.today")) &&
+                    path.matches("/stream/(?:video|page)/\\d+/?");
+            return !isOnestreamPage;
+        } catch (IllegalArgumentException error) {
+            return false;
+        }
+    }
+
+    public static boolean isHttpUrl(String url) {
+        return getHttpPath(url) != null;
+    }
+
+    private static String getHttpPath(String url) {
+        if (url == null || url.trim().isEmpty()) return null;
+        try {
+            URI parsed = URI.create(url.trim());
+            String scheme = parsed.getScheme();
+            if (parsed.getHost() == null || parsed.getRawUserInfo() != null ||
+                    !("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme))) {
+                return null;
+            }
+            return parsed.getPath().toLowerCase(Locale.ROOT);
+        } catch (IllegalArgumentException error) {
+            return null;
+        }
+    }
+
+    private static boolean hasExtension(String path, String... extensions) {
+        if (path == null) return false;
+        for (String extension : extensions) {
+            if (path.endsWith(extension)) return true;
+        }
+        return false;
     }
 
     public static boolean isTelegram(String url) {
@@ -47,7 +115,7 @@ public class StreamResolver {
     public static boolean isEmbedPage(String url) {
         if (url == null) return false;
         String lower = url.toLowerCase();
-        return lower.contains("streamtape.com") || lower.contains("dood") || lower.contains("filemoon")
+        return lower.contains("onestream.today") || lower.contains("streamtape.com") || lower.contains("dood") || lower.contains("filemoon")
                 || lower.contains("voe.sx") || lower.contains("vidhide") || lower.contains("streamwish")
                 || lower.contains("mixdrop") || lower.contains("mp4upload") || lower.contains("sendvid")
                 || lower.contains("jwplayer") || lower.contains("iframe");
@@ -60,19 +128,19 @@ public class StreamResolver {
 
         if (isGoogleDrive(url)) {
             resolvedUrl = resolveGoogleDrive(url);
-            Log.d(TAG, "STREAM_TYPE: Google Drive -> " + resolvedUrl);
+            Log.d(TAG, "STREAM_TYPE: Google Drive");
         } else if (isTelegram(url)) {
             resolvedUrl = resolveTelegram(url);
-            Log.d(TAG, "STREAM_TYPE: Telegram -> " + resolvedUrl);
+            Log.d(TAG, "STREAM_TYPE: Telegram");
         } else if (isDropbox(url)) {
             resolvedUrl = resolveDropbox(url);
-            Log.d(TAG, "STREAM_TYPE: Dropbox -> " + resolvedUrl);
+            Log.d(TAG, "STREAM_TYPE: Dropbox");
         } else if (isOneDrive(url)) {
             resolvedUrl = resolveOneDrive(url);
-            Log.d(TAG, "STREAM_TYPE: OneDrive -> " + resolvedUrl);
+            Log.d(TAG, "STREAM_TYPE: OneDrive");
         }
 
-        Log.d(TAG, "STREAM_RESOLVED: " + resolvedUrl);
+        Log.d(TAG, "STREAM_RESOLVED");
         return resolvedUrl;
     }
 

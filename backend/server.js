@@ -866,7 +866,14 @@ app.get("/api/hls/master.m3u8", async (req, res) => {
   }
 });
 
-app.use("/api/hls-files", express.static(HLS_ROOT));
+app.use(
+  "/api/hls-files",
+  express.static(HLS_ROOT, {
+    setHeaders: (res) => {
+      res.setHeader("Access-Control-Allow-Origin", "*");
+    },
+  })
+);
 
 app.listen(PORT, () => {
   console.log(`Media Proxy running on http://localhost:${PORT}`);

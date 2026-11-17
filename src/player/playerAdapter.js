@@ -3,8 +3,11 @@ import DeviceControl from "../plugins/deviceControl";
 import IOSPlayer from "../plugins/iosPlayer";
 import { resolveMediaSource } from "../utils/mediaSourceResolver";
 
-export function isDirectVideo(url) {
+export function isDirectVideo(url, mediaType = "") {
   if (!url) return false;
+  if (["mp4", "hls", "dash", "webm", "mkv", "avi", "mov", "ogv", "3gp", "wmv", "flv", "ts", "remux"].includes(
+    String(mediaType).toLowerCase()
+  )) return true;
   return /\.(mp4|m3u8|mkv|webm|ts|avi|mov|flv|mpd|ogv|3gp|wmv)(?:$|[?#])/i.test(url) ||
     /[?&]stream=1/i.test(url) || /\/(?:hls|dash|manifest|playlist)\//i.test(url);
 }
@@ -40,7 +43,7 @@ export const playerAdapter = {
   isIOS() { return this.getPlatform() === "ios"; },
   isWeb() { return this.getPlatform() === "web"; },
 
-  async play({ movie, playlist, startIndex = 0, onDone, onFallback }) {
+  async play({ movie, playlist, startIndex = 0, onDone, onFallback, signal }) {
     const isSeries = Array.isArray(playlist) && playlist.length > 1;
     const sourcePlaylist = cleanPlaylist(playlist);
     const currentEpisode = isSeries ? playlist[startIndex] : movie;
@@ -80,29 +83,28 @@ export const playerAdapter = {
     const sources = isSeries ? sourcePlaylist : [{ link: sourceUrl, title }];
     const resolutions = await Promise.all(sources.map(async (source) => {
       try {
-        return await resolveMediaSource(source.link, { preferNativeBridge: true });
+        return await resolveMediaSource(source.link, { signal, preferNativeBridge: true });
       } catch (error) {
         if (error?.name === "AbortError") throw error;
         return asFallback(source.link, error);
       }
     }));
-    const allResolved = resolutions.every((result) => result?.status === "resolved" && result.streamUrl);
+    if (signal?.aborted) return;
 
-    if (!allResolved) {
-      // Keep each episode's resolution result so GlobalPlayer does not repeat provider requests.
-      onFallback?.(null, {
-        ...fallbackPayload,
-        initialResolution: isSeries ? resolutions[startIndex] : resolutions[0],
-        initialResolutions: isSeries ? resolutions : null,
-      });
-      return;
-    }
+    const selectedResolution = resolutions[startIndex] || resolutions[0];
+    const playbackUrl = (selectedResolution?.status === "resolved" && selectedResolution?.streamUrl)
+      ? selectedResolution.streamUrl
+      : sourceUrl;
 
     const resolvedPlaylist = isSeries
-      ? sourcePlaylist.map((episode, index) => ({ ...episode, link: resolutions[index].streamUrl }))
+      ? sourcePlaylist.map((episode, index) => ({
+          ...episode,
+          link: resolutions[index]?.status === "resolved" && resolutions[index]?.streamUrl
+            ? resolutions[index].streamUrl
+            : episode.link,
+        }))
       : null;
-    const selectedResolution = resolutions[startIndex] || resolutions[0];
-    const playbackUrl = selectedResolution.streamUrl;
+
     const resolvedFallbackPayload = {
       ...fallbackPayload,
       initialResolution: selectedResolution,
@@ -112,17 +114,21 @@ export const playerAdapter = {
     if (platform === "android") {
       const payload = {
         url: playbackUrl,
+        originalUrl: sourceUrl,
         title,
+        mediaType: selectedResolution?.mediaType,
+        referer: selectedResolution?.provider === "Onestream"
+          ? "https://dub.onestream.today/"
+          : undefined,
         playlist: resolvedPlaylist?.length ? JSON.stringify(resolvedPlaylist) : null,
         index: startIndex,
       };
       try {
-        if (isDirectVideo(playbackUrl)) await DeviceControl.openExoPlayer(payload);
-        else await DeviceControl.openWebPlayer(payload);
+        await DeviceControl.openExoPlayer(payload);
         onDone?.();
       } catch (error) {
-        console.warn("[PlayerAdapter:Android] Native player failed, falling back to GlobalPlayer:", error);
-        onFallback?.(error, resolvedFallbackPayload);
+        console.error("[PlayerAdapter:Android] Native ExoPlayer launch failed:", error);
+        onFallback?.(error, fallbackPayload);
       }
       return;
     }

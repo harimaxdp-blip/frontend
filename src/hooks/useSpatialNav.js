@@ -7,6 +7,7 @@ const FOCUSABLE_SELECTOR = [
   ".episode-card",
   ".season-card-v2",
   ".rw-hcard",
+  ".rw-hcard-delete",
   ".fp-pill",
   ".fp-tab",
   ".fp-trigger",
@@ -22,6 +23,8 @@ const FOCUSABLE_SELECTOR = [
   ".continue-play-btn",
   ".hero-play-btn",
   ".hero-nav",
+  ".hero-dot",
+  ".view-all-btn",
   ".back-btn",
   ".csg-back-btn",
   ".csm-back-btn",
@@ -29,10 +32,27 @@ const FOCUSABLE_SELECTOR = [
   "[data-menu-button]",
   "#search-input",
   ".nav-item",
+  ".gear-link",
+  ".profile-popup button",
+  ".avatar-option-wrap",
+  ".logout-btn",
+  ".bm-btn",
+  ".bm-input",
+  ".bm-select",
+  ".editor-input",
+  ".editor-select",
+  ".delete-btn",
+  ".edit-btn",
+  ".confirm-btn",
+  ".cancel-btn",
+  ".close-btn",
   "button:not([disabled]):not([tabindex='-1'])",
   "input:not([disabled]):not([type='hidden']):not([tabindex='-1'])",
+  "select:not([disabled]):not([tabindex='-1'])",
+  "textarea:not([disabled]):not([tabindex='-1'])",
   "a[href]:not([tabindex='-1'])",
-  "[role='button']:not([tabindex='-1'])"
+  "[role='button']:not([tabindex='-1'])",
+  "[tabindex='0']:not([tabindex='-1'])"
 ].join(", ");
 
 const KEY_TO_DIRECTION = {
@@ -75,12 +95,16 @@ function directionalScore(direction, current, candidate) {
   return primary + secondary * (aligned ? 0.75 : 2.5);
 }
 
-function focusElement(el, preventScroll = false) {
+export function focusElement(el, preventScroll = false) {
   if (!el) return false;
-  if (!el.hasAttribute("tabindex") && el.tagName !== "BUTTON" && el.tagName !== "INPUT" && el.tagName !== "A") {
+  if (!el.hasAttribute("tabindex") && el.tagName !== "BUTTON" && el.tagName !== "INPUT" && el.tagName !== "A" && el.tagName !== "SELECT" && el.tagName !== "TEXTAREA") {
     el.setAttribute("tabindex", "0");
   }
-  el.focus({ preventScroll });
+  try {
+    el.focus({ preventScroll });
+  } catch {
+    el.focus?.();
+  }
   try {
     el.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
   } catch {
@@ -98,7 +122,7 @@ function isVisible(el) {
 }
 
 function getActiveScope() {
-  const openModal = document.querySelector(".filter-popup.open, .fp-sheet, .profile-popup, .gear-popup, .sidebar.open");
+  const openModal = document.querySelector(".filter-popup.open, .fp-sheet, .profile-popup, .gear-popup, .sidebar.open, .modal-overlay, .confirm-modal, .edit-dialog, .dialog-overlay, [role='dialog']");
   if (openModal) return openModal;
   return document.body;
 }
@@ -106,20 +130,41 @@ function getActiveScope() {
 export function useSpatialNav() {
   const handleKeyDown = useCallback((e) => {
     const { key } = e;
+    const isPlayerActive = Boolean(document.querySelector(".global-player, .movie-player-container, .player-mode"));
+
+    // Activate TV mode & key input mode immediately on any arrow or enter press
+    if (KEY_TO_DIRECTION[key] || key === "Enter" || key === " ") {
+      document.documentElement.setAttribute("data-input", "key");
+      if (!document.body.classList.contains("tv-mode")) {
+        document.body.classList.add("tv-mode");
+      }
+    }
+
+    // Handle Enter / OK key on custom focusable non-button elements (e.g. div cards, pills, avatars)
+    if ((key === "Enter" || key === " ") && document.activeElement && !isPlayerActive) {
+      const activeEl = document.activeElement;
+      const isFormInput = ["INPUT", "TEXTAREA", "SELECT", "BUTTON", "A"].includes(activeEl.tagName);
+      if (!isFormInput && isVisible(activeEl)) {
+        e.preventDefault();
+        activeEl.click();
+        return;
+      }
+    }
+
     const direction = KEY_TO_DIRECTION[key];
     if (!direction) return;
 
-    // Activate TV mode & key input mode immediately on any arrow press
-    document.documentElement.setAttribute("data-input", "key");
-    if (!document.body.classList.contains("tv-mode")) {
-      document.body.classList.add("tv-mode");
+    // If player is active, let player handle its controls unless focus is already on an active element
+    if (isPlayerActive && !document.querySelector(".global-player .gp-settings-pop, .global-player .gp-ep-drawer")) {
+      return;
     }
 
     const scope = getActiveScope();
+    const isModalScope = scope !== document.body;
     let candidates = Array.from(scope.querySelectorAll(FOCUSABLE_SELECTOR)).filter(isVisible);
 
-    // If searching, also include topbar if not in modal
-    if (scope === document.body) {
+    // If not in a modal, also include topbar controls
+    if (!isModalScope) {
       const topbarElements = Array.from(document.querySelectorAll(".topbar " + FOCUSABLE_SELECTOR)).filter(isVisible);
       const combined = new Set([...topbarElements, ...candidates]);
       candidates = Array.from(combined);
@@ -133,15 +178,13 @@ export function useSpatialNav() {
     // 1. If nothing in the interactive list is currently focused, find the best entry element
     if (idx === -1) {
       e.preventDefault();
-      // First look for elements currently in the viewport
       const inView = candidates.filter((el) => {
         const r = el.getBoundingClientRect();
         return r.top >= 0 && r.top <= window.innerHeight && r.left >= 0 && r.left <= window.innerWidth;
       });
       const pool = inView.length > 0 ? inView : candidates;
-      // Prefer cards first, then search or menu
       const first = pool.find((el) => el.matches("[data-card-id], .card, .season-card-v2, .episode-card")) ||
-                    pool.find((el) => el.matches("#search-input, .menu-btn")) ||
+                    pool.find((el) => el.matches("#search-input, .menu-btn, .fp-tab, .editor-input")) ||
                     pool[0];
       if (first) focusElement(first);
       return;
@@ -161,17 +204,19 @@ export function useSpatialNav() {
       return;
     }
 
-    // 3. Fallbacks when boundary is reached
-    if (direction === "left") {
-      const sidebarOpenItem = document.querySelector(".sidebar.open [data-sidebar-item]");
-      if (focusElement(sidebarOpenItem, true)) return;
-      focusElement(document.querySelector("[data-menu-button], .menu-btn"), true);
-    } else if (direction === "up") {
-      const searchOrMenu = document.querySelector("#search-input, .fp-trigger, [data-menu-button], .menu-btn");
-      if (searchOrMenu && searchOrMenu !== focused) focusElement(searchOrMenu, true);
-    } else if (direction === "down" && focused.closest(".topbar, .search-bar, .filter-bar")) {
-      const firstCard = document.querySelector("[data-card-id], .card, .season-card-v2, .episode-card");
-      if (firstCard) focusElement(firstCard);
+    // 3. Fallbacks when boundary is reached (if not in a modal)
+    if (!isModalScope) {
+      if (direction === "left") {
+        const sidebarOpenItem = document.querySelector(".sidebar.open [data-sidebar-item]");
+        if (focusElement(sidebarOpenItem, true)) return;
+        focusElement(document.querySelector("[data-menu-button], .menu-btn"), true);
+      } else if (direction === "up") {
+        const searchOrMenu = document.querySelector("#search-input, .fp-trigger, [data-menu-button], .menu-btn");
+        if (searchOrMenu && searchOrMenu !== focused) focusElement(searchOrMenu, true);
+      } else if (direction === "down" && focused.closest(".topbar, .search-bar, .filter-bar")) {
+        const firstCard = document.querySelector("[data-card-id], .card, .season-card-v2, .episode-card");
+        if (firstCard) focusElement(firstCard);
+      }
     }
   }, []);
 
@@ -183,3 +228,4 @@ export function useSpatialNav() {
 
   return handleKeyDown;
 }
+

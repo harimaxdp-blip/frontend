@@ -769,3 +769,115 @@ body.tv-mode .fp-trigger:focus,
   box-shadow: 0 0 12px rgba(229, 9, 20, 0.5) !important;
   z-index: 25 !important;
 }
+
+/* ============================================
+   TV FOCUS FOR ADMIN & MANAGEMENT CONTROLS
+============================================ */
+body.tv-mode button:focus,
+body.tv-mode input:focus,
+body.tv-mode select:focus,
+body.tv-mode textarea:focus,
+body.tv-mode a:focus,
+body.tv-mode [role="button"]:focus,
+[data-input="key"] button:focus,
+[data-input="key"] input:focus,
+[data-input="key"] select:focus,
+[data-input="key"] textarea:focus,
+[data-input="key"] a:focus,
+[data-input="key"] [role="button"]:focus {
+  outline: 3px solid #e50914 !important;
+  outline-offset: 2px !important;
+  box-shadow: 0 0 14px rgba(229, 9, 20, 0.6) !important;
+  transition: transform 150ms ease, box-shadow 150ms ease !important;
+}
+
+body.tv-mode .gear-link:focus,
+body.tv-mode .profile-popup button:focus,
+body.tv-mode .avatar-option-wrap:focus,
+body.tv-mode .editor-input:focus,
+body.tv-mode .edit-btn:focus,
+body.tv-mode .delete-btn:focus,
+body.tv-mode .save-btn:focus,
+body.tv-mode .cancel-btn:focus,
+body.tv-mode .upload-tab:focus,
+[data-input="key"] .gear-link:focus,
+[data-input="key"] .profile-popup button:focus,
+[data-input="key"] .avatar-option-wrap:focus,
+[data-input="key"] .editor-input:focus,
+[data-input="key"] .edit-btn:focus,
+[data-input="key"] .delete-btn:focus,
+[data-input="key"] .save-btn:focus,
+[data-input="key"] .cancel-btn:focus,
+[data-input="key"] .upload-tab:focus {
+  outline: 3px solid #e50914 !important;
+  outline-offset: 2px !important;
+  transform: scale(1.04) !important;
+  box-shadow: 0 0 14px rgba(229, 9, 20, 0.6) !important;
+  z-index: 20 !important;
+}
+
+/* ============================================
+   TV DELETE CONFIRMATION MODAL
+============================================ */
+.confirm-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  animation: fadeIn 0.2s ease;
+}
+
+.confirm-modal {
+  background: #141416;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 16px;
+  padding: 28px 32px;
+  max-width: 480px;
+  width: 90%;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.9);
+  text-align: center;
+}
+
+.confirm-modal h3 {
+  font-size: 1.4rem;
+  margin-bottom: 12px;
+  color: #fff;
+}
+
+.confirm-modal p {
+  color: #b0b0b5;
+  font-size: 0.98rem;
+  line-height: 1.5;
+  margin-bottom: 24px;
+}
+
+.confirm-modal-actions {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+}
+
+.confirm-modal-actions button {
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s ease;
+}
+
+.delete-confirm-btn {
+  background: #e50914;
+  color: #fff;
+}
+
+.delete-confirm-btn:hover,
+.delete-confirm-btn:focus {
+  background: #ff1e27;
+  box-shadow: 0 0 16px rgba(229, 9, 20, 0.7);
+}

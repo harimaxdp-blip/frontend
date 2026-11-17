@@ -147,20 +147,22 @@ export default function EditMovies() {
     }
   };
 
-  // DELETE MOVIE
-  const handleDelete = async (id) => {
-    const confirmed = window.confirm(
-      "Are you sure you want to delete this content?"
-    );
+  const [deleteConfirmId, setDeleteConfirmId] = useState(null);
+  const [deleteConfirmTitle, setDeleteConfirmTitle] = useState("");
 
-    if (!confirmed) return;
+  // DELETE MOVIE (Custom TV-friendly Confirmation)
+  const handleDeleteClick = (movie) => {
+    setDeleteConfirmId(movie.id);
+    setDeleteConfirmTitle(movie.title || "this item");
+  };
 
+  const confirmDelete = async () => {
+    if (!deleteConfirmId) return;
     try {
-      await deleteDoc(doc(db, "movies", id));
-
-      setMovies((prev) => prev.filter((movie) => movie.id !== id));
-
-      alert("Deleted successfully!");
+      await deleteDoc(doc(db, "movies", deleteConfirmId));
+      setMovies((prev) => prev.filter((movie) => movie.id !== deleteConfirmId));
+      setDeleteConfirmId(null);
+      setDeleteConfirmTitle("");
     } catch (error) {
       console.error(error);
       alert("Failed to delete content.");
@@ -628,7 +630,7 @@ export default function EditMovies() {
 
                     <button
                       className="delete-btn"
-                      onClick={() => handleDelete(movie.id)}
+                      onClick={() => handleDeleteClick(movie)}
                     >
                       <Trash2 size={16} />
                       Delete
@@ -646,6 +648,30 @@ export default function EditMovies() {
 
         </div>
 
+      )}
+
+      {deleteConfirmId && (
+        <div className="confirm-modal-overlay" role="dialog" aria-modal="true" aria-label="Confirm Deletion">
+          <div className="confirm-modal">
+            <h3>Delete Content?</h3>
+            <p>Are you sure you want to delete <strong>{deleteConfirmTitle}</strong>? This action cannot be undone.</p>
+            <div className="confirm-modal-actions">
+              <button
+                className="confirm-btn delete-confirm-btn"
+                onClick={confirmDelete}
+                autoFocus
+              >
+                Yes, Delete
+              </button>
+              <button
+                className="cancel-btn"
+                onClick={() => setDeleteConfirmId(null)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       <div className="results-count">

@@ -257,11 +257,30 @@ function App() {
 
   // ── Capacitor deep link ──
   useEffect(() => {
-    CapacitorApp.addListener("appUrlOpen", () => navigate("/"));
-    return () => { CapacitorApp.removeAllListeners(); };
+    let disposed = false;
+    let listenerHandle;
+
+    CapacitorApp.addListener("appUrlOpen", () => navigate("/"))
+      .then((handle) => {
+        if (disposed) {
+          handle.remove().catch((error) =>
+            console.error("Failed to remove appUrlOpen listener:", error)
+          );
+          return;
+        }
+        listenerHandle = handle;
+      })
+      .catch((error) => console.error("Failed to register appUrlOpen listener:", error));
+
+    return () => {
+      disposed = true;
+      listenerHandle?.remove().catch((error) =>
+        console.error("Failed to remove appUrlOpen listener:", error)
+      );
+    };
   }, [navigate]);
 
-  // ── Active page ──
+  // ── Active page & Fullscreen state ──
   const getActive = () => {
     const p = location.pathname;
     if (p.startsWith("/movies"))           return "MOVIES";
@@ -275,9 +294,83 @@ function App() {
 
   const active = getActive();
 
-  // ── Determine if this page is fullscreen (no chrome) ──
   const isFullscreenPage = FULLSCREEN_PATHS.has(location.pathname) ||
     location.pathname.startsWith("/player");
+
+  // ── Global TV Remote Back Key Handling ──
+  useEffect(() => {
+    const handleGlobalBack = (e) => {
+      const isBackKey = e?.key === "Escape" || e?.key === "GoBack" || e?.keyCode === 10009 ||
+        (e?.key === "Backspace" && !["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName));
+
+      if (isBackKey) {
+        if (showProfile) {
+          e?.preventDefault?.();
+          setShowProfile(false);
+          setShowAvatarPicker(false);
+          document.querySelector(".profile-btn")?.focus({ preventScroll: true });
+          return;
+        }
+        if (showGear) {
+          e?.preventDefault?.();
+          setShowGear(false);
+          document.querySelector(".gear-btn")?.focus({ preventScroll: true });
+          return;
+        }
+        if (open) {
+          e?.preventDefault?.();
+          setOpen(false);
+          menuButtonRef.current?.focus({ preventScroll: true });
+          return;
+        }
+        const openModal = document.querySelector(".filter-popup.open, .fp-sheet, .confirm-modal, .edit-dialog, .dialog-overlay, [role='dialog']");
+        if (openModal) {
+          return;
+        }
+        if (location.pathname !== "/" && !isFullscreenPage) {
+          e?.preventDefault?.();
+          navigate(-1);
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleGlobalBack);
+
+    let disposed = false;
+    let backListener;
+    CapacitorApp.addListener("backButton", () => {
+      if (showProfile) {
+        setShowProfile(false);
+        setShowAvatarPicker(false);
+      } else if (showGear) {
+        setShowGear(false);
+      } else if (open) {
+        setOpen(false);
+      } else if (location.pathname !== "/") {
+        navigate(-1);
+      } else {
+        CapacitorApp.minimizeApp();
+      }
+    })
+      .then((handle) => {
+        if (disposed) {
+          handle.remove().catch((error) =>
+            console.error("Failed to remove backButton listener:", error)
+          );
+          return;
+        }
+        backListener = handle;
+      })
+      .catch((error) => console.error("Failed to register backButton listener:", error));
+
+    return () => {
+      disposed = true;
+      window.removeEventListener("keydown", handleGlobalBack);
+      backListener?.remove().catch((error) =>
+        console.error("Failed to remove backButton listener:", error)
+      );
+    };
+  }, [showProfile, showGear, open, location.pathname, isFullscreenPage, navigate]);
 
   const focusFirstSidebarItem = useCallback(() => {
     requestAnimationFrame(() => {

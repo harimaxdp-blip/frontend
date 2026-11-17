@@ -25,6 +25,7 @@ export default function MoviePlayer() {
 
   useEffect(() => {
     if (useFallback) return;
+    const controller = new AbortController();
 
     // Prevent double-launching or launching if we already have a timeout pending
     if (window._mp_launching) return;
@@ -70,15 +71,21 @@ export default function MoviePlayer() {
         playlist,
         startIndex,
         onDone: onPlayerDone,
-        onFallback: launchFallback
+        onFallback: launchFallback,
+        signal: controller.signal,
       })
       .catch((err) => {
+        if (err?.name === "AbortError" || controller.signal.aborted) {
+          cleanup();
+          return;
+        }
         console.error("PlayerAdapter play error:", err);
         cleanup();
         handleGoBack();
       });
 
     return () => {
+      controller.abort();
       if (safetyTimer) clearTimeout(safetyTimer);
       cleanup();
     };

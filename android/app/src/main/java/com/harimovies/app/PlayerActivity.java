@@ -95,6 +95,8 @@ public class PlayerActivity extends AppCompatActivity {
     public static final String EXTRA_URL   = "url";
     public static final String EXTRA_TITLE = "title";
     public static final String EXTRA_SERIES_TITLE = "series_title";
+    public static final String EXTRA_REFERER = "referer";
+    public static final String EXTRA_MEDIA_TYPE = "media_type";
 
     private static final String PREFS_NAME    = "hm_watch_pos";
     private static final long   SAVE_EVERY_MS = 5_000L;
@@ -117,6 +119,8 @@ public class PlayerActivity extends AppCompatActivity {
     private String  videoTitle   = "";
     private String  seriesTitle  = "";
     private String  videoUrl     = "";
+    private String  playbackReferer = "";
+    private String  mediaTypeHint = "";
     private boolean isFullscreen = true;
     private int     resizeModeIndex = 0;
 
@@ -317,6 +321,10 @@ public class PlayerActivity extends AppCompatActivity {
             getLifecycle().addObserver(youtubePlayerView);
 
             videoUrl   = getIntent().getStringExtra(EXTRA_URL);   if (videoUrl == null) videoUrl = "";
+            playbackReferer = getIntent().getStringExtra(EXTRA_REFERER);
+            if (!StreamResolver.isHttpUrl(playbackReferer)) playbackReferer = "";
+            mediaTypeHint = getIntent().getStringExtra(EXTRA_MEDIA_TYPE);
+            if (!StreamResolver.isSupportedMediaType(mediaTypeHint)) mediaTypeHint = "";
             videoTitle = getIntent().getStringExtra(EXTRA_TITLE);
             if (videoTitle == null) videoTitle = "";
             
@@ -327,7 +335,6 @@ public class PlayerActivity extends AppCompatActivity {
 
             forcedResumePos = getIntent().getLongExtra("resume_pos", 0);
 
-            Log.d("SERIES_DEBUG", "Activity: Initial URL: " + videoUrl);
             Log.d("SERIES_DEBUG", "Activity: Initial Title: " + videoTitle);
 
             // Parse playlist
@@ -398,7 +405,7 @@ public class PlayerActivity extends AppCompatActivity {
 
                 @Override
                 public void onPlayerError(@androidx.annotation.NonNull PlaybackException e) {
-                    Log.e("STREAM_FAILED", "CODE=" + e.errorCode + " MSG=" + e.getMessage());
+                    Log.e("STREAM_FAILED", "Playback error code=" + e.errorCode);
 
                     // Recover from decoder init failures (common when selecting unsupported audio tracks)
                     if (e.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED) {
@@ -411,25 +418,8 @@ public class PlayerActivity extends AppCompatActivity {
                         return;
                     }
 
-                    // Fallback: if ExoPlayer fails, try WebPlayerActivity again
-                    if (videoUrl != null && !getIntent().getBooleanExtra("is_fallback", false)) {
-                        Intent intent = new Intent(PlayerActivity.this, WebPlayerActivity.class);
-                        intent.putExtra("url", videoUrl);
-                        intent.putExtra("title", videoTitle);
-                        intent.putExtra("is_fallback", true);
-                        if (!playlist.isEmpty()) {
-                            JSONArray arr = new JSONArray();
-                            for (JSONObject item : playlist) arr.put(item);
-                            intent.putExtra("playlist", arr.toString());
-                            intent.putExtra("index", currentIndex);
-                        }
-                        saveLastWatchedEpisode(currentIndex);
-                        startActivity(intent);
-                        finish();
-                    } else {
-                        Toast.makeText(PlayerActivity.this, "Stream playback failed after all attempts.", Toast.LENGTH_LONG).show();
-                        finish();
-                    }
+                    Toast.makeText(PlayerActivity.this, "Stream playback failed after all attempts.", Toast.LENGTH_LONG).show();
+                    finish();
                 }
 
                 @Override
@@ -476,11 +466,10 @@ public class PlayerActivity extends AppCompatActivity {
             startTimeUpdates();
 
             hideControls();
-            Log.d("PLAYER_DEBUG", "FINAL_VIDEO_URL=" + videoUrl);
             loadCurrentEpisode();
             Log.d("PLAYER", "onCreate completed");
         } catch (Exception e) {
-            Log.e("PLAYER", "CRASH IN ONCREATE", e);
+            Log.e("PLAYER", "Crash during player initialization: " + e.getClass().getSimpleName());
             Toast.makeText(this, "Player Error: " + e.getMessage(), Toast.LENGTH_LONG).show();
             finish();
         }
@@ -642,7 +631,6 @@ public class PlayerActivity extends AppCompatActivity {
     //  loadCurrentEpisode (unchanged logic)
     // ══════════════════════════════════════════════════════════════════════════
     private void loadCurrentEpisode() {
-        Log.d("STREAM_FOUND", "URL: " + videoUrl);
         if (player == null || videoUrl == null || videoUrl.isEmpty()) {
             Log.e("PLAYER", "Aborting: videoUrl is empty");
             return;
@@ -660,9 +648,156 @@ public class PlayerActivity extends AppCompatActivity {
             return;
         }
 
+        // Detect Onestream and provider page links
+        if (videoUrl.contains("onestream.today") || StreamResolver.isEmbedPage(videoUrl)) {
+            resolveAndPlayOnestream();
+            return;
+        }
+
         String resolvedUrl = StreamResolver.resolveStreamUrl(videoUrl);
-        Log.d("STREAM_RESOLVED", "URL: " + resolvedUrl);
         setupPlayerWithUrl(resolvedUrl);
+    }
+
+    private void resolveAndPlayOnestream() {
+        if (progressBar != null) progressBar.setVisibility(View.VISIBLE);
+
+        String encodedUrl = android.net.Uri.encode(videoUrl);
+        String primaryBackendUrl = "https://play.onestream.today/api/resolve?url=" + encodedUrl;
+
+        Request request = new Request.Builder()
+                .url(primaryBackendUrl)
+                .header("Accept", "application/json")
+                .build();
+
+        okHttpClient.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(@androidx.annotation.NonNull Call call, @androidx.annotation.NonNull IOException e) {
+                tryLocalProxyResolve(encodedUrl);
+            }
+
+            @Override
+            public void onResponse(@androidx.annotation.NonNull Call call, @androidx.annotation.NonNull Response response) {
+                if (!response.isSuccessful()) {
+                    tryLocalProxyResolve(encodedUrl);
+                    return;
+                }
+                try (okhttp3.ResponseBody body = response.body()) {
+                    if (body != null) {
+                        String jsonStr = body.string();
+                        org.json.JSONObject json = new org.json.JSONObject(jsonStr);
+                        if ("resolved".equalsIgnoreCase(json.optString("status")) && json.has("streamUrl")) {
+                            String streamUrl = json.getString("streamUrl");
+                            runOnUiThread(() -> {
+                                if (progressBar != null) progressBar.setVisibility(View.GONE);
+                                setupPlayerWithUrl(streamUrl);
+                            });
+                            return;
+                        }
+                    }
+                } catch (Exception e) {
+                    Log.e("ONESTREAM_RESOLVE", "Parse error", e);
+                }
+                tryLocalProxyResolve(encodedUrl);
+            }
+        });
+    }
+
+    private void tryLocalProxyResolve(String encodedUrl) {
+        String localProxyUrl = "http://10.0.2.2:4000/api/resolve?url=" + encodedUrl;
+        Request request = new Request.Builder()
+                .url(localProxyUrl)
+                .header("Accept", "application/json")
+                .build();
+
+        okHttpClient.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(@androidx.annotation.NonNull Call call, @androidx.annotation.NonNull IOException e) {
+                fetchAndExtractOnestreamPage(videoUrl);
+            }
+
+            @Override
+            public void onResponse(@androidx.annotation.NonNull Call call, @androidx.annotation.NonNull Response response) {
+                if (!response.isSuccessful()) {
+                    fetchAndExtractOnestreamPage(videoUrl);
+                    return;
+                }
+                try (okhttp3.ResponseBody body = response.body()) {
+                    if (body != null) {
+                        String jsonStr = body.string();
+                        org.json.JSONObject json = new org.json.JSONObject(jsonStr);
+                        if ("resolved".equalsIgnoreCase(json.optString("status")) && json.has("streamUrl")) {
+                            String streamUrl = json.getString("streamUrl");
+                            runOnUiThread(() -> {
+                                if (progressBar != null) progressBar.setVisibility(View.GONE);
+                                setupPlayerWithUrl(streamUrl);
+                            });
+                            return;
+                        }
+                    }
+                } catch (Exception e) {
+                    Log.e("ONESTREAM_RESOLVE", "Local proxy parse error", e);
+                }
+                fetchAndExtractOnestreamPage(videoUrl);
+            }
+        });
+    }
+
+    private void fetchAndExtractOnestreamPage(String pageUrl) {
+        Request pageRequest = new Request.Builder()
+                .url(pageUrl)
+                .header("User-Agent", "Mozilla/5.0 (Linux; Android 12; Pixel 6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36")
+                .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+                .build();
+
+        okHttpClient.newCall(pageRequest).enqueue(new Callback() {
+            @Override
+            public void onFailure(@androidx.annotation.NonNull Call call, @androidx.annotation.NonNull IOException e) {
+                runOnUiThread(() -> {
+                    if (progressBar != null) progressBar.setVisibility(View.GONE);
+                    Toast.makeText(PlayerActivity.this, "Unable to resolve video stream from provider page.", Toast.LENGTH_SHORT).show();
+                });
+            }
+
+            @Override
+            public void onResponse(@androidx.annotation.NonNull Call call, @androidx.annotation.NonNull Response response) {
+                if (!response.isSuccessful()) {
+                    runOnUiThread(() -> {
+                        if (progressBar != null) progressBar.setVisibility(View.GONE);
+                        Toast.makeText(PlayerActivity.this, "Provider page returned HTTP " + response.code(), Toast.LENGTH_SHORT).show();
+                    });
+                    return;
+                }
+                try (okhttp3.ResponseBody body = response.body()) {
+                    if (body != null) {
+                        String html = body.string();
+                        String streamUrl = extractStreamUrlFromHtml(html, pageUrl);
+                        if (streamUrl != null && !streamUrl.isEmpty()) {
+                            runOnUiThread(() -> {
+                                if (progressBar != null) progressBar.setVisibility(View.GONE);
+                                setupPlayerWithUrl(streamUrl);
+                            });
+                            return;
+                        }
+                    }
+                } catch (Exception e) {
+                    Log.e("ONESTREAM_PAGE", "Page parse error", e);
+                }
+                runOnUiThread(() -> {
+                    if (progressBar != null) progressBar.setVisibility(View.GONE);
+                    Toast.makeText(PlayerActivity.this, "No supported video stream found on provider page.", Toast.LENGTH_SHORT).show();
+                });
+            }
+        });
+    }
+
+    private String extractStreamUrlFromHtml(String html, String baseUrl) {
+        if (html == null) return null;
+        Pattern pattern = Pattern.compile("(https?:\\\\?/\\\\?/[^\"'\\s<>]*(?:fastbytes\\.xyz|uptodub\\.ch|isaidub\\.dad|dubshare\\.one|\\.mp4|\\.m3u8|\\.mpd)[^\"'\\s<>]*)", Pattern.CASE_INSENSITIVE);
+        Matcher matcher = pattern.matcher(html);
+        if (matcher.find()) {
+            return matcher.group(1).replace("\\/", "/");
+        }
+        return null;
     }
 
     private void resolveAndPlayTelegram() {
@@ -679,8 +814,6 @@ public class PlayerActivity extends AppCompatActivity {
             webPreviewUrl = videoUrl.replace("t.me/", "t.me/s/");
         }
 
-        Log.d("TELEGRAM_RESOLVE", "Fetching: " + webPreviewUrl);
-
         Request request = new Request.Builder()
                 .url(webPreviewUrl)
                 .header("User-Agent",
@@ -694,7 +827,7 @@ public class PlayerActivity extends AppCompatActivity {
         okHttpClient.newCall(request).enqueue(new Callback() {
             @Override
             public void onFailure(@androidx.annotation.NonNull Call call, @androidx.annotation.NonNull IOException e) {
-                Log.e("TELEGRAM_RESOLVE", "Network error: " + e.getMessage());
+                Log.e("TELEGRAM_RESOLVE", "Network error: " + e.getClass().getSimpleName());
                 runOnUiThread(() -> {
                     if (progressBar != null) progressBar.setVisibility(View.GONE);
                     Toast.makeText(PlayerActivity.this,
@@ -719,7 +852,7 @@ public class PlayerActivity extends AppCompatActivity {
                     String cdnUrl = extractTelegramCdnUrl(html);
 
                     if (cdnUrl != null) {
-                        Log.d("TELEGRAM_RESOLVE", "CDN URL found: " + cdnUrl);
+                        Log.d("TELEGRAM_RESOLVE", "Authorized Telegram CDN media link found.");
                         runOnUiThread(() -> {
                             if (progressBar != null) progressBar.setVisibility(View.GONE);
                             setupTelegramCdnPlayer(cdnUrl);
@@ -729,7 +862,7 @@ public class PlayerActivity extends AppCompatActivity {
                         runOnUiThread(() -> attemptFallback(videoUrl));
                     }
                 } catch (IOException e) {
-                    Log.e("TELEGRAM_RESOLVE", "Error reading response: " + e.getMessage());
+                    Log.e("TELEGRAM_RESOLVE", "Response read error: " + e.getClass().getSimpleName());
                     runOnUiThread(() -> attemptFallback(videoUrl));
                 }
             }
@@ -881,7 +1014,7 @@ public class PlayerActivity extends AppCompatActivity {
                     retriever = new MediaMetadataRetriever();
                     retriever.setDataSource(url, finalHeaders);
                 } catch (Exception e) {
-                    Log.e("PREVIEW", "Retriever error: " + e.getMessage());
+                    Log.e("PREVIEW", "Retriever error: " + e.getClass().getSimpleName());
                 }
             });
         }
@@ -952,8 +1085,11 @@ public class PlayerActivity extends AppCompatActivity {
 
         Map<String, String> headers = new HashMap<>();
         headers.put("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36");
-        headers.put("Referer", "https://dub.onestream.today/");
-        headers.put("Cookie",  "cache_2685d8fa2727bff6=1781032689");
+        if (StreamResolver.isHttpUrl(playbackReferer)) {
+            headers.put("Referer", playbackReferer);
+            Uri refererUri = Uri.parse(playbackReferer);
+            headers.put("Origin", refererUri.getScheme() + "://" + refererUri.getAuthority());
+        }
         requestHeaders.clear();
         requestHeaders.putAll(headers);
 
@@ -966,7 +1102,7 @@ public class PlayerActivity extends AppCompatActivity {
                     retriever = new MediaMetadataRetriever();
                     retriever.setDataSource(resolvedUrl, finalHeaders);
                 } catch (Exception e) {
-                    Log.e("PREVIEW", "Retriever update error: " + e.getMessage());
+                    Log.e("PREVIEW", "Retriever update error: " + e.getClass().getSimpleName());
                 }
             });
         }
@@ -982,12 +1118,12 @@ public class PlayerActivity extends AppCompatActivity {
         dsFactory.setDefaultRequestProperties(headers);
 
         MediaSource mediaSource;
-        if (StreamResolver.isHls(resolvedUrl)) {
+        if (StreamResolver.isHls(resolvedUrl) || "hls".equalsIgnoreCase(mediaTypeHint)) {
             Log.d("STREAM_TYPE", "HLS Detected");
             mediaSource = new HlsMediaSource.Factory(dsFactory)
                     .setAllowChunklessPreparation(true)
                     .createMediaSource(MediaItem.fromUri(Uri.parse(resolvedUrl)));
-        } else if (StreamResolver.isDash(resolvedUrl)) {
+        } else if (StreamResolver.isDash(resolvedUrl) || "dash".equalsIgnoreCase(mediaTypeHint)) {
             Log.d("STREAM_TYPE", "DASH Detected");
             mediaSource = new DashMediaSource.Factory(dsFactory)
                     .createMediaSource(MediaItem.fromUri(Uri.parse(resolvedUrl)));
@@ -1000,7 +1136,7 @@ public class PlayerActivity extends AppCompatActivity {
         player.setMediaSource(mediaSource);
         player.prepare();
         player.play();
-        Log.d("STREAM_PLAYING", "URL: " + resolvedUrl);
+        Log.d("STREAM_PLAYING", "Media source prepared.");
 
         updateSeriesUI();
         fetchSkipTimes();
@@ -1276,22 +1412,13 @@ public class PlayerActivity extends AppCompatActivity {
             for (JSONObject item : playlist) arr.put(item);
             String playlistStr = arr.toString();
 
-            Log.d("SERIES_DEBUG", "playEpisode: index=" + index + " url=" + epUrl);
+            Log.d("SERIES_DEBUG", "playEpisode: index=" + index);
 
-            Intent intent;
-            if (StreamResolver.isDirectStream(epUrl) || StreamResolver.isHls(epUrl) || StreamResolver.isDash(epUrl) || StreamResolver.isYouTube(epUrl)) {
-                Log.d("SERIES_DEBUG", "Route: DIRECT → PlayerActivity");
-                intent = new Intent(this, PlayerActivity.class);
-                intent.putExtra(PlayerActivity.EXTRA_URL, epUrl);
-                intent.putExtra(PlayerActivity.EXTRA_TITLE, epTitle);
-                intent.putExtra(PlayerActivity.EXTRA_SERIES_TITLE, seriesTitle);
-            } else {
-                Log.d("SERIES_DEBUG", "Route: IFRAME → WebPlayerActivity");
-                intent = new Intent(this, WebPlayerActivity.class);
-                intent.putExtra("url", epUrl);
-                intent.putExtra("title", epTitle);
-                intent.putExtra("series_title", seriesTitle);
-            }
+            Log.d("SERIES_DEBUG", "Route: DIRECT → PlayerActivity");
+            Intent intent = new Intent(this, PlayerActivity.class);
+            intent.putExtra(PlayerActivity.EXTRA_URL, epUrl);
+            intent.putExtra(PlayerActivity.EXTRA_TITLE, epTitle);
+            intent.putExtra(PlayerActivity.EXTRA_SERIES_TITLE, seriesTitle);
 
             saveLastWatchedEpisode(index);
             intent.putExtra("playlist", playlistStr);
@@ -1699,7 +1826,7 @@ public class PlayerActivity extends AppCompatActivity {
                     : "A/V Sync: " + (audioOffsetUs > 0 ? "+" : "") + (audioOffsetUs / 1000) + " ms";
             Toast.makeText(this, msg, Toast.LENGTH_SHORT).show();
         } catch (Exception e) {
-            Log.e("AVSYNC", "applyAudioOffset failed: " + e.getMessage());
+            Log.e("AVSYNC", "applyAudioOffset failed: " + e.getClass().getSimpleName());
         }
     }
 
@@ -1742,7 +1869,7 @@ public class PlayerActivity extends AppCompatActivity {
                 retriever = new MediaMetadataRetriever();
                 retriever.setDataSource(videoUrl, requestHeaders);
             } catch (Exception e) {
-                Log.e("PREVIEW", "Retriever error: " + e.getMessage());
+                Log.e("PREVIEW", "Retriever error: " + e.getClass().getSimpleName());
             }
         });
 
@@ -1826,7 +1953,7 @@ public class PlayerActivity extends AppCompatActivity {
                 }
             } catch (Exception e) {
                 // If it fails, it might be due to HLS or unsupported format for frame extraction
-                Log.e("PREVIEW", "Frame fetch error at " + posUs + "us: " + e.getMessage());
+                Log.e("PREVIEW", "Frame fetch error at " + posUs + "us: " + e.getClass().getSimpleName());
             } finally {
                 isPreviewLoading = false;
                 runOnUiThread(() -> {
