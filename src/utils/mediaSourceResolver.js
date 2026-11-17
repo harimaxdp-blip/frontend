@@ -1,16 +1,13 @@
 const PROXY_BASE = process.env.REACT_APP_MEDIA_PROXY_URL || "http://localhost:4000";
 const ARCHIVE_HOSTS = new Set(["archive.org", "www.archive.org"]);
-const ONESTREAM_HOSTS = new Set(["dub.onestream.today", "play.onestream.today"]);
+
 const EMBED_ONLY_HOSTS = ["isaidub.me", "vidsrc.to", "doodstream.com", "streamtape.com", "filemoon.sx", "mixdrop.co", "voe.sx"];
 const SUPPORTED_MEDIA_TYPES = new Set(["hls", "dash", "mp4", "webm", "mov", "ts", "remux", "ogv", "3gp"]);
 const RESOLUTION_CACHE_LIMIT = 100;
 const RESOLUTION_CACHE_TTL_MS = 5 * 60 * 1000;
 const RESOLUTION_TIMEOUT_MS = 15000;
 const resolutionCache = new Map();
-const ONESTREAM_FASTBYTES_PATHS = new Map([
-  ["download.fastbytes.xyz", "/download.php"],
-  ["fastly.fastbytes.xyz", "/open.php"],
-]);
+
 
 const LANGUAGE_NAMES = {
   ta: "Tamil", tam: "Tamil", te: "Telugu", tel: "Telugu", hi: "Hindi", hin: "Hindi",
