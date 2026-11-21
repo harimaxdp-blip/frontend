@@ -5,8 +5,14 @@ import {
   normalizeLanguageLabel,
   resolveMediaSource,
 } from "../utils/mediaSourceResolver";
+import "./GlobalPlayer.css";
 
-const PROXY_BASE = process.env.REACT_APP_MEDIA_PROXY_URL || "http://localhost:4000";
+const PROXY_BASE =
+  process.env.REACT_APP_MEDIA_PROXY_URL ||
+  (typeof window !== "undefined" && window.location?.hostname
+    ? `${window.location.protocol}//${window.location.hostname}:4000`
+    : "http://localhost:4000");
+
 const EMPTY_LIST = Object.freeze([]);
 const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 
@@ -85,6 +91,7 @@ const RE_DASH    = /\.mpd($|\?)/i;
 const RE_MAGNET  = /^magnet:\?/i;
 const RE_ARCHIVE = /\.(zip|rar|7z|tar|gz|iso|torrent|exe|apk)($|\?)/i;
 const RE_MKV_AVI = /\.(mkv|avi|wmv|flv)($|\?)/i;
+
 function getCleanFileName(url) {
   try {
     if (RE_MAGNET.test(url)) {
@@ -159,15 +166,40 @@ function useAdBlock(iframeRef) {
   return status;
 }
 
-// ─── Icons (Matching Reference Aesthetic) ────────────────────────────────────
+// ─── Icons ────────────────────────────────────────────────────────────────────
 const Icons = {
-  Play:           () => <svg viewBox="0 0 24 24" fill="currentColor" width="1em" height="1em"><path d="M8 5.5v13l10.5-6.5L8 5.5z"/></svg>,
-  Pause:          () => <svg viewBox="0 0 24 24" fill="currentColor" width="1em" height="1em"><rect x="6.5" y="5" width="4" height="14" rx="1.5"/><rect x="13.5" y="5" width="4" height="14" rx="1.5"/></svg>,
-  Mute:           () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" width="1em" height="1em"><path d="M11 5L6 9H2v6h4l5 4V5z"/><line x1="22" y1="9" x2="16" y2="15"/><line x1="16" y1="9" x2="22" y2="15"/></svg>,
-  VolumeUp:       () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" width="1em" height="1em"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9.5 9.5 0 0 1 0 13"/></svg>,
-  VolumeDown:     () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" width="1em" height="1em"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/></svg>,
-  // Diagonal red-accented fullscreen arrows matching reference image
-  Fullscreen:     () => (
+  Play: () => (
+    <svg viewBox="0 0 24 24" fill="currentColor" width="1em" height="1em">
+      <path d="M8 5.5v13l10.5-6.5L8 5.5z" />
+    </svg>
+  ),
+  Pause: () => (
+    <svg viewBox="0 0 24 24" fill="currentColor" width="1em" height="1em">
+      <rect x="6.5" y="5" width="4" height="14" rx="1.5" />
+      <rect x="13.5" y="5" width="4" height="14" rx="1.5" />
+    </svg>
+  ),
+  Mute: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" width="1em" height="1em">
+      <path d="M11 5L6 9H2v6h4l5 4V5z" />
+      <line x1="22" y1="9" x2="16" y2="15" />
+      <line x1="16" y1="9" x2="22" y2="15" />
+    </svg>
+  ),
+  VolumeUp: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" width="1em" height="1em">
+      <path d="M11 5L6 9H2v6h4l5 4V5z" />
+      <path d="M15.5 8.5a5 5 0 0 1 0 7" />
+      <path d="M18.5 5.5a9.5 9.5 0 0 1 0 13" />
+    </svg>
+  ),
+  VolumeDown: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" width="1em" height="1em">
+      <path d="M11 5L6 9H2v6h4l5 4V5z" />
+      <path d="M15.5 8.5a5 5 0 0 1 0 7" />
+    </svg>
+  ),
+  Fullscreen: () => (
     <svg viewBox="0 0 24 24" fill="none" stroke="#e50914" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" width="1em" height="1em">
       <polyline points="15 4 20 4 20 9" />
       <line x1="20" y1="4" x2="14" y2="10" />
@@ -183,65 +215,198 @@ const Icons = {
       <line x1="10" y1="14" x2="4" y2="20" />
     </svg>
   ),
-  // PiP icon matching reference image (hollow rect + solid bottom-right inset)
-  PiP:            () => (
+  PiP: () => (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="1em" height="1em">
       <rect x="2.5" y="4.5" width="19" height="15" rx="2" />
       <rect x="11.5" y="11" width="7.5" height="6" rx="1" fill="currentColor" stroke="none" />
     </svg>
   ),
-  // Clock / Speed icon matching reference image
-  ClockSpeed:     () => (
+  ClockSpeed: () => (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="1em" height="1em">
       <circle cx="12" cy="12" r="9.5" />
       <polyline points="12 7 12 12 15.5 14" />
     </svg>
   ),
-  // Double-chevron skip icons matching reference image ("10 seconds")
-  DoubleRewind:   () => (
+  DoubleRewind: () => (
     <svg viewBox="0 0 36 24" fill="currentColor" width="1em" height="1em">
-      <path d="M17.5 4.2v15.6c0 .8-.9 1.3-1.6.8L4.6 12.8c-.6-.4-.6-1.2 0-1.6l11.3-7.8c.7-.5 1.6 0 1.6.8z"/>
-      <path d="M31.5 4.2v15.6c0 .8-.9 1.3-1.6.8L18.6 12.8c-.6-.4-.6-1.2 0-1.6l11.3-7.8c.7-.5 1.6 0 1.6.8z"/>
+      <path d="M17.5 4.2v15.6c0 .8-.9 1.3-1.6.8L4.6 12.8c-.6-.4-.6-1.2 0-1.6l11.3-7.8c.7-.5 1.6 0 1.6.8z" />
+      <path d="M31.5 4.2v15.6c0 .8-.9 1.3-1.6.8L18.6 12.8c-.6-.4-.6-1.2 0-1.6l11.3-7.8c.7-.5 1.6 0 1.6.8z" />
     </svg>
   ),
-  DoubleForward:  () => (
+  DoubleForward: () => (
     <svg viewBox="0 0 36 24" fill="currentColor" width="1em" height="1em">
-      <path d="M4.5 4.2v15.6c0 .8.9 1.3 1.6.8l11.3-7.8c.6-.4.6-1.2 0-1.6L6.1 3.4c-.7-.5-1.6 0-1.6.8z"/>
-      <path d="M18.5 4.2v15.6c0 .8.9 1.3 1.6.8l11.3-7.8c.6-.4.6-1.2 0-1.6L20.1 3.4c-.7-.5-1.6 0-1.6.8z"/>
+      <path d="M4.5 4.2v15.6c0 .8.9 1.3 1.6.8l11.3-7.8c.6-.4.6-1.2 0-1.6L6.1 3.4c-.7-.5-1.6 0-1.6.8z" />
+      <path d="M18.5 4.2v15.6c0 .8.9 1.3 1.6.8l11.3-7.8c.6-.4.6-1.2 0-1.6L20.1 3.4c-.7-.5-1.6 0-1.6.8z" />
     </svg>
   ),
-  Back:           () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" width="1em" height="1em"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>,
-  Prev:           () => <svg viewBox="0 0 24 24" fill="currentColor" width="1em" height="1em"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>,
-  Next:           () => <svg viewBox="0 0 24 24" fill="currentColor" width="1em" height="1em"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>,
-  Stretch:        () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="1em" height="1em"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M8 9h8v6H8z"/></svg>,
-  Lock:           () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="1em" height="1em"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>,
-  Unlock:         () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="1em" height="1em"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>,
-  Gear:           () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="1em" height="1em"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>,
-  Check:          () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" width="1em" height="1em"><polyline points="20 6 9 17 4 12"/></svg>,
-  Subtitles:      () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="1em" height="1em"><rect x="2" y="4" width="20" height="16" rx="3"/><path d="M7 15h4M15 15h2M7 11h2M13 11h4"/></svg>,
-  Language:       () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="1em" height="1em"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>,
-  Quality:        () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="1em" height="1em"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M7 15V9l3 3 3-3v6"/><path d="M17 9v6"/></svg>,
-  Upload:         () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="1em" height="1em"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>,
-  Sun:            () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="1em" height="1em"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>,
-  Warning:        () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="1em" height="1em"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>,
-  Download:       () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="1em" height="1em"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>,
-  Archive:        () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="1em" height="1em"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>,
-  External:       () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="1em" height="1em"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>,
-  Copy:           () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="1em" height="1em"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>,
-  Shield:         () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="1em" height="1em"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>,
-  ChevronLeft:    () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" width="1em" height="1em"><polyline points="15 18 9 12 15 6"/></svg>,
-  ChevronRight:   () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" width="1em" height="1em"><polyline points="9 18 15 12 9 6"/></svg>,
-  Keyboard:       () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="1em" height="1em"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M7 16h10"/></svg>,
+  Back: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" width="1em" height="1em">
+      <line x1="19" y1="12" x2="5" y2="12" />
+      <polyline points="12 19 5 12 12 5" />
+    </svg>
+  ),
+  Prev: () => (
+    <svg viewBox="0 0 24 24" fill="currentColor" width="1em" height="1em">
+      <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
+    </svg>
+  ),
+  Next: () => (
+    <svg viewBox="0 0 24 24" fill="currentColor" width="1em" height="1em">
+      <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
+    </svg>
+  ),
+  Stretch: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="1em" height="1em">
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <path d="M8 9h8v6H8z" />
+    </svg>
+  ),
+  Lock: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="1em" height="1em">
+      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+    </svg>
+  ),
+  Unlock: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="1em" height="1em">
+      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+      <path d="M7 11V7a5 5 0 0 1 9.9-1" />
+    </svg>
+  ),
+  Gear: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="1em" height="1em">
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+    </svg>
+  ),
+  Check: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" width="1em" height="1em">
+      <polyline points="20 6 9 17 4 12" />
+    </svg>
+  ),
+  Subtitles: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="1em" height="1em">
+      <rect x="2" y="4" width="20" height="16" rx="3" />
+      <path d="M7 15h4M15 15h2M7 11h2M13 11h4" />
+    </svg>
+  ),
+  Language: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="1em" height="1em">
+      <circle cx="12" cy="12" r="10" />
+      <line x1="2" y1="12" x2="22" y2="12" />
+      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+    </svg>
+  ),
+  Quality: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="1em" height="1em">
+      <rect x="2" y="4" width="20" height="16" rx="2" />
+      <path d="M7 15V9l3 3 3-3v6" />
+      <path d="M17 9v6" />
+    </svg>
+  ),
+  Upload: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="1em" height="1em">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="17 8 12 3 7 8" />
+      <line x1="12" y1="3" x2="12" y2="15" />
+    </svg>
+  ),
+  Sun: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="1em" height="1em">
+      <circle cx="12" cy="12" r="5" />
+      <line x1="12" y1="1" x2="12" y2="3" />
+      <line x1="12" y1="21" x2="12" y2="23" />
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+      <line x1="1" y1="12" x2="3" y2="12" />
+      <line x1="21" y1="12" x2="23" y2="12" />
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+    </svg>
+  ),
+  Warning: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="1em" height="1em">
+      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+      <line x1="12" y1="9" x2="12" y2="13" />
+      <line x1="12" y1="17" x2="12.01" y2="17" />
+    </svg>
+  ),
+  Download: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="1em" height="1em">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="7 10 12 15 17 10" />
+      <line x1="12" y1="15" x2="12" y2="3" />
+    </svg>
+  ),
+  Archive: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="1em" height="1em">
+      <polyline points="21 8 21 21 3 21 3 8" />
+      <rect x="1" y="3" width="22" height="5" />
+      <line x1="10" y1="12" x2="14" y2="12" />
+    </svg>
+  ),
+  External: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="1em" height="1em">
+      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+      <polyline points="15 3 21 3 21 9" />
+      <line x1="10" y1="14" x2="21" y2="3" />
+    </svg>
+  ),
+  Copy: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="1em" height="1em">
+      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </svg>
+  ),
+  Shield: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="1em" height="1em">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+      <polyline points="9 12 11 14 15 10" />
+    </svg>
+  ),
+  ChevronLeft: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" width="1em" height="1em">
+      <polyline points="15 18 9 12 15 6" />
+    </svg>
+  ),
+  ChevronRight: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" width="1em" height="1em">
+      <polyline points="9 18 15 12 9 6" />
+    </svg>
+  ),
+  Keyboard: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="1em" height="1em">
+      <rect x="2" y="4" width="20" height="16" rx="2" />
+      <path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M7 16h10" />
+    </svg>
+  ),
 };
 
 // ─── Watch position helpers ───────────────────────────────────────────────────
-function watchKey(t) { return `gp-pos-${(t || "u").replace(/\s+/g, "_").toLowerCase()}`; }
-function savePos(t, s) { if (!t || !s || s < 5) return; try { localStorage.setItem(watchKey(t), String(Math.floor(s))); } catch {} }
-function loadPos(t) { try { return parseInt(localStorage.getItem(watchKey(t)) || "0", 10) || 0; } catch { return 0; } }
-function clearPos(t) { try { localStorage.removeItem(watchKey(t)); } catch {} }
+function watchKey(t) {
+  return `gp-pos-${(t || "u").replace(/\s+/g, "_").toLowerCase()}`;
+}
+function savePos(t, s) {
+  if (!t || !s || s < 5) return;
+  try {
+    localStorage.setItem(watchKey(t), String(Math.floor(s)));
+  } catch {}
+}
+function loadPos(t) {
+  try {
+    return parseInt(localStorage.getItem(watchKey(t)) || "0", 10) || 0;
+  } catch {
+    return 0;
+  }
+}
+function clearPos(t) {
+  try {
+    localStorage.removeItem(watchKey(t));
+  } catch {}
+}
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// GLOBAL PLAYER (Broadcast Cinema UI + Dual-Tone Scrubber + Double-Chevron Skip)
+// GLOBAL PLAYER COMPONENT
 // ═══════════════════════════════════════════════════════════════════════════════
 export default function GlobalPlayer({
   url,
@@ -300,35 +465,36 @@ export default function GlobalPlayer({
   const hasNext = isSeries && currentIndex < playlist.length - 1;
   const hasPrev = isSeries && currentIndex > 0;
 
-  const [mode, setMode]                       = useState("discovering");
-  const [directUrl, setDirectUrl]             = useState("");
-  const [directMediaType, setDirectMediaType] = useState("");
+  const [mode, setMode]                                 = useState("discovering");
+  const [directUrl, setDirectUrl]                       = useState("");
+  const [directMediaType, setDirectMediaType]           = useState("");
   const [directReferrerPolicy, setDirectReferrerPolicy] = useState("");
-  const [iframeUrl, setIframeUrl]             = useState("");
-  const [embedFallback, setEmbedFallback]     = useState(null);
+  const [iframeUrl, setIframeUrl]                       = useState("");
+  const [embedFallback, setEmbedFallback]               = useState(null);
   const [resolvedFallbackSource, setResolvedFallbackSource] = useState(null);
-  const [engine, setEngine]                   = useState("");
-  const [discoverMsg, setDiscoverMsg]         = useState("Detecting stream…");
-  const [unsupportedInfo, setUnsupportedInfo] = useState(null);
-  const [copied, setCopied]                   = useState(false);
+  const [engine, setEngine]                             = useState("");
+  const [discoverMsg, setDiscoverMsg]                   = useState("Detecting stream…");
+  const [unsupportedInfo, setUnsupportedInfo]           = useState(null);
+  const [copied, setCopied]                             = useState(false);
 
-  const [isPlaying, setIsPlaying]       = useState(false);
-  const [currentTime, setCurrentTime]   = useState(0);
-  const [duration, setDuration]         = useState(0);
-  const [bufferedPct, setBufferedPct]   = useState(0);
-  const [knownDuration, setKnownDuration] = useState(0);
-  const [volume, setVolume]             = useState(1);
-  const [isMuted, setIsMuted]           = useState(false);
-  const [volHover, setVolHover]         = useState(false);
-  const [playbackRate, setPlaybackRate] = useState(1);
-  const [isBuffering, setIsBuffering]   = useState(false);
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const [isPiP, setIsPiP]               = useState(false);
-  const [showControls, setShowControls] = useState(true);
-  const [isScrubbing, setIsScrubbing]   = useState(false);
-  const [scrubPct, setScrubPct]         = useState(null);
-  const [hoverTime, setHoverTime]       = useState(null);
-  const [isStretched, setIsStretched]   = useState(false);
+  const [isPlaying, setIsPlaying]             = useState(false);
+  const [currentTime, setCurrentTime]         = useState(0);
+  const [duration, setDuration]               = useState(0);
+  const [bufferedPct, setBufferedPct]         = useState(0);
+  const [knownDuration, setKnownDuration]     = useState(0);
+  const [volume, setVolume]                   = useState(1);
+  const [isMuted, setIsMuted]                 = useState(false);
+  const [volHover, setVolHover]               = useState(false);
+  const [playbackRate, setPlaybackRate]       = useState(1);
+  const [isBuffering, setIsBuffering]         = useState(false);
+  const [isFullscreen, setIsFullscreen]       = useState(false);
+  const [isCssFullscreen, setIsCssFullscreen] = useState(false);
+  const [isPiP, setIsPiP]                     = useState(false);
+  const [showControls, setShowControls]       = useState(true);
+  const [isScrubbing, setIsScrubbing]         = useState(false);
+  const [scrubPct, setScrubPct]               = useState(null);
+  const [hoverTime, setHoverTime]             = useState(null);
+  const [isStretched, setIsStretched]         = useState(false);
 
   const [isLocked, setIsLocked]           = useState(false);
   const [showLockBadge, setShowLockBadge] = useState(false);
@@ -358,6 +524,16 @@ export default function GlobalPlayer({
   useEffect(() => {
     showResumeRef.current = showResume;
   }, [showResume]);
+
+  // ── Enforce inline playback attributes directly on DOM node for iOS WebKit ──
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    v.setAttribute("playsinline", "true");
+    v.setAttribute("webkit-playsinline", "true");
+    v.playsInline = true;
+    v.controls = false;
+  }, [mode, directUrl]);
 
   // ── Controls hide timer (3.2 seconds) ─────────────────────────────────
   const resetControlsTimer = useCallback(() => {
@@ -555,6 +731,11 @@ export default function GlobalPlayer({
       } catch (error) {
         if (ctrl.signal.aborted) return true;
 
+        // Proxy server is completely offline / unreachable
+        if (!error.status) {
+          throw error;
+        }
+
         probeFailed = true;
         const fallbackLangs = parseMediaMetadataFromUrl(mediaHttpUrl).detectedAudio;
         if (fallbackLangs.length > 0) {
@@ -581,7 +762,7 @@ export default function GlobalPlayer({
         setActiveQuality(-1);
       }
 
-      setDiscoverMsg("Transcoding DD5.1 audio to AAC…");
+      setDiscoverMsg("Remuxing 4K HEVC & transcoding DD5.1 audio to AAC…");
       const startParam = startAtSec > 0 ? `&start=${Math.floor(startAtSec)}` : "";
       setDirectMediaType("hls");
       setDirectUrl(
@@ -731,23 +912,22 @@ export default function GlobalPlayer({
         return;
       }
 
-      // 4. MKV / AVI / DD5.1 Multi-Audio Live Remux via Backend Proxy
+      // 3. MKV / AVI / DD5.1 Multi-Audio Live Remux via Backend Proxy
       if (RE_MKV_AVI.test(rawUrl) || parsedMeta.isSurround) {
         try {
           await initProxyMedia(rawUrl, ctrl);
           return;
         } catch {
-          if (parsedMeta.detectedAudio.length > 0) {
-            setAudioList(
-              parsedMeta.detectedAudio.map((a, i) => ({
-                id: i,
-                label: a.label,
-                lang: a.lang,
-                source: "detected",
-              }))
-            );
-            setTrackNotice("Media proxy offline. Start backend server (port 4000) for in-browser DD5.1 & multi-audio playback, or open in VLC.");
-          }
+          if (ctrl.signal.aborted) return;
+          setUnsupportedInfo({
+            ext: getFileExtension(rawUrl),
+            isMagnet: false,
+            isStreamableExternal: true,
+            title: "Media Proxy Offline (4K MKV / DD5.1)",
+            reason: `Start server.js on port 4000 (${PROXY_BASE}) to remux 4K HEVC & Dolby 5.1 in-browser, or open directly in VLC / Infuse / MX Player.`,
+          });
+          setMode("unsupported");
+          return;
         }
       }
 
@@ -1328,29 +1508,26 @@ export default function GlobalPlayer({
     };
   }, [mode, rawUrl, currentTitle, parsedMeta, knownDuration, startCountdown, syncNativeTracks, resolvedFallbackSource]);
 
-  // ── Fullscreen listener ───────────────────────────────────────────────
+  // ── Fullscreen listener (Native + iPhone CSS fallback) ────────────────
   useEffect(() => {
-    const v = videoRef.current;
     const onFS = () => {
       const fs = !!(document.fullscreenElement || document.webkitFullscreenElement);
       setIsFullscreen(fs);
       if (!fs) {
+        setIsCssFullscreen(false);
         try { window.screen?.orientation?.unlock?.(); } catch {}
       }
     };
-    const onIosBegin = () => setIsFullscreen(true);
-    const onIosEnd   = () => setIsFullscreen(false);
 
-    ["fullscreenchange", "webkitfullscreenchange"].forEach((e) => document.addEventListener(e, onFS));
-    v?.addEventListener("webkitbeginfullscreen", onIosBegin);
-    v?.addEventListener("webkitendfullscreen", onIosEnd);
-
+    ["fullscreenchange", "webkitfullscreenchange"].forEach((e) =>
+      document.addEventListener(e, onFS)
+    );
     return () => {
-      ["fullscreenchange", "webkitfullscreenchange"].forEach((e) => document.removeEventListener(e, onFS));
-      v?.removeEventListener("webkitbeginfullscreen", onIosBegin);
-      v?.removeEventListener("webkitendfullscreen", onIosEnd);
+      ["fullscreenchange", "webkitfullscreenchange"].forEach((e) =>
+        document.removeEventListener(e, onFS)
+      );
     };
-  }, [mode]);
+  }, []);
 
   // ── Auto-scroll episode bar ───────────────────────────────────────────
   useEffect(() => {
@@ -1416,7 +1593,6 @@ export default function GlobalPlayer({
     resetControlsTimer();
   }, [knownDuration, resetControlsTimer]);
 
-  // Double-chevron skip indicator ("10 seconds" like reference image)
   const triggerSkipRipple = useCallback((side, delta) => {
     clearTimeout(skipRippleTimer.current);
     setSkipRipple((prev) => ({
@@ -1499,41 +1675,45 @@ export default function GlobalPlayer({
     } catch {}
   }, []);
 
+  // ── Fullscreen Toggle (Never triggers Apple native AVPlayer on iPhone) ──
   const toggleFullscreen = useCallback(async () => {
     const el = containerRef.current;
-    const v = videoRef.current;
     const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || window.innerWidth <= 900;
 
-    try {
-      if (!document.fullscreenElement && !document.webkitFullscreenElement) {
-        if (el?.requestFullscreen) {
-          await el.requestFullscreen();
-          if (isMobile) {
-            try { await window.screen?.orientation?.lock?.("landscape"); } catch {}
-          }
-        } else if (el?.webkitRequestFullscreen) {
-          await el.webkitRequestFullscreen();
-        } else if (v?.webkitEnterFullscreen) {
-          v.webkitEnterFullscreen();
-        }
-
-        setShowSettings(false);
-        setShowSpeedPop(false);
-        clearTimeout(controlsTimer.current);
-        controlsTimer.current = setTimeout(() => setShowControls(false), 3200);
-      } else {
+    if (document.fullscreenElement || document.webkitFullscreenElement || isCssFullscreen) {
+      try {
         if (document.exitFullscreen) await document.exitFullscreen();
         else if (document.webkitExitFullscreen) await document.webkitExitFullscreen();
-        try { window.screen?.orientation?.unlock?.(); } catch {}
+      } catch {}
+      setIsCssFullscreen(false);
+      setIsFullscreen(false);
+      try { window.screen?.orientation?.unlock?.(); } catch {}
+      return;
+    }
+
+    try {
+      if (el?.requestFullscreen) {
+        await el.requestFullscreen();
+        if (isMobile) {
+          try { await window.screen?.orientation?.lock?.("landscape"); } catch {}
+        }
+      } else if (el?.webkitRequestFullscreen) {
+        await el.webkitRequestFullscreen();
+      } else {
+        // iPhone fallback: CSS fullscreen on .gp-root container
+        setIsCssFullscreen(true);
+        setIsFullscreen(true);
       }
     } catch {
-      try {
-        v?.webkitEnterFullscreen?.();
-        clearTimeout(controlsTimer.current);
-        controlsTimer.current = setTimeout(() => setShowControls(false), 3200);
-      } catch {}
+      setIsCssFullscreen(true);
+      setIsFullscreen(true);
     }
-  }, []);
+
+    setShowSettings(false);
+    setShowSpeedPop(false);
+    clearTimeout(controlsTimer.current);
+    controlsTimer.current = setTimeout(() => setShowControls(false), 3200);
+  }, [isCssFullscreen]);
 
   // ── Resume & Start Over ───────────────────────────────────────────────
   const handleResume = useCallback(() => {
@@ -1690,7 +1870,7 @@ export default function GlobalPlayer({
     gestureRef.current = { ...g, active: false, moved: false };
   }, []);
 
-  // ── Keyboard & Android TV Remote Handler ──────────────────────────
+  // ── Keyboard & Android TV Remote Handler ──────────────────────────────
   useEffect(() => {
     const onKey = (e) => {
       const tag = e.target.tagName;
@@ -1765,7 +1945,7 @@ export default function GlobalPlayer({
         if (showSettings || showSpeedPop) {
           setShowSettings(false);
           setShowSpeedPop(false);
-        } else if (document.fullscreenElement) {
+        } else if (document.fullscreenElement || isCssFullscreen) {
           toggleFullscreen();
         } else {
           onClose?.();
@@ -1774,7 +1954,7 @@ export default function GlobalPlayer({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [mode, isLocked, showSettings, showSpeedPop, togglePlay, toggleFullscreen, togglePiP, toggleMute, triggerSkipRipple, setVol, onClose]);
+  }, [mode, isLocked, isCssFullscreen, showSettings, showSpeedPop, togglePlay, toggleFullscreen, togglePiP, toggleMute, triggerSkipRipple, setVol, onClose]);
 
   const handleCopyUrl = useCallback(() => {
     navigator.clipboard?.writeText(rawUrl).then(() => {
@@ -1786,7 +1966,6 @@ export default function GlobalPlayer({
   // ── Derived values & External Player Deep-Links ───────────────────────
   const progress   = effectiveDuration > 0 ? Math.min(100, (currentTime / effectiveDuration) * 100) : 0;
   const displayPct = scrubPct !== null ? scrubPct : progress;
-  // Dual-tone scrubber: white played bar + crimson leading segment (matching reference image)
   const capPct     = displayPct > 0 ? Math.min(6, Math.max(2.2, displayPct * 0.14)) : 0;
   const whitePct   = Math.max(0, displayPct - capPct);
 
@@ -1801,7 +1980,6 @@ export default function GlobalPlayer({
     : null;
 
   const ctrlVisible    = (showControls || isScrubbing) && !isLocked;
-  const EP_BAR_H       = isSeries ? 68 : 0;
   const externalVlc    = `vlc://${rawUrl.replace(/^https?:\/\//i, "")}`;
   const externalMx     = `intent:${rawUrl}#Intent;package=com.mxtech.videoplayer.ad;S.title=${encodeURIComponent(currentTitle)};end`;
   const externalInfuse = `infuse://x-callback-url/play?url=${encodeURIComponent(rawUrl)}`;
@@ -1832,17 +2010,22 @@ export default function GlobalPlayer({
       .filter(Boolean)
       .join(" · ");
 
+  const rootClassName = [
+    "gp-root",
+    isSeries ? "gp-root--series" : "",
+    isCssFullscreen ? "gp-root--css-fs" : "",
+    mode === "direct" && !ctrlVisible && !isLocked ? "gp-root--hide-cursor" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   // ══════════════════════════════════════════════════════════════════════
   // RENDER
   // ══════════════════════════════════════════════════════════════════════
   return (
     <div
       ref={containerRef}
-      className="gp-root"
-      style={{
-        ...S.root,
-        cursor: mode === "direct" && !ctrlVisible && !isLocked ? "none" : "default",
-      }}
+      className={rootClassName}
       onMouseMove={() => {
         if (isLocked) revealLockSign();
         else resetControlsTimer();
@@ -1855,7 +2038,7 @@ export default function GlobalPlayer({
         ref={subFileInput}
         type="file"
         accept=".srt,.vtt,text/vtt"
-        style={{ display: "none" }}
+        hidden
         onChange={handleSubtitleUpload}
       />
 
@@ -1864,16 +2047,17 @@ export default function GlobalPlayer({
         <video
           ref={videoRef}
           referrerPolicy={directReferrerPolicy || undefined}
-          style={{
-            ...S.video,
-            objectFit: isStretched ? "cover" : "contain",
-            filter: brightness !== 100 ? `brightness(${brightness / 100})` : undefined,
-            display: mode === "direct" ? "block" : "none",
-            bottom: isSeries ? EP_BAR_H : 0,
-          }}
+          className={[
+            "gp-video",
+            isStretched ? "gp-video--stretch" : "",
+            mode !== "direct" ? "gp-video--hidden" : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+          style={brightness !== 100 ? { filter: `brightness(${brightness / 100})` } : undefined}
           playsInline
+          controls={false}
           preload="auto"
-          webkit-playsinline="true"
           x-webkit-airplay="allow"
           onClick={handleSurfaceClick}
           onCanPlay={() => setError("")}
@@ -1898,44 +2082,28 @@ export default function GlobalPlayer({
       {/* ── CINEMATIC TOP & BOTTOM SCRIMS ── */}
       {mode === "direct" && !isLocked && (
         <>
-          <div
-            style={{
-              ...S.topScrim,
-              opacity: ctrlVisible ? 1 : 0,
-              transition: "opacity 0.3s ease",
-            }}
-          />
-          <div
-            style={{
-              ...S.bottomScrim,
-              bottom: isSeries ? EP_BAR_H : 0,
-              opacity: ctrlVisible ? 1 : 0,
-              transition: "opacity 0.3s ease",
-            }}
-          />
+          <div className={`gp-top-scrim ${ctrlVisible ? "gp-scrim--visible" : ""}`} />
+          <div className={`gp-bottom-scrim ${ctrlVisible ? "gp-scrim--visible" : ""}`} />
         </>
       )}
 
-      {/* ── DOUBLE-CHEVRON SKIP OVERLAY ("10 seconds" matching reference) ── */}
+      {/* ── DOUBLE-CHEVRON SKIP OVERLAY ── */}
       {skipRipple && mode === "direct" && (
         <div
           key={skipRipple.key}
-          style={{
-            ...S.skipZone,
-            ...(skipRipple.side === "left" ? { left: "12%" } : { right: "12%" }),
-          }}
+          className={`gp-skip-zone gp-skip-zone--${skipRipple.side}`}
         >
-          <div style={S.skipChevronRow}>
+          <div className="gp-skip-chevron-row">
             {skipRipple.side === "left" ? <Icons.DoubleRewind /> : <Icons.DoubleForward />}
           </div>
-          <span style={S.skipText}>{skipRipple.amount} seconds</span>
+          <span className="gp-skip-text">{skipRipple.amount} seconds</span>
         </div>
       )}
 
       {/* ── TRANSPARENT LOCK SHIELD ── */}
       {isLocked && mode === "direct" && (
         <div
-          style={S.lockShield}
+          className="gp-lock-shield"
           onClick={(e) => {
             e.stopPropagation();
             revealLockSign();
@@ -1946,13 +2114,7 @@ export default function GlobalPlayer({
       {/* ── LOCK PEEK BUTTON ── */}
       {isLocked && mode === "direct" && (
         <button
-          style={{
-            ...S.lockPeek,
-            opacity: showLockBadge ? 1 : 0,
-            transform: showLockBadge ? "translateY(0)" : "translateY(-8px)",
-            pointerEvents: showLockBadge ? "auto" : "none",
-            transition: "opacity 0.25s ease, transform 0.25s ease",
-          }}
+          className={`gp-lock-peek ${showLockBadge ? "gp-lock-peek--visible" : ""}`}
           onClick={(e) => {
             e.stopPropagation();
             exitLockMode();
@@ -1960,15 +2122,13 @@ export default function GlobalPlayer({
           title="Unlock Controls"
         >
           <Icons.Unlock />
-          <span style={{ fontSize: "0.72rem", fontWeight: 700, marginLeft: 6 }}>
-            Screen Locked · Tap to Unlock
-          </span>
+          <span className="gp-lock-peek-text">Screen Locked · Tap to Unlock</span>
         </button>
       )}
 
-{/* ── IFRAME / EMBED ── */}
+      {/* ── IFRAME / EMBED ── */}
       {mode === "iframe" && (
-        <div style={{ ...S.iframeWrap, bottom: isSeries ? EP_BAR_H : 0 }}>
+        <div className="gp-iframe-wrap">
           <iframe
             ref={iframeRef}
             src={iframeUrl}
@@ -1976,48 +2136,17 @@ export default function GlobalPlayer({
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
             allowFullScreen
             sandbox="allow-scripts allow-same-origin allow-presentation allow-forms"
-            style={S.iframe}
+            className="gp-iframe"
             onLoad={() => setError("")}
           />
           {embedFallback && (
-            <div
-              role="status"
-              style={{
-                position: "absolute",
-                top: 78,
-                left: 26,
-                zIndex: 450,
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                maxWidth: "min(520px, calc(100% - 52px))",
-                padding: "9px 14px",
-                borderRadius: 10,
-                background: "rgba(12, 12, 15, 0.88)",
-                backdropFilter: "blur(12px)",
-                border: "1px solid rgba(255, 255, 255, 0.14)",
-                color: "#f5f5f7",
-                fontSize: 12,
-                lineHeight: 1.4,
-                boxShadow: "0 8px 24px rgba(0,0,0,0.6)",
-              }}
-            >
-              <span style={{ flex: 1 }}>
+            <div role="status" className="gp-embed-banner">
+              <span className="gp-embed-banner-text">
                 Using <strong>{embedFallback.provider}</strong>'s player: {embedFallback.reason}
               </span>
               <button
+                className="gp-embed-dismiss-btn"
                 onClick={() => setEmbedFallback(null)}
-                style={{
-                  background: "rgba(255,255,255,0.1)",
-                  border: "none",
-                  color: "#fff",
-                  borderRadius: 6,
-                  padding: "4px 8px",
-                  fontSize: 11,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  flexShrink: 0,
-                }}
               >
                 Dismiss
               </button>
@@ -2028,54 +2157,54 @@ export default function GlobalPlayer({
 
       {/* ── UNSUPPORTED / EXTERNAL PLAYER LAUNCHER CARD ── */}
       {mode === "unsupported" && unsupportedInfo && (
-        <div style={S.cardOverlay}>
-          <div style={S.glassCard}>
-            <div style={S.warnIconWrap}>
+        <div className="gp-card-overlay">
+          <div className="gp-glass-card">
+            <div className="gp-warn-icon-wrap">
               {unsupportedInfo.isStreamableExternal ? <Icons.External /> : <Icons.Archive />}
             </div>
-            <span style={S.pillBadge}>{unsupportedInfo.ext}</span>
-            <h3 style={S.cardTitle}>{unsupportedInfo.title}</h3>
-            <p style={S.cardFile} title={currentTitle}>{currentTitle}</p>
-            <p style={S.cardReason}>{unsupportedInfo.reason}</p>
+            <span className="gp-pill-badge">{unsupportedInfo.ext}</span>
+            <h3 className="gp-card-title">{unsupportedInfo.title}</h3>
+            <p className="gp-card-file" title={currentTitle}>{currentTitle}</p>
+            <p className="gp-card-reason">{unsupportedInfo.reason}</p>
 
             {unsupportedInfo.isStreamableExternal ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: 8, width: "100%" }}>
-                <div style={S.cardActions}>
-                  <a href={externalVlc} style={{ ...S.actionBtn, ...S.actionPrimary }}>
+              <div className="gp-card-actions-col">
+                <div className="gp-card-actions">
+                  <a href={externalVlc} className="gp-action-btn gp-action-btn--primary">
                     <Icons.External /> Open in VLC
                   </a>
                   {isAndroid && (
-                    <a href={externalMx} style={{ ...S.actionBtn, ...S.actionSecondary }}>
+                    <a href={externalMx} className="gp-action-btn gp-action-btn--secondary">
                       MX Player
                     </a>
                   )}
                   {isIos && (
-                    <a href={externalInfuse} style={{ ...S.actionBtn, ...S.actionSecondary }}>
+                    <a href={externalInfuse} className="gp-action-btn gp-action-btn--secondary">
                       Infuse
                     </a>
                   )}
                 </div>
-                <div style={S.cardActions}>
-                  <button style={{ ...S.actionBtn, ...S.actionSecondary }} onClick={handleCopyUrl}>
+                <div className="gp-card-actions">
+                  <button className="gp-action-btn gp-action-btn--secondary" onClick={handleCopyUrl}>
                     <Icons.Copy /> {copied ? "Copied Link!" : "Copy Link"}
                   </button>
-                  <a href={rawUrl} target="_blank" rel="noreferrer" download style={{ ...S.actionBtn, ...S.actionSecondary }}>
+                  <a href={rawUrl} target="_blank" rel="noreferrer" download className="gp-action-btn gp-action-btn--secondary">
                     <Icons.Download /> Download
                   </a>
                 </div>
               </div>
             ) : (
-              <div style={S.cardActions}>
+              <div className="gp-card-actions">
                 <a
                   href={rawUrl}
                   target="_blank"
                   rel="noreferrer"
                   download
-                  style={{ ...S.actionBtn, ...S.actionPrimary }}
+                  className="gp-action-btn gp-action-btn--primary"
                 >
                   <Icons.Download /> {unsupportedInfo.isMagnet ? "Open Magnet" : `Download ${unsupportedInfo.ext}`}
                 </a>
-                <button style={{ ...S.actionBtn, ...S.actionSecondary }} onClick={handleCopyUrl}>
+                <button className="gp-action-btn gp-action-btn--secondary" onClick={handleCopyUrl}>
                   <Icons.Copy /> {copied ? "Copied!" : "Copy"}
                 </button>
               </div>
@@ -2086,100 +2215,94 @@ export default function GlobalPlayer({
 
       {/* ── DISCOVERING SPINNER ── */}
       {mode === "discovering" && (
-        <div style={S.loaderWrap}>
-          <div style={S.spinWrap}>
-            <div style={{ ...S.spinRing, ...S.sr1 }} />
-            <div style={{ ...S.spinRing, ...S.sr2 }} />
-            <div style={{ ...S.spinRing, ...S.sr3 }} />
-            <div style={S.spinDot} />
+        <div className="gp-loader-wrap">
+          <div className="gp-spin-wrap">
+            <div className="gp-spin-ring gp-sr1" />
+            <div className="gp-spin-ring gp-sr2" />
+            <div className="gp-spin-ring gp-sr3" />
+            <div className="gp-spin-dot" />
           </div>
-          <p style={S.loaderText}>{discoverMsg}</p>
+          <p className="gp-loader-text">{discoverMsg}</p>
         </div>
       )}
 
       {/* ── BUFFERING RING ── */}
       {mode === "direct" && isBuffering && (
-        <div style={S.bufWrap}>
-          <div style={S.bufRing} />
+        <div className="gp-buf-wrap">
+          <div className="gp-buf-ring" />
         </div>
       )}
 
       {/* ── PLAY/PAUSE CENTER FLASH ── */}
       {playFlash && mode === "direct" && (
-        <div key={flashKey} style={S.flash}>
-          <div style={S.flashRing} />
-          <div style={S.flashIcon}>{playFlash === "play" ? <Icons.Play /> : <Icons.Pause />}</div>
+        <div key={flashKey} className="gp-flash">
+          <div className="gp-flash-ring" />
+          <div className="gp-flash-icon">
+            {playFlash === "play" ? <Icons.Play /> : <Icons.Pause />}
+          </div>
         </div>
       )}
 
-      {/* ── TOP HEADER (Vertical Red Accent Bar + Title & Description + Brand Mark) ── */}
+      {/* ── TOP HEADER ── */}
       <div
-        className="gp-header"
-        style={{
-          ...S.header,
-          opacity: ctrlVisible || mode === "iframe" || mode === "unsupported" ? 1 : 0,
-          pointerEvents: ctrlVisible || mode === "iframe" || mode === "unsupported" ? "auto" : "none",
-          transition: "opacity 0.28s ease",
-        }}
+        className={`gp-header ${
+          ctrlVisible || mode === "iframe" || mode === "unsupported" ? "gp-header--visible" : ""
+        }`}
       >
-        <div style={S.headerLeft}>
+        <div className="gp-header-left">
           {onClose && (
-            <button className="gp-icon-btn" style={S.backBtn} onClick={onClose} aria-label="Back" title="Back">
+            <button className="gp-icon-btn gp-back-btn" onClick={onClose} aria-label="Back" title="Back">
               <Icons.Back />
             </button>
           )}
 
-          {/* Crimson Vertical Bar + Title + Description (matching reference image) */}
-          <div style={S.titleBlock}>
-            <div style={S.redAccentBar} />
-            <div style={S.titleTextCol}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                <span className="gp-title-text" style={S.titleText}>{currentTitle}</span>
-                {episodeLabel && <span style={S.epBadge}>{episodeLabel}</span>}
+          <div className="gp-title-block">
+            <div className="gp-red-accent-bar" />
+            <div className="gp-title-text-col">
+              <div className="gp-title-row">
+                <span className="gp-title-text">{currentTitle}</span>
+                {episodeLabel && <span className="gp-ep-badge">{episodeLabel}</span>}
               </div>
               {subDescription && (
-                <span className="gp-desc-text" style={S.descText}>{subDescription}</span>
+                <span className="gp-desc-text">{subDescription}</span>
               )}
             </div>
           </div>
         </div>
 
-        {/* Top-Right Brand Mark / Engine Pill + Screen Lock */}
-        <div className="gp-top-right" style={S.topRight}>
+        <div className="gp-top-right">
           {mode === "iframe" && (
             <div
-              className="gp-hide-xs"
-              style={{
-                ...S.adBadge,
-                ...(adBlockStatus === "cross-origin" ? S.adBadgePartial : {}),
-              }}
+              className={`gp-ad-badge gp-hide-xs ${
+                adBlockStatus === "cross-origin" ? "gp-ad-badge--partial" : ""
+              }`}
             >
               <Icons.Shield />
-              <span style={{ fontSize: "0.58rem", fontWeight: 800, letterSpacing: "0.6px" }}>
+              <span className="gp-ad-badge-text">
                 {adBlockStatus === "injected" ? "AD SHIELD" : "POPUPS OFF"}
               </span>
             </div>
           )}
 
           {brandLogo ? (
-            <span className="gp-hide-xs" style={S.brandLogoText}>{brandLogo}</span>
+            <span className="gp-brand-logo-text gp-hide-xs">{brandLogo}</span>
           ) : (
-            engine && <span className="gp-hide-xs" style={S.brandLogoText}>{engine}</span>
+            engine && <span className="gp-brand-logo-text gp-hide-xs">{engine}</span>
           )}
 
           {mode === "direct" && (
             <>
               <button
-                className="gp-icon-btn gp-hide-xs"
-                style={{ ...S.topActionBtn, ...(isStretched ? S.topActionActive : {}) }}
+                className={`gp-icon-btn gp-top-action-btn gp-hide-xs ${
+                  isStretched ? "gp-top-action-btn--active" : ""
+                }`}
                 onClick={() => { setIsStretched((s) => !s); resetControlsTimer(); }}
                 title="Aspect Fill / Fit"
               >
                 <Icons.Stretch />
               </button>
               <button
-                className="gp-icon-btn"
-                style={S.topActionBtn}
+                className="gp-icon-btn gp-top-action-btn"
                 onClick={enterLockMode}
                 title="Lock Screen"
               >
@@ -2192,43 +2315,48 @@ export default function GlobalPlayer({
 
       {/* ── GESTURE OVERLAYS ── */}
       {gestureOv && !isLocked && (
-        <div style={{ ...S.gesturePanel, ...(gestureOv.type === "brightness" ? { left: 22 } : { right: 22 }) }}>
-          <span style={{ opacity: 0.9, fontSize: 16 }}>
-            {gestureOv.type === "brightness" ? <Icons.Sun /> : gestureOv.value === 0 ? <Icons.Mute /> : <Icons.VolumeUp />}
+        <div className={`gp-gesture-panel gp-gesture-panel--${gestureOv.type === "brightness" ? "left" : "right"}`}>
+          <span className="gp-gesture-icon">
+            {gestureOv.type === "brightness" ? (
+              <Icons.Sun />
+            ) : gestureOv.value === 0 ? (
+              <Icons.Mute />
+            ) : (
+              <Icons.VolumeUp />
+            )}
           </span>
-          <div style={S.gestureTrack}>
+          <div className="gp-gesture-track">
             <div
-              style={{
-                ...S.gestureFill,
-                height: `${gestureBarH}%`,
-                background: gestureOv.type === "brightness" ? "#fff" : C.red,
-              }}
+              className={`gp-gesture-fill gp-gesture-fill--${gestureOv.type}`}
+              style={{ height: `${gestureBarH}%` }}
             />
           </div>
-          <span style={{ fontSize: "0.65rem", fontWeight: 700, fontFamily: F.mono }}>{gestureOv.value}%</span>
+          <span className="gp-gesture-val">{gestureOv.value}%</span>
         </div>
       )}
 
       {/* ── RESUME PROMPT ── */}
       {showResume && mode === "direct" && (
-        <div style={S.cardOverlay}>
-          <div style={S.glassCard}>
-            <div style={S.resumeIcon}><Icons.Play /></div>
-            <h3 style={S.cardTitle}>Continue Watching?</h3>
-            <p style={S.resumeSub}>Paused at {fmt(resumeTime)}{effectiveDuration > 0 ? ` / ${fmt(effectiveDuration)}` : ""}</p>
-            <div style={S.resumeBar}>
+        <div className="gp-card-overlay">
+          <div className="gp-glass-card">
+            <div className="gp-resume-icon"><Icons.Play /></div>
+            <h3 className="gp-card-title">Continue Watching?</h3>
+            <p className="gp-resume-sub">
+              Paused at {fmt(resumeTime)}{effectiveDuration > 0 ? ` / ${fmt(effectiveDuration)}` : ""}
+            </p>
+            <div className="gp-resume-bar">
               <div
+                className="gp-resume-bar-fill"
                 style={{
-                  ...S.resumeBarFill,
                   width: effectiveDuration > 0 ? `${Math.min(100, (resumeTime / effectiveDuration) * 100)}%` : "35%",
                 }}
               />
             </div>
-            <div style={S.cardActions}>
-              <button style={{ ...S.actionBtn, ...S.actionPrimary }} onClick={handleResume}>
+            <div className="gp-card-actions">
+              <button className="gp-action-btn gp-action-btn--primary" onClick={handleResume}>
                 <Icons.Play /> Resume
               </button>
-              <button style={{ ...S.actionBtn, ...S.actionSecondary }} onClick={handleStartOver}>
+              <button className="gp-action-btn gp-action-btn--secondary" onClick={handleStartOver}>
                 Start Over
               </button>
             </div>
@@ -2238,34 +2366,34 @@ export default function GlobalPlayer({
 
       {/* ── AUTOPLAY COUNTDOWN ── */}
       {countdown !== null && hasNext && (
-        <div style={S.cardOverlay}>
-          <div style={S.glassCard}>
-            <p style={S.apLabel}>Up Next</p>
-            <p style={S.apTitle}>{playlist[currentIndex + 1]?.title || `Episode ${currentIndex + 2}`}</p>
-            <div style={S.apRing}>
-              <svg viewBox="0 0 48 48" width={64} height={64} style={{ transform: "rotate(-90deg)" }}>
+        <div className="gp-card-overlay">
+          <div className="gp-glass-card">
+            <p className="gp-ap-label">Up Next</p>
+            <p className="gp-ap-title">{playlist[currentIndex + 1]?.title || `Episode ${currentIndex + 2}`}</p>
+            <div className="gp-ap-ring">
+              <svg viewBox="0 0 48 48" width={64} height={64} className="gp-ap-svg">
                 <circle cx="24" cy="24" r="20" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="3.5" />
                 <circle
                   cx="24"
                   cy="24"
                   r="20"
                   fill="none"
-                  stroke={C.red}
+                  stroke="#e50914"
                   strokeWidth="3.5"
                   strokeLinecap="round"
                   strokeDasharray="125.7"
                   strokeDashoffset={125.7 - ringOffset}
-                  style={{ filter: "drop-shadow(0 0 8px rgba(229,9,20,0.65))", transition: "stroke-dashoffset 0.92s linear" }}
+                  className="gp-ap-circle-progress"
                 />
               </svg>
-              <span style={S.apNum}>{countdown}</span>
+              <span className="gp-ap-num">{countdown}</span>
             </div>
-            <p style={S.apHint}>Starting in {countdown}s</p>
-            <div style={S.cardActions}>
-              <button style={S.apNow} onClick={() => { cancelCountdown(); goToEpisode(currentIndex + 1); }}>
+            <p className="gp-ap-hint">Starting in {countdown}s</p>
+            <div className="gp-card-actions">
+              <button className="gp-ap-now" onClick={() => { cancelCountdown(); goToEpisode(currentIndex + 1); }}>
                 <Icons.Play /> Play Now
               </button>
-              <button style={{ ...S.actionBtn, ...S.actionSecondary }} onClick={cancelCountdown}>
+              <button className="gp-action-btn gp-action-btn--secondary" onClick={cancelCountdown}>
                 Cancel
               </button>
             </div>
@@ -2273,24 +2401,12 @@ export default function GlobalPlayer({
         </div>
       )}
 
-      {/* ── BOTTOM BROADCAST CONTROL BAR (Matching Reference Image) ── */}
+      {/* ── BOTTOM BROADCAST CONTROL BAR ── */}
       {mode === "direct" && (
-        <div
-          className="gp-ctrl-bar"
-          style={{
-            ...S.ctrlBar,
-            bottom: isSeries ? EP_BAR_H : 0,
-            paddingBottom: isSeries ? 10 : "max(18px, env(safe-area-inset-bottom))",
-            opacity: ctrlVisible ? 1 : 0,
-            pointerEvents: ctrlVisible ? "auto" : "none",
-            transition: "opacity 0.25s ease",
-          }}
-        >
-          {/* 1. Full-Width Dual-Tone Scrubber Bar (White Played + Red Active Segment) */}
+        <div className={`gp-ctrl-bar ${ctrlVisible ? "gp-ctrl-bar--visible" : ""}`}>
           <div
             ref={progressRef}
             className="gp-track"
-            style={S.track}
             onMouseMove={onTrackHover}
             onMouseLeave={() => !isScrubbing && setHoverTime(null)}
             onPointerDown={onScrubStart}
@@ -2300,40 +2416,29 @@ export default function GlobalPlayer({
           >
             {hoverTime && effectiveDuration > 0 && (
               <div
-                style={{
-                  ...S.hoverTooltip,
-                  left: `${clamp(hoverTime.pct / 100, 0.04, 0.96) * 100}%`,
-                }}
+                className="gp-hover-tooltip"
+                style={{ left: `${clamp(hoverTime.pct / 100, 0.04, 0.96) * 100}%` }}
               >
                 {fmt(hoverTime.sec)}
               </div>
             )}
 
-            <div className="gp-track-rail" style={S.trackBg}>
-              {/* Buffered segment */}
-              <div style={{ ...S.trackBuffer, width: `${bufferedPct}%` }} />
-              {/* White played progress */}
-              <div style={{ ...S.trackWhiteFill, width: `${whitePct}%` }} />
-              {/* Crimson active leading edge (matching reference image) */}
+            <div className="gp-track-rail">
+              <div className="gp-track-buffer" style={{ width: `${bufferedPct}%` }} />
+              <div className="gp-track-white-fill" style={{ width: `${whitePct}%` }} />
               {displayPct > 0 && (
                 <div
-                  style={{
-                    ...S.trackRedCap,
-                    left: `${whitePct}%`,
-                    width: `${capPct}%`,
-                  }}
+                  className="gp-track-red-cap"
+                  style={{ left: `${whitePct}%`, width: `${capPct}%` }}
                 />
               )}
             </div>
           </div>
 
-          {/* 2. Bottom Transport & Utility Row */}
-          <div style={S.bottomRow}>
-            {/* Left Group: Red-ringed Play/Pause + Speaker/Volume + 8:26 / 14:48 */}
-            <div style={S.bottomLeft}>
+          <div className="gp-bottom-row">
+            <div className="gp-bottom-left">
               <button
                 className="gp-ring-play"
-                style={S.ringPlayBtn}
                 onClick={togglePlay}
                 aria-label={isPlaying ? "Pause" : "Play"}
                 title={isPlaying ? "Pause (K)" : "Play (K)"}
@@ -2342,40 +2447,30 @@ export default function GlobalPlayer({
               </button>
 
               {hasPrev && (
-                <button className="gp-icon-btn gp-hide-xs" style={S.dockBtn} onClick={() => goToEpisode(currentIndex - 1)} title="Previous Episode">
+                <button className="gp-icon-btn gp-dock-btn gp-hide-xs" onClick={() => goToEpisode(currentIndex - 1)} title="Previous Episode">
                   <Icons.Prev />
                 </button>
               )}
               {hasNext && (
-                <button className="gp-icon-btn gp-hide-xs" style={S.dockBtn} onClick={() => goToEpisode(currentIndex + 1)} title="Next Episode">
+                <button className="gp-icon-btn gp-dock-btn gp-hide-xs" onClick={() => goToEpisode(currentIndex + 1)} title="Next Episode">
                   <Icons.Next />
                 </button>
               )}
 
-              {/* Speaker + Smooth Expandable Volume Slider */}
               <div
-                style={S.volWrap}
+                className="gp-vol-wrap"
                 onMouseEnter={() => setVolHover(true)}
                 onMouseLeave={() => setVolHover(false)}
               >
                 <button
-                  className="gp-icon-btn"
-                  style={S.dockBtn}
+                  className="gp-icon-btn gp-dock-btn"
                   onClick={toggleMute}
                   aria-label="Mute"
                   title="Mute (M)"
                 >
                   {isMuted || volume === 0 ? <Icons.Mute /> : volume < 0.5 ? <Icons.VolumeDown /> : <Icons.VolumeUp />}
                 </button>
-                <div
-                  className="gp-hide-xs"
-                  style={{
-                    ...S.volSliderWrap,
-                    width: volHover ? 76 : 0,
-                    opacity: volHover ? 1 : 0,
-                    marginRight: volHover ? 6 : 0,
-                  }}
-                >
+                <div className={`gp-vol-slider-wrap gp-hide-xs ${volHover ? "gp-vol-slider-wrap--open" : ""}`}>
                   <input
                     type="range"
                     min={0}
@@ -2384,30 +2479,25 @@ export default function GlobalPlayer({
                     value={isMuted ? 0 : volume}
                     onChange={(e) => setVol(parseFloat(e.target.value))}
                     className="gp-vol"
-                    style={S.volSlider}
                     aria-label="Volume"
                   />
                 </div>
               </div>
 
-              {/* Timestamp with Crimson Slash ("8:26 / 14:48" matching reference) */}
-              <div style={S.timeDisplay}>
-                <span style={S.timeCurrent}>{fmt(currentTime)}</span>
-                <span style={S.timeSlash}>/</span>
-                <span style={S.timeTotal}>{fmt(effectiveDuration)}</span>
+              <div className="gp-time-display">
+                <span className="gp-time-current">{fmt(currentTime)}</span>
+                <span className="gp-time-slash">/</span>
+                <span className="gp-time-total">{fmt(effectiveDuration)}</span>
               </div>
             </div>
 
-            {/* Right Group: Speed Clock + Settings Gear + PiP + Diagonal Red Fullscreen */}
-            <div style={S.bottomRight}>
+            <div className="gp-bottom-right">
               {/* Playback Speed Dial */}
-              <div style={{ position: "relative" }}>
+              <div className="gp-popover-anchor">
                 <button
-                  className="gp-icon-btn"
-                  style={{
-                    ...S.dockBtn,
-                    ...(playbackRate !== 1 || showSpeedPop ? { color: C.redB } : {}),
-                  }}
+                  className={`gp-icon-btn gp-dock-btn ${
+                    playbackRate !== 1 || showSpeedPop ? "gp-dock-btn--active" : ""
+                  }`}
                   onClick={() => {
                     setShowSpeedPop((s) => !s);
                     setShowSettings(false);
@@ -2419,31 +2509,30 @@ export default function GlobalPlayer({
                 </button>
 
                 {showSpeedPop && (
-                  <div className="gp-settings-menu" style={S.settingsMenu} onClick={(e) => e.stopPropagation()}>
-                    <div style={S.menuHeader}>Playback Speed</div>
+                  <div className="gp-settings-menu" onClick={(e) => e.stopPropagation()}>
+                    <div className="gp-menu-header">Playback Speed</div>
                     {PLAYBACK_RATES.map((rate) => (
                       <button
-                        className="gp-menu-row"
+                        className="gp-menu-option-row"
                         key={rate}
-                        style={S.menuOptionRow}
                         onClick={() => handleSelectSpeed(rate)}
                       >
                         <span>{rate === 1 ? "Normal (1.0x)" : `${rate}x`}</span>
-                        {playbackRate === rate && <span style={{ color: C.red }}><Icons.Check /></span>}
+                        {playbackRate === rate && (
+                          <span className="gp-menu-check"><Icons.Check /></span>
+                        )}
                       </button>
                     ))}
                   </div>
                 )}
               </div>
 
-              {/* Settings Gear (Quality, Multi-Audio, Subtitles, Shortcuts) */}
-              <div style={{ position: "relative" }}>
+              {/* Settings Gear */}
+              <div className="gp-popover-anchor">
                 <button
-                  className="gp-icon-btn"
-                  style={{
-                    ...S.dockBtn,
-                    ...(showSettings ? { color: C.redB, transform: "rotate(30deg)" } : {}),
-                  }}
+                  className={`gp-icon-btn gp-dock-btn ${
+                    showSettings ? "gp-dock-btn--gear-open" : ""
+                  }`}
                   onClick={() => {
                     setShowSettings((s) => !s);
                     setShowSpeedPop(false);
@@ -2456,50 +2545,50 @@ export default function GlobalPlayer({
                 </button>
 
                 {showSettings && (
-                  <div className="gp-settings-menu" style={S.settingsMenu} onClick={(e) => e.stopPropagation()}>
+                  <div className="gp-settings-menu" onClick={(e) => e.stopPropagation()}>
                     {settingsTab === "main" && (
                       <>
-                        <div style={S.menuHeader}>Stream Settings</div>
+                        <div className="gp-menu-header">Stream Settings</div>
 
-                        <button className="gp-menu-row" style={S.menuRow} onClick={() => setSettingsTab("quality")}>
-                          <span style={S.menuRowLeft}>
-                            <span style={S.menuIconBox}><Icons.Quality /></span>
+                        <button className="gp-menu-row" onClick={() => setSettingsTab("quality")}>
+                          <span className="gp-menu-row-left">
+                            <span className="gp-menu-icon-box"><Icons.Quality /></span>
                             <span>Quality</span>
                           </span>
-                          <span style={S.menuRowRight}>
-                            <span style={S.menuPill}>{currentQualityLabel}</span>
+                          <span className="gp-menu-row-right">
+                            <span className="gp-menu-pill">{currentQualityLabel}</span>
                             <Icons.ChevronRight />
                           </span>
                         </button>
 
-                        <button className="gp-menu-row" style={S.menuRow} onClick={() => setSettingsTab("audio")}>
-                          <span style={S.menuRowLeft}>
-                            <span style={S.menuIconBox}><Icons.Language /></span>
+                        <button className="gp-menu-row" onClick={() => setSettingsTab("audio")}>
+                          <span className="gp-menu-row-left">
+                            <span className="gp-menu-icon-box"><Icons.Language /></span>
                             <span>Audio Track</span>
                           </span>
-                          <span style={S.menuRowRight}>
-                            <span style={S.menuPill}>{currentAudioLabel}</span>
+                          <span className="gp-menu-row-right">
+                            <span className="gp-menu-pill">{currentAudioLabel}</span>
                             <Icons.ChevronRight />
                           </span>
                         </button>
 
-                        <button className="gp-menu-row" style={S.menuRow} onClick={() => setSettingsTab("subtitles")}>
-                          <span style={S.menuRowLeft}>
-                            <span style={S.menuIconBox}><Icons.Subtitles /></span>
+                        <button className="gp-menu-row" onClick={() => setSettingsTab("subtitles")}>
+                          <span className="gp-menu-row-left">
+                            <span className="gp-menu-icon-box"><Icons.Subtitles /></span>
                             <span>Subtitles</span>
                           </span>
-                          <span style={S.menuRowRight}>
-                            <span style={S.menuPill}>{currentSubLabel}</span>
+                          <span className="gp-menu-row-right">
+                            <span className="gp-menu-pill">{currentSubLabel}</span>
                             <Icons.ChevronRight />
                           </span>
                         </button>
 
-                        <button className="gp-menu-row gp-hide-xs" style={S.menuRow} onClick={() => setSettingsTab("shortcuts")}>
-                          <span style={S.menuRowLeft}>
-                            <span style={S.menuIconBox}><Icons.Keyboard /></span>
+                        <button className="gp-menu-row gp-hide-xs" onClick={() => setSettingsTab("shortcuts")}>
+                          <span className="gp-menu-row-left">
+                            <span className="gp-menu-icon-box"><Icons.Keyboard /></span>
                             <span>Shortcuts</span>
                           </span>
-                          <span style={S.menuRowRight}>
+                          <span className="gp-menu-row-right">
                             <Icons.ChevronRight />
                           </span>
                         </button>
@@ -2508,44 +2597,48 @@ export default function GlobalPlayer({
 
                     {settingsTab === "quality" && (
                       <>
-                        <button style={S.menuBackRow} onClick={() => setSettingsTab("main")}>
+                        <button className="gp-menu-back-row" onClick={() => setSettingsTab("main")}>
                           <Icons.ChevronLeft />
                           <span>Video Quality</span>
                         </button>
                         {qualityList.length > 0 ? (
                           qualityList.map((q) => (
-                            <button className="gp-menu-row" key={q.id} style={S.menuOptionRow} onClick={() => handleSelectQuality(q)}>
+                            <button className="gp-menu-option-row" key={q.id} onClick={() => handleSelectQuality(q)}>
                               <span>{q.label}</span>
-                              {activeQuality === q.id && <span style={{ color: C.red }}><Icons.Check /></span>}
+                              {activeQuality === q.id && (
+                                <span className="gp-menu-check"><Icons.Check /></span>
+                              )}
                             </button>
                           ))
                         ) : (
-                          <div style={S.menuEmpty}>Auto (Source Default)</div>
+                          <div className="gp-menu-empty">Auto (Source Default)</div>
                         )}
                       </>
                     )}
 
                     {settingsTab === "audio" && (
                       <>
-                        <button style={S.menuBackRow} onClick={() => setSettingsTab("main")}>
+                        <button className="gp-menu-back-row" onClick={() => setSettingsTab("main")}>
                           <Icons.ChevronLeft />
                           <span>Audio Language</span>
                         </button>
                         {audioList.length > 0 ? (
                           audioList.map((a) => (
-                            <button className="gp-menu-row" key={a.id} style={S.menuOptionRow} onClick={() => handleSelectAudio(a)}>
+                            <button className="gp-menu-option-row" key={a.id} onClick={() => handleSelectAudio(a)}>
                               <span>{a.label}</span>
-                              {activeAudio === a.id && <span style={{ color: C.red }}><Icons.Check /></span>}
+                              {activeAudio === a.id && (
+                                <span className="gp-menu-check"><Icons.Check /></span>
+                              )}
                             </button>
                           ))
                         ) : (
-                          <div style={S.menuEmpty}>Original Audio Track</div>
+                          <div className="gp-menu-empty">Original Audio Track</div>
                         )}
 
                         {trackNotice && (
-                          <div style={S.menuNotice}>
-                            <p style={{ margin: "0 0 8px", lineHeight: 1.45 }}>{trackNotice}</p>
-                            <a href={externalVlc} style={S.menuVlcBtn}>
+                          <div className="gp-menu-notice">
+                            <p className="gp-menu-notice-text">{trackNotice}</p>
+                            <a href={externalVlc} className="gp-menu-vlc-btn">
                               <Icons.External /> Open in VLC
                             </a>
                           </div>
@@ -2555,25 +2648,29 @@ export default function GlobalPlayer({
 
                     {settingsTab === "subtitles" && (
                       <>
-                        <button style={S.menuBackRow} onClick={() => setSettingsTab("main")}>
+                        <button className="gp-menu-back-row" onClick={() => setSettingsTab("main")}>
                           <Icons.ChevronLeft />
                           <span>Subtitles / CC</span>
                         </button>
-                        <button className="gp-menu-row" style={S.menuOptionRow} onClick={() => handleSelectSubtitle(null)}>
+                        <button className="gp-menu-option-row" onClick={() => handleSelectSubtitle(null)}>
                           <span>Off</span>
-                          {activeSub === -1 && <span style={{ color: C.red }}><Icons.Check /></span>}
+                          {activeSub === -1 && (
+                            <span className="gp-menu-check"><Icons.Check /></span>
+                          )}
                         </button>
                         {subtitleList.map((sub) => (
-                          <button className="gp-menu-row" key={sub.id} style={S.menuOptionRow} onClick={() => handleSelectSubtitle(sub)}>
+                          <button className="gp-menu-option-row" key={sub.id} onClick={() => handleSelectSubtitle(sub)}>
                             <span>{sub.label}</span>
-                            {activeSub === sub.id && <span style={{ color: C.red }}><Icons.Check /></span>}
+                            {activeSub === sub.id && (
+                              <span className="gp-menu-check"><Icons.Check /></span>
+                            )}
                           </button>
                         ))}
                         {subtitleList.length === 0 && (
-                          <div style={S.menuEmpty}>No embedded subtitles found</div>
+                          <div className="gp-menu-empty">No embedded subtitles found</div>
                         )}
                         <button
-                          style={S.menuUploadBtn}
+                          className="gp-menu-upload-btn"
                           onClick={() => subFileInput.current?.click()}
                         >
                           <Icons.Upload /> Load Subtitle (.srt / .vtt)
@@ -2583,17 +2680,17 @@ export default function GlobalPlayer({
 
                     {settingsTab === "shortcuts" && (
                       <>
-                        <button style={S.menuBackRow} onClick={() => setSettingsTab("main")}>
+                        <button className="gp-menu-back-row" onClick={() => setSettingsTab("main")}>
                           <Icons.ChevronLeft />
                           <span>Keyboard Shortcuts</span>
                         </button>
-                        <div style={S.shortcutGrid}>
-                          <span>Play / Pause</span><kbd style={S.kbd}>Space / K</kbd>
-                          <span>Seek ±10s</span><kbd style={S.kbd}>← / →</kbd>
-                          <span>Volume</span><kbd style={S.kbd}>↑ / ↓</kbd>
-                          <span>Mute</span><kbd style={S.kbd}>M</kbd>
-                          <span>Fullscreen</span><kbd style={S.kbd}>F</kbd>
-                          <span>Picture-in-Picture</span><kbd style={S.kbd}>P</kbd>
+                        <div className="gp-shortcut-grid">
+                          <span>Play / Pause</span><kbd className="gp-kbd">Space / K</kbd>
+                          <span>Seek ±10s</span><kbd className="gp-kbd">← / →</kbd>
+                          <span>Volume</span><kbd className="gp-kbd">↑ / ↓</kbd>
+                          <span>Mute</span><kbd className="gp-kbd">M</kbd>
+                          <span>Fullscreen</span><kbd className="gp-kbd">F</kbd>
+                          <span>Picture-in-Picture</span><kbd className="gp-kbd">P</kbd>
                         </div>
                       </>
                     )}
@@ -2604,8 +2701,9 @@ export default function GlobalPlayer({
               {/* Picture-in-Picture */}
               {supportsPiP && (
                 <button
-                  className="gp-icon-btn gp-hide-xs"
-                  style={{ ...S.dockBtn, ...(isPiP ? { color: C.redB } : {}) }}
+                  className={`gp-icon-btn gp-dock-btn gp-hide-xs ${
+                    isPiP ? "gp-dock-btn--active" : ""
+                  }`}
                   onClick={togglePiP}
                   title="Picture-in-Picture (P)"
                   aria-label="Picture-in-Picture"
@@ -2614,10 +2712,9 @@ export default function GlobalPlayer({
                 </button>
               )}
 
-              {/* Diagonal Crimson Fullscreen Icon (matching reference image) */}
+              {/* Fullscreen */}
               <button
-                className="gp-icon-btn"
-                style={S.dockBtn}
+                className="gp-icon-btn gp-dock-btn"
                 onClick={toggleFullscreen}
                 title={isFullscreen ? "Exit Fullscreen (F)" : "Fullscreen (F)"}
                 aria-label="Fullscreen"
@@ -2632,17 +2729,12 @@ export default function GlobalPlayer({
       {/* ── SERIES EPISODE DOCK ── */}
       {isSeries && (
         <div
-          className="gp-ep-bar"
-          style={{
-            ...S.epBar,
-            opacity: ctrlVisible || mode === "iframe" ? 1 : 0,
-            pointerEvents: ctrlVisible || mode === "iframe" ? "auto" : "none",
-            transition: "opacity 0.28s ease",
-          }}
+          className={`gp-ep-bar ${
+            ctrlVisible || mode === "iframe" ? "gp-ep-bar--visible" : ""
+          }`}
         >
           <button
-            className="gp-icon-btn"
-            style={{ ...S.epNav, opacity: hasPrev ? 1 : 0.25 }}
+            className={`gp-icon-btn gp-ep-nav ${!hasPrev ? "gp-ep-nav--disabled" : ""}`}
             onClick={() => hasPrev && goToEpisode(currentIndex - 1)}
             disabled={!hasPrev}
             title="Previous Episode"
@@ -2650,37 +2742,33 @@ export default function GlobalPlayer({
             <Icons.ChevronLeft />
           </button>
 
-          <div ref={epScrollRef} style={S.epScroll}>
+          <div ref={epScrollRef} className="gp-ep-scroll">
             {playlist.map((ep, idx) => {
               const isActive = idx === currentIndex;
               return (
                 <button
                   key={ep.id || idx}
                   data-active={isActive}
-                  style={{
-                    ...S.epDot,
-                    ...(isActive ? S.epDotActive : {}),
-                  }}
+                  className={`gp-ep-dot ${isActive ? "gp-ep-dot--active" : ""}`}
                   onClick={() => goToEpisode(idx)}
                   title={ep.title || `Episode ${idx + 1}`}
                 >
-                  <span style={S.epDotNum}>
+                  <span className="gp-ep-dot-num">
                     {ep.episode ? `E${ep.episode}` : idx + 1}
                   </span>
                   {ep.title && (
-                    <span className="gp-hide-xs" style={S.epDotTitle}>
+                    <span className="gp-ep-dot-title gp-hide-xs">
                       {ep.title}
                     </span>
                   )}
-                  {isActive && <span style={S.epDotBar} />}
+                  {isActive && <span className="gp-ep-dot-bar" />}
                 </button>
               );
             })}
           </div>
 
           <button
-            className="gp-icon-btn"
-            style={{ ...S.epNav, opacity: hasNext ? 1 : 0.25 }}
+            className={`gp-icon-btn gp-ep-nav ${!hasNext ? "gp-ep-nav--disabled" : ""}`}
             onClick={() => hasNext && goToEpisode(currentIndex + 1)}
             disabled={!hasNext}
             title="Next Episode"
@@ -2692,13 +2780,13 @@ export default function GlobalPlayer({
 
       {/* ── ERROR TOAST ── */}
       {error && mode !== "unsupported" && (
-        <div style={{ ...S.errorToast, bottom: isSeries ? EP_BAR_H + 16 : 96 }}>
+        <div className="gp-error-toast">
           <Icons.Warning />
-          <span style={{ flex: 1, lineHeight: 1.35 }}>{error}</span>
+          <span className="gp-error-text">{error}</span>
           {mode === "direct" && directUrl && (
             <button
               type="button"
-              style={S.dlBtn}
+              className="gp-dl-btn"
               onClick={() => {
                 setError("");
                 if (hlsRef.current) {
@@ -2718,7 +2806,7 @@ export default function GlobalPlayer({
           {mode === "direct" && resolvedFallbackSource && (
             <button
               type="button"
-              style={S.dlBtn}
+              className="gp-dl-btn"
               onClick={() => {
                 setEmbedFallback({
                   provider: resolvedFallbackSource.provider,
@@ -2732,858 +2820,14 @@ export default function GlobalPlayer({
               Provider
             </button>
           )}
-          <a href={externalVlc} style={S.dlBtn} title="Open in VLC Player">
+          <a href={externalVlc} className="gp-dl-btn" title="Open in VLC Player">
             <Icons.External /> VLC
           </a>
-          <a href={rawUrl} target="_blank" rel="noreferrer" download style={S.dlBtn}>
+          <a href={rawUrl} target="_blank" rel="noreferrer" download className="gp-dl-btn">
             <Icons.Download /> Save
           </a>
         </div>
       )}
-
-      <style>{CSS}</style>
     </div>
   );
 }
-
-// ─── Keyframes & Responsive CSS ───────────────────────────────────────────────
-const CSS = `
-.gp-root, .gp-root * { box-sizing: border-box; }
-
-@keyframes gp-spin       { to { transform: rotate(360deg); } }
-@keyframes gp-spin-rev   { to { transform: rotate(-360deg); } }
-@keyframes gp-dot        { 0%,100%{transform:translate(-50%,-50%) scale(1);opacity:1}50%{transform:translate(-50%,-50%) scale(0.35);opacity:0.25} }
-@keyframes gp-flash-ring { 0%{opacity:0;transform:scale(0.65)}25%{opacity:1;transform:scale(1)}75%{opacity:0.9;transform:scale(1)}100%{opacity:0;transform:scale(1.2)} }
-@keyframes gp-flash-icon { 0%{opacity:0;transform:scale(0.6)}30%{opacity:1;transform:scale(1.08)}75%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(1.05)} }
-@keyframes gp-skip-pop   { 0%{opacity:0;transform:translateY(-50%) scale(0.85)}18%{opacity:1;transform:translateY(-50%) scale(1.04)}32%{transform:translateY(-50%) scale(1)}80%{opacity:1}100%{opacity:0;transform:translateY(-50%) scale(0.96)} }
-@keyframes gp-text-pulse { 0%,100%{opacity:0.4}50%{opacity:0.9} }
-
-.gp-icon-btn {
-  transition: transform 0.16s ease, color 0.16s ease, opacity 0.16s ease !important;
-}
-.gp-icon-btn:hover {
-  transform: scale(1.1);
-  color: #fff !important;
-}
-.gp-icon-btn:active {
-  transform: scale(0.92);
-}
-
-.gp-ring-play {
-  transition: transform 0.18s cubic-bezier(0.22,1,0.36,1), box-shadow 0.2s ease, background 0.2s ease !important;
-}
-.gp-ring-play:hover {
-  transform: scale(1.08);
-  background: rgba(229, 9, 20, 0.18) !important;
-  box-shadow: 0 0 22px rgba(229, 9, 20, 0.55) !important;
-}
-.gp-ring-play:active {
-  transform: scale(0.94);
-}
-
-.gp-menu-row {
-  transition: background 0.15s ease;
-}
-.gp-menu-row:hover {
-  background: rgba(255, 255, 255, 0.09) !important;
-}
-
-.gp-track:hover .gp-track-rail {
-  height: 9px !important;
-}
-.gp-track-rail {
-  transition: height 0.15s ease;
-}
-
-input[type=range].gp-vol {
-  -webkit-appearance: none;
-  appearance: none;
-  background: rgba(255,255,255,0.25);
-  border-radius: 999px;
-}
-input[type=range].gp-vol::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: #fff;
-  cursor: pointer;
-  box-shadow: 0 0 8px rgba(229,9,20,0.8);
-}
-input[type=range].gp-vol::-moz-range-thumb {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: #fff;
-  border: none;
-  cursor: pointer;
-}
-.gp-ep-bar::-webkit-scrollbar,
-.gp-ep-bar div::-webkit-scrollbar { display: none; }
-
-video::cue {
-  background: rgba(8, 8, 10, 0.78);
-  backdrop-filter: blur(8px);
-  color: #fff;
-  font-family: 'Inter', -apple-system, sans-serif;
-  font-size: clamp(0.95rem, 2.2vw, 1.35rem);
-  font-weight: 500;
-  padding: 4px 10px;
-  border-radius: 6px;
-  text-shadow: 0 2px 6px rgba(0,0,0,0.95);
-}
-
-@media (max-width: 640px) {
-  .gp-hide-xs { display: none !important; }
-  .gp-root { overscroll-behavior: contain; }
-  .gp-header {
-    padding-top: max(12px, env(safe-area-inset-top)) !important;
-    padding-left: max(12px, env(safe-area-inset-left)) !important;
-    padding-right: max(12px, env(safe-area-inset-right)) !important;
-    min-height: 62px !important;
-  }
-  .gp-title-text {
-    max-width: min(56vw, 220px) !important;
-    font-size: 0.96rem !important;
-  }
-  .gp-desc-text {
-    max-width: min(56vw, 220px) !important;
-    font-size: 0.74rem !important;
-  }
-  .gp-ctrl-bar {
-    padding-left: max(12px, env(safe-area-inset-left)) !important;
-    padding-right: max(12px, env(safe-area-inset-right)) !important;
-    padding-bottom: max(12px, env(safe-area-inset-bottom, 0px)) !important;
-  }
-  .gp-ring-play {
-    width: 38px !important;
-    height: 38px !important;
-    font-size: 16px !important;
-  }
-  .gp-settings-menu {
-    position: fixed !important;
-    bottom: calc(env(safe-area-inset-bottom, 0px) + 74px) !important;
-    top: auto !important;
-    right: max(10px, env(safe-area-inset-right, 0px)) !important;
-    left: auto !important;
-    width: min(320px, calc(100vw - 20px)) !important;
-    max-height: calc(100dvh - 140px) !important;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    -webkit-overflow-scrolling: touch;
-  }
-  .gp-settings-menu > button {
-    min-height: 44px !important;
-  }
-}
-
-@supports (height: 100dvh) {
-  .gp-root { height: 100dvh !important; }
-}
-`;
-
-// ─── Style constants ──────────────────────────────────────────────────────────
-const C = {
-  red: "#e50914",
-  redB: "#ff1f2d",
-  redGlow: "rgba(229, 9, 20, 0.45)",
-  glassStrong: "rgba(12, 12, 15, 0.94)",
-  border: "rgba(255, 255, 255, 0.14)",
-  borderTop: "rgba(255, 255, 255, 0.24)",
-  text: "#f5f5f7",
-  dim: "rgba(255, 255, 255, 0.65)",
-  muted: "rgba(255, 255, 255, 0.42)",
-};
-const F = {
-  font: "'Inter', 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif",
-  mono: "'JetBrains Mono', 'SF Mono', monospace",
-};
-const r = (v) => ({ borderRadius: v });
-const abs = { position: "absolute" };
-
-const S = {
-  root: {
-    position: "fixed",
-    inset: 0,
-    width: "100%",
-    height: "100vh",
-    background: "#000",
-    overflow: "hidden",
-    overscrollBehavior: "contain",
-    fontFamily: F.font,
-    zIndex: 99999,
-    userSelect: "none",
-    WebkitUserSelect: "none",
-    WebkitTouchCallout: "none",
-  },
-  video: {
-    ...abs,
-    top: 0,
-    left: 0,
-    right: 0,
-    width: "100%",
-    height: "100%",
-    background: "#000",
-    display: "block",
-    cursor: "pointer",
-  },
-  topScrim: {
-    ...abs,
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 140,
-    background: "linear-gradient(180deg, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.5) 55%, transparent 100%)",
-    pointerEvents: "none",
-    zIndex: 300,
-  },
-  bottomScrim: {
-    ...abs,
-    left: 0,
-    right: 0,
-    height: 150,
-    background: "linear-gradient(0deg, rgba(0,0,0,0.96) 0%, rgba(0,0,0,0.55) 55%, transparent 100%)",
-    pointerEvents: "none",
-    zIndex: 300,
-  },
-  iframeWrap: { ...abs, top: 0, left: 0, right: 0 },
-  iframe: { width: "100%", height: "100%", border: "none", background: "#000", display: "block" },
-
-  // Double-Chevron Skip Overlay ("10 seconds" matching reference image)
-  skipZone: {
-    ...abs,
-    top: "50%",
-    transform: "translateY(-50%)",
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    pointerEvents: "none",
-    zIndex: 380,
-    animation: "gp-skip-pop 0.85s cubic-bezier(0.22,1,0.36,1) forwards",
-  },
-  skipChevronRow: {
-    color: "rgba(255, 255, 255, 0.92)",
-    fontSize: 42,
-    lineHeight: 1,
-    filter: "drop-shadow(0 4px 18px rgba(0,0,0,0.85))",
-  },
-  skipText: {
-    color: "rgba(255, 255, 255, 0.88)",
-    fontSize: "0.88rem",
-    fontWeight: 600,
-    letterSpacing: "0.2px",
-    textShadow: "0 2px 10px rgba(0,0,0,0.9)",
-  },
-
-  loaderWrap: { ...abs, inset: 0, background: "#000", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 22, zIndex: 200 },
-  spinWrap: { position: "relative", width: 58, height: 58 },
-  spinRing: { ...abs, borderRadius: "50%", border: "2px solid transparent" },
-  sr1: { inset: 0, borderTopColor: C.red, borderRightColor: "rgba(229,9,20,0.22)", animation: "gp-spin 0.8s cubic-bezier(0.5,0.1,0.5,0.9) infinite" },
-  sr2: { inset: 9, borderTopColor: "rgba(255,255,255,0.35)", animation: "gp-spin-rev 1.1s linear infinite" },
-  sr3: { inset: 18, borderTopColor: "rgba(229,9,20,0.45)", animation: "gp-spin 1.4s linear infinite" },
-  spinDot: { ...abs, width: 8, height: 8, background: C.red, borderRadius: "50%", top: "50%", left: "50%", boxShadow: `0 0 12px ${C.red}`, animation: "gp-dot 1.1s ease-in-out infinite" },
-  loaderText: { color: C.dim, fontSize: "0.66rem", fontFamily: F.mono, letterSpacing: "2px", fontWeight: 600, textTransform: "uppercase", animation: "gp-text-pulse 2s ease-in-out infinite" },
-
-  bufWrap: { ...abs, inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 190, pointerEvents: "none" },
-  bufRing: { width: 42, height: 42, border: "3px solid rgba(255,255,255,0.14)", borderTopColor: C.red, borderRadius: "50%", animation: "gp-spin 0.68s linear infinite" },
-
-  flash: { ...abs, top: "50%", left: "50%", width: 76, height: 76, marginLeft: -38, marginTop: -38, pointerEvents: "none", zIndex: 380 },
-  flashRing: { ...abs, inset: 0, borderRadius: "50%", background: "rgba(15, 15, 18, 0.72)", backdropFilter: "blur(12px)", border: `2px solid ${C.red}`, boxShadow: `0 0 24px ${C.redGlow}`, animation: "gp-flash-ring 0.68s ease-out forwards", zIndex: 3 },
-  flashIcon: { ...abs, inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: C.redB, fontSize: 28, animation: "gp-flash-icon 0.62s ease-out forwards", zIndex: 5 },
-
-  // Top Header (Matching Reference Image: Vertical Red Strip + Title + Description + Right Logo)
-  header: {
-    ...abs,
-    top: 0,
-    left: 0,
-    right: 0,
-    display: "flex",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    padding: "max(22px, env(safe-area-inset-top)) max(26px, env(safe-area-inset-right)) 12px max(26px, env(safe-area-inset-left))",
-    gap: 16,
-    zIndex: 600,
-  },
-  headerLeft: {
-    display: "flex",
-    alignItems: "center",
-    gap: 14,
-    minWidth: 0,
-    flex: 1,
-  },
-  backBtn: {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    background: "rgba(255,255,255,0.08)",
-    backdropFilter: "blur(14px)",
-    WebkitBackdropFilter: "blur(14px)",
-    color: "#fff",
-    border: "1px solid rgba(255,255,255,0.14)",
-    borderRadius: "50%",
-    width: 38,
-    height: 38,
-    cursor: "pointer",
-    flexShrink: 0,
-    fontSize: 18,
-  },
-  titleBlock: {
-    display: "flex",
-    alignItems: "stretch",
-    gap: 14,
-    minWidth: 0,
-  },
-  redAccentBar: {
-    width: 4.5,
-    minHeight: 46,
-    background: C.red,
-    borderRadius: 2,
-    flexShrink: 0,
-    boxShadow: `0 0 14px ${C.redGlow}`,
-  },
-  titleTextCol: {
-    display: "flex",
-    flexDirection: "column",
-    justifyContent: "center",
-    gap: 4,
-    minWidth: 0,
-  },
-  titleText: {
-    color: "#fff",
-    fontSize: "1.18rem",
-    fontWeight: 700,
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    maxWidth: "min(520px, 52vw)",
-    letterSpacing: "-0.2px",
-    lineHeight: 1.2,
-    textShadow: "0 2px 12px rgba(0,0,0,0.9)",
-  },
-  descText: {
-    color: "rgba(255, 255, 255, 0.62)",
-    fontSize: "0.86rem",
-    fontWeight: 400,
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    maxWidth: "min(520px, 52vw)",
-    lineHeight: 1.25,
-    textShadow: "0 1px 8px rgba(0,0,0,0.9)",
-  },
-  epBadge: {
-    background: C.red,
-    color: "#fff",
-    fontSize: "0.6rem",
-    fontWeight: 800,
-    padding: "2px 7px",
-    ...r(4),
-    textTransform: "uppercase",
-    letterSpacing: "0.8px",
-    flexShrink: 0,
-  },
-  topRight: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    flexShrink: 0,
-    paddingTop: 2,
-  },
-  brandLogoText: {
-    color: "#fff",
-    fontSize: "1.05rem",
-    fontWeight: 900,
-    letterSpacing: "1.5px",
-    textTransform: "uppercase",
-    opacity: 0.92,
-    textShadow: "0 2px 12px rgba(0,0,0,0.85)",
-    marginRight: 4,
-  },
-  topActionBtn: {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    background: "transparent",
-    border: "none",
-    color: "rgba(255,255,255,0.78)",
-    width: 36,
-    height: 36,
-    cursor: "pointer",
-    fontSize: 18,
-  },
-  topActionActive: {
-    color: C.redB,
-  },
-
-  // Bottom Control Dock (Matching Reference Image Layout)
-  ctrlBar: {
-    ...abs,
-    left: 0,
-    right: 0,
-    zIndex: 600,
-    paddingTop: 14,
-    paddingLeft: "max(24px, env(safe-area-inset-left))",
-    paddingRight: "max(24px, env(safe-area-inset-right))",
-  },
-  track: {
-    position: "relative",
-    width: "100%",
-    height: 28,
-    display: "flex",
-    alignItems: "center",
-    cursor: "pointer",
-    touchAction: "none",
-    marginBottom: 8,
-  },
-  hoverTooltip: {
-    ...abs,
-    bottom: 24,
-    transform: "translateX(-50%)",
-    background: C.glassStrong,
-    backdropFilter: "blur(14px)",
-    WebkitBackdropFilter: "blur(14px)",
-    border: `1px solid ${C.border}`,
-    color: "#fff",
-    fontSize: "0.72rem",
-    fontWeight: 700,
-    fontFamily: F.mono,
-    padding: "4px 9px",
-    ...r(6),
-    pointerEvents: "none",
-    boxShadow: "0 6px 18px rgba(0,0,0,0.8)",
-    whiteSpace: "nowrap",
-  },
-  trackBg: {
-    ...abs,
-    left: 0,
-    right: 0,
-    top: "50%",
-    height: 6.5,
-    transform: "translateY(-50%)",
-    background: "rgba(110, 114, 124, 0.45)",
-    ...r(999),
-    overflow: "hidden",
-  },
-  trackBuffer: {
-    ...abs,
-    left: 0,
-    top: 0,
-    bottom: 0,
-    background: "rgba(255, 255, 255, 0.22)",
-    ...r(999),
-  },
-  trackWhiteFill: {
-    ...abs,
-    left: 0,
-    top: 0,
-    bottom: 0,
-    background: "#ffffff",
-    borderTopLeftRadius: 999,
-    borderBottomLeftRadius: 999,
-  },
-  trackRedCap: {
-    ...abs,
-    top: 0,
-    bottom: 0,
-    background: C.red,
-    borderTopRightRadius: 999,
-    borderBottomRightRadius: 999,
-    boxShadow: `0 0 12px ${C.redGlow}`,
-  },
-
-  bottomRow: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-    pointerEvents: "auto",
-  },
-  bottomLeft: {
-    display: "flex",
-    alignItems: "center",
-    gap: 14,
-  },
-  bottomRight: {
-    display: "flex",
-    alignItems: "center",
-    gap: 18,
-  },
-  // Circular red-ringed Play/Pause button matching reference image
-  ringPlayBtn: {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    width: 42,
-    height: 42,
-    borderRadius: "50%",
-    background: "rgba(0, 0, 0, 0.35)",
-    border: `2px solid ${C.red}`,
-    color: C.redB,
-    cursor: "pointer",
-    fontSize: 18,
-    flexShrink: 0,
-    boxShadow: `0 0 14px rgba(229, 9, 20, 0.25)`,
-  },
-  dockBtn: {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    background: "none",
-    border: "none",
-    color: "#ffffff",
-    cursor: "pointer",
-    padding: 4,
-    width: 36,
-    height: 36,
-    fontSize: 22,
-    flexShrink: 0,
-  },
-  volWrap: {
-    display: "flex",
-    alignItems: "center",
-    gap: 4,
-  },
-  volSliderWrap: {
-    overflow: "hidden",
-    display: "flex",
-    alignItems: "center",
-    transition: "width 0.22s ease, opacity 0.2s ease, margin 0.22s ease",
-  },
-  volSlider: {
-    width: 72,
-    cursor: "pointer",
-    height: 4,
-  },
-  timeDisplay: {
-    display: "flex",
-    alignItems: "center",
-    gap: 6,
-    fontFamily: F.font,
-    fontSize: "0.92rem",
-    fontWeight: 600,
-    letterSpacing: "0.2px",
-    whiteSpace: "nowrap",
-  },
-  timeCurrent: {
-    color: "#ffffff",
-  },
-  timeSlash: {
-    color: C.red,
-    fontWeight: 800,
-  },
-  timeTotal: {
-    color: "rgba(255, 255, 255, 0.58)",
-  },
-
-  // Settings & Speed Popover (opens cleanly upward from bottom-right controls)
-  settingsMenu: {
-    ...abs,
-    bottom: 48,
-    right: 0,
-    width: 280,
-    background: C.glassStrong,
-    backdropFilter: "blur(32px) saturate(180%)",
-    WebkitBackdropFilter: "blur(32px) saturate(180%)",
-    border: `1px solid ${C.border}`,
-    borderTopColor: C.borderTop,
-    ...r(14),
-    padding: "8px",
-    boxShadow: "0 24px 60px rgba(0,0,0,0.95)",
-    zIndex: 900,
-    display: "flex",
-    flexDirection: "column",
-    gap: 3,
-    maxHeight: "min(65vh, 460px)",
-    overflowY: "auto",
-    overscrollBehavior: "contain",
-    WebkitOverflowScrolling: "touch",
-  },
-  menuHeader: {
-    fontSize: "0.64rem",
-    fontWeight: 700,
-    textTransform: "uppercase",
-    letterSpacing: "1.2px",
-    color: C.muted,
-    padding: "6px 10px 6px",
-  },
-  menuRow: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    width: "100%",
-    background: "transparent",
-    border: "none",
-    color: "#fff",
-    padding: "9px 10px",
-    ...r(9),
-    fontSize: "0.78rem",
-    fontWeight: 600,
-    fontFamily: F.font,
-    cursor: "pointer",
-  },
-  menuRowLeft: { display: "flex", alignItems: "center", gap: 10, fontSize: "0.8rem" },
-  menuIconBox: {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    width: 26,
-    height: 26,
-    ...r(7),
-    background: "rgba(255,255,255,0.07)",
-    color: C.text,
-    fontSize: 14,
-  },
-  menuRowRight: { display: "flex", alignItems: "center", gap: 6, color: C.dim, fontSize: "0.72rem" },
-  menuPill: {
-    background: "rgba(255,255,255,0.08)",
-    padding: "2px 8px",
-    ...r(6),
-    fontSize: "0.68rem",
-    fontWeight: 600,
-    color: C.text,
-    maxWidth: 105,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-  },
-  menuBackRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    width: "100%",
-    background: "rgba(255,255,255,0.07)",
-    border: "none",
-    color: "#fff",
-    padding: "9px 10px",
-    marginBottom: 4,
-    ...r(9),
-    fontSize: "0.78rem",
-    fontWeight: 700,
-    fontFamily: F.font,
-    cursor: "pointer",
-  },
-  menuOptionRow: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    width: "100%",
-    background: "transparent",
-    border: "none",
-    color: C.text,
-    padding: "9px 12px",
-    ...r(8),
-    fontSize: "0.77rem",
-    fontWeight: 500,
-    fontFamily: F.font,
-    cursor: "pointer",
-    textAlign: "left",
-  },
-  menuEmpty: { padding: "10px 10px", fontSize: "0.72rem", color: C.muted, textAlign: "center", lineHeight: 1.45 },
-  menuNotice: {
-    marginTop: 6,
-    padding: "10px 10px",
-    background: "rgba(245, 158, 11, 0.12)",
-    border: "1px solid rgba(245, 158, 11, 0.28)",
-    ...r(10),
-    fontSize: "0.69rem",
-    color: "#fde68a",
-  },
-  menuVlcBtn: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    width: "100%",
-    padding: "8px 10px",
-    background: C.red,
-    color: "#fff",
-    ...r(8),
-    fontSize: "0.73rem",
-    fontWeight: 700,
-    textDecoration: "none",
-  },
-  menuUploadBtn: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    width: "100%",
-    marginTop: 4,
-    padding: "9px 10px",
-    background: "rgba(255,255,255,0.08)",
-    border: "1px solid rgba(255,255,255,0.14)",
-    color: "#fff",
-    ...r(9),
-    fontSize: "0.73rem",
-    fontWeight: 600,
-    fontFamily: F.font,
-    cursor: "pointer",
-  },
-  shortcutGrid: {
-    display: "grid",
-    gridTemplateColumns: "1fr auto",
-    gap: "8px 12px",
-    alignItems: "center",
-    padding: "6px 10px",
-    fontSize: "0.73rem",
-    color: C.dim,
-  },
-  kbd: {
-    background: "rgba(255,255,255,0.1)",
-    border: "1px solid rgba(255,255,255,0.18)",
-    ...r(5),
-    padding: "2px 6px",
-    fontSize: "0.65rem",
-    fontFamily: F.mono,
-    color: "#fff",
-    textAlign: "center",
-  },
-
-  adBadge: { display: "inline-flex", alignItems: "center", gap: 6, background: "rgba(16,185,129,0.16)", border: "1px solid rgba(16,185,129,0.35)", color: "#34d399", ...r(10), padding: "6px 10px", fontSize: 13, flexShrink: 0 },
-  adBadgePartial: { background: "rgba(245,158,11,0.15)", border: "1px solid rgba(245,158,11,0.34)", color: "#fbbf24" },
-
-  lockShield: { ...abs, inset: 0, zIndex: 800, background: "transparent", cursor: "pointer" },
-  lockPeek: {
-    ...abs,
-    top: "max(20px, env(safe-area-inset-top))",
-    right: "max(20px, env(safe-area-inset-right))",
-    zIndex: 850,
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    background: "rgba(18, 18, 22, 0.88)",
-    backdropFilter: "blur(20px)",
-    WebkitBackdropFilter: "blur(20px)",
-    border: `1px solid ${C.red}`,
-    color: "#fff",
-    ...r(999),
-    padding: "0 16px",
-    height: 40,
-    cursor: "pointer",
-    fontSize: 15,
-    boxShadow: "0 10px 30px rgba(0,0,0,0.8)",
-  },
-
-  gesturePanel: {
-    ...abs,
-    top: "50%",
-    transform: "translateY(-50%)",
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    gap: 10,
-    background: C.glassStrong,
-    backdropFilter: "blur(24px)",
-    WebkitBackdropFilter: "blur(24px)",
-    border: `1px solid ${C.border}`,
-    ...r(22),
-    padding: "16px 12px",
-    minWidth: 48,
-    color: "#fff",
-    zIndex: 750,
-    pointerEvents: "none",
-  },
-  gestureTrack: { width: 5, height: 96, background: "rgba(255,255,255,0.12)", borderRadius: 999, position: "relative", overflow: "hidden" },
-  gestureFill: { ...abs, bottom: 0, left: 0, width: "100%", borderRadius: 999, transition: "height 0.04s linear" },
-
-  cardOverlay: { ...abs, inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.8)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", zIndex: 460, padding: 16 },
-  glassCard: {
-    background: "linear-gradient(165deg, rgba(24,24,28,0.96), rgba(12,12,15,0.98))",
-    border: `1px solid ${C.border}`,
-    borderTopColor: C.borderTop,
-    ...r(20),
-    padding: "28px 24px",
-    textAlign: "center",
-    maxWidth: 410,
-    width: "100%",
-    boxShadow: "0 32px 90px rgba(0,0,0,0.95)",
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-  },
-  warnIconWrap: { width: 54, height: 54, borderRadius: "50%", background: "rgba(245,158,11,0.14)", border: "1px solid rgba(245,158,11,0.35)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fbbf24", marginBottom: 12, fontSize: 24 },
-  pillBadge: { background: "rgba(245,158,11,0.16)", color: "#fbbf24", border: "1px solid rgba(245,158,11,0.3)", fontSize: "0.6rem", fontWeight: 800, fontFamily: F.mono, padding: "3px 10px", ...r(999), letterSpacing: "1px", marginBottom: 10 },
-  cardTitle: { color: "#fff", fontSize: "1.1rem", fontWeight: 800, margin: "0 0 6px", letterSpacing: "-0.3px" },
-  cardFile: { color: C.text, fontSize: "0.73rem", fontFamily: F.mono, background: "rgba(255,255,255,0.06)", padding: "7px 11px", ...r(9), width: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 10, border: "1px solid rgba(255,255,255,0.08)" },
-  cardReason: { color: C.dim, fontSize: "0.79rem", lineHeight: 1.55, margin: "0 0 20px" },
-  cardActions: { display: "flex", gap: 10, width: "100%" },
-  actionBtn: { flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, ...r(12), padding: "12px 14px", fontSize: "0.8rem", fontWeight: 700, fontFamily: F.font, minHeight: 44, cursor: "pointer", textDecoration: "none" },
-  actionPrimary: { background: `linear-gradient(135deg, ${C.redB}, ${C.red})`, color: "#fff", border: "none", boxShadow: `0 6px 24px ${C.redGlow}` },
-  actionSecondary: { background: "rgba(255,255,255,0.08)", color: C.text, border: "1px solid rgba(255,255,255,0.14)" },
-
-  resumeIcon: { width: 52, height: 52, borderRadius: "50%", background: "rgba(229,9,20,0.14)", border: "1px solid rgba(229,9,20,0.36)", display: "flex", alignItems: "center", justifyContent: "center", color: C.red, marginBottom: 12, fontSize: 20 },
-  resumeSub: { color: C.dim, fontSize: "0.74rem", fontWeight: 500, marginBottom: 14, fontFamily: F.mono },
-  resumeBar: { width: "100%", height: 5, background: "rgba(255,255,255,0.1)", ...r(999), overflow: "hidden", marginBottom: 20 },
-  resumeBarFill: { height: "100%", background: `linear-gradient(to right, #fff, ${C.red})`, ...r(999) },
-
-  apLabel: { color: C.redB, fontSize: "0.58rem", fontWeight: 800, letterSpacing: "3px", textTransform: "uppercase", marginBottom: 8 },
-  apTitle: { color: "#fff", fontSize: "1.02rem", fontWeight: 800, marginBottom: 16, lineHeight: 1.4 },
-  apRing: { position: "relative", width: 64, height: 64, margin: "0 auto 10px" },
-  apNum: { ...abs, inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: "1.24rem", fontWeight: 900 },
-  apHint: { color: C.dim, fontSize: "0.72rem", marginBottom: 16 },
-  apNow: { flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, background: "#fff", color: "#000", border: "none", ...r(12), padding: "12px 16px", fontSize: "0.82rem", fontWeight: 800, fontFamily: F.font, cursor: "pointer", minHeight: 44 },
-
-  // Series Episode Dock
-  epBar: {
-    ...abs,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: 68,
-    paddingBottom: "env(safe-area-inset-bottom)",
-    zIndex: 620,
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    paddingLeft: "max(16px, env(safe-area-inset-left))",
-    paddingRight: "max(16px, env(safe-area-inset-right))",
-    background: "rgba(6, 6, 8, 0.96)",
-    borderTop: "1px solid rgba(255,255,255,0.08)",
-  },
-  epScroll: { display: "flex", gap: 8, overflowX: "auto", flex: 1, scrollbarWidth: "none", WebkitOverflowScrolling: "touch", padding: "6px 2px", alignItems: "center" },
-  epDot: {
-    position: "relative",
-    flexShrink: 0,
-    minWidth: 46,
-    maxWidth: 180,
-    height: 44,
-    padding: "0 12px",
-    background: "rgba(255,255,255,0.06)",
-    border: "1px solid rgba(255,255,255,0.1)",
-    ...r(10),
-    color: C.dim,
-    fontSize: "0.76rem",
-    fontWeight: 700,
-    fontFamily: F.mono,
-    cursor: "pointer",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 7,
-    whiteSpace: "nowrap",
-    transition: "all 0.18s ease",
-  },
-  epDotActive: {
-    background: "rgba(229,9,20,0.22)",
-    borderColor: C.red,
-    color: "#fff",
-    fontWeight: 800,
-  },
-  epDotNum: { lineHeight: 1, position: "relative", zIndex: 1 },
-  epDotTitle: {
-    fontFamily: F.font,
-    fontSize: "0.72rem",
-    fontWeight: 500,
-    opacity: 0.85,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-  },
-  epDotBar: { position: "absolute", bottom: 3, left: "50%", transform: "translateX(-50%)", width: 18, height: 2.5, background: C.red, borderRadius: 999 },
-  epNav: { display: "inline-flex", alignItems: "center", justifyContent: "center", width: 40, height: 40, background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: "50%", color: "#fff", cursor: "pointer", fontSize: 16, flexShrink: 0 },
-
-  errorToast: { ...abs, left: "50%", transform: "translateX(-50%)", background: "rgba(155, 14, 22, 0.94)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)", color: "#fff", padding: "12px 16px", ...r(14), fontSize: "0.75rem", fontWeight: 600, zIndex: 700, display: "flex", alignItems: "center", gap: 10, boxShadow: "0 12px 40px rgba(0,0,0,0.88)", width: "min(92vw, 490px)", border: "1px solid rgba(255,255,255,0.16)" },
-  dlBtn: { display: "inline-flex", alignItems: "center", gap: 5, color: "#fff", background: "rgba(255,255,255,0.16)", border: "1px solid rgba(255,255,255,0.2)", ...r(8), padding: "6px 10px", textDecoration: "none", fontSize: "0.7rem", fontWeight: 700, fontFamily: F.font, flexShrink: 0, cursor: "pointer" },
-};

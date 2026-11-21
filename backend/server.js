@@ -24,6 +24,11 @@ const MAX_PROBE_STDOUT_BYTES = 32 * 1024 * 1024;
 const PROBE_CANCEL_GRACE_MS = 1000;
 const PROBE_KILL_GRACE_MS = 5000;
 
+const FFMPEG_HTTP_ARGS = [
+  "-user_agent",
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+];
+
 const activeJobs = new Map();
 const wtClient = new WebTorrent();
 const activeTorrents = new Map();
@@ -202,6 +207,7 @@ function buildProbeData(data, mediaUrl) {
   const urlFallbackLangs = extractLangsFromUrl(mediaUrl);
 
   const videoStream = streams.find((stream) => stream.codec_type === "video");
+  const videoCodec = (videoStream?.codec_name || "").toLowerCase();
   const sourceQuality = videoStream?.height ? `${videoStream.height}p (Original)` : "Original";
 
   const audioTracks = streams
@@ -230,7 +236,7 @@ function buildProbeData(data, mediaUrl) {
         `Subtitle ${idx + 1}`,
     }));
 
-  return { totalDuration, sourceQuality, audioTracks, subtitleTracks };
+  return { totalDuration, sourceQuality, videoCodec, audioTracks, subtitleTracks };
 }
 
 function getCachedProbe(mediaUrl) {
@@ -382,6 +388,7 @@ function getOrStartProbe(mediaUrl) {
     };
 
     const args = [
+      ...FFMPEG_HTTP_ARGS,
       "-v", "error",
       "-print_format", "json",
       "-show_format",
@@ -551,7 +558,7 @@ app.get("/api/magnet/info", async (req, res) => {
   try {
     const { file } = await getOrAddTorrent(magnet);
     if (client.disconnected) return;
-    const streamUrl = `http://localhost:${PORT}/api/magnet/stream?magnet=${encodeURIComponent(magnet)}`;
+    const streamUrl = `${req.protocol}://${req.get("host")}/api/magnet/stream?magnet=${encodeURIComponent(magnet)}`;
     res.json({
       fileName: file.name,
       size: file.length,
@@ -697,6 +704,7 @@ app.get("/api/subtitle.vtt", async (req, res) => {
     }
 
     ff = spawn("ffmpeg", [
+      ...FFMPEG_HTTP_ARGS,
       "-reconnect", "1",
       "-reconnect_streamed", "1",
       "-reconnect_delay_max", "5",
@@ -776,7 +784,7 @@ app.get("/api/subtitle.vtt", async (req, res) => {
   }
 });
 
-// ─── 4. Live-Remux Video + Selected Audio Track Preserving Timeline Offset ───
+// ─── 4. Live-Remux Video + Selected Audio Track (fMP4 for 4K HEVC & iOS) ─────
 app.get("/api/hls/master.m3u8", async (req, res) => {
   const mediaUrl = req.query.url;
   const audioIdx = Number(req.query.audio || 0);
@@ -788,18 +796,25 @@ app.get("/api/hls/master.m3u8", async (req, res) => {
     client.dispose();
     return;
   }
+
   const hash = crypto
     .createHash("md5")
-    .update(`${mediaUrl}-a${audioIdx}-s${startSec}`)
+    .update(`${mediaUrl}-a${audioIdx}-s${startSec}-fmp4`)
     .digest("hex");
   const outDir = path.join(HLS_ROOT, hash);
   const playlistPath = path.join(outDir, "index.m3u8");
+
+  const cachedProbe = getCachedProbe(mediaUrl);
+  const isHevc =
+    cachedProbe?.videoCodec === "hevc" ||
+    /\b(hevc|h265|x265)\b/i.test(mediaUrl);
 
   try {
     if (!activeJobs.has(hash) && !fs.existsSync(playlistPath)) {
       fs.mkdirSync(outDir, { recursive: true });
 
       const args = [
+        ...FFMPEG_HTTP_ARGS,
         "-reconnect", "1",
         "-reconnect_streamed", "1",
         "-reconnect_delay_max", "5",
@@ -808,6 +823,7 @@ app.get("/api/hls/master.m3u8", async (req, res) => {
         "-map", "0:v:0",
         "-map", `0:a:${audioIdx}?`,
         "-c:v", "copy",
+        ...(isHevc ? ["-tag:v", "hvc1"] : []),
         "-c:a", "aac",
         "-ac", "2",
         "-b:a", "192k",
@@ -815,8 +831,10 @@ app.get("/api/hls/master.m3u8", async (req, res) => {
         "-f", "hls",
         "-hls_time", "4",
         "-hls_list_size", "0",
+        "-hls_segment_type", "fmp4",
+        "-hls_fmp4_init_filename", "init.mp4",
         "-hls_flags", "independent_segments",
-        "-hls_segment_filename", path.join(outDir, "seg_%05d.ts"),
+        "-hls_segment_filename", path.join(outDir, "seg_%05d.m4s"),
         playlistPath,
       ];
 
@@ -850,7 +868,7 @@ app.get("/api/hls/master.m3u8", async (req, res) => {
       !client.disconnected &&
       !fs.existsSync(playlistPath) &&
       activeJobs.has(hash) &&
-      Date.now() - waitStart < 18000
+      Date.now() - waitStart < 45000
     ) {
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
@@ -875,14 +893,19 @@ app.get("/api/hls/master.m3u8", async (req, res) => {
 app.use(
   "/api/hls-files",
   express.static(HLS_ROOT, {
-    setHeaders: (res) => {
+    setHeaders: (res, filePath) => {
       res.setHeader("Access-Control-Allow-Origin", "*");
+      if (filePath.endsWith(".m3u8")) {
+        res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
+      } else if (filePath.endsWith(".m4s") || filePath.endsWith(".mp4")) {
+        res.setHeader("Content-Type", "video/mp4");
+      }
     },
   })
 );
 
-app.listen(PORT, () => {
-  console.log(`Media Proxy running on http://localhost:${PORT}`);
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`Media Proxy running on http://0.0.0.0:${PORT}`);
   console.log(
     `FFprobe timeout: ${FFPROBE_TIMEOUT_MS === 0 ? "disabled" : `${FFPROBE_TIMEOUT_MS}ms`}`
   );

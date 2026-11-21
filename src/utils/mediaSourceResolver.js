@@ -1,4 +1,9 @@
-const PROXY_BASE = process.env.REACT_APP_MEDIA_PROXY_URL || "http://localhost:4000";
+const PROXY_BASE =
+  process.env.REACT_APP_MEDIA_PROXY_URL ||
+  (typeof window !== "undefined" && window.location?.hostname
+    ? `${window.location.protocol}//${window.location.hostname}:4000`
+    : "http://localhost:4000");
+
 const ARCHIVE_HOSTS = new Set(["archive.org", "www.archive.org"]);
 
 const EMBED_ONLY_HOSTS = ["isaidub.me", "vidsrc.to", "doodstream.com", "streamtape.com", "filemoon.sx", "mixdrop.co", "voe.sx"];
@@ -7,7 +12,6 @@ const RESOLUTION_CACHE_LIMIT = 100;
 const RESOLUTION_CACHE_TTL_MS = 5 * 60 * 1000;
 const RESOLUTION_TIMEOUT_MS = 15000;
 const resolutionCache = new Map();
-
 
 const LANGUAGE_NAMES = {
   ta: "Tamil", tam: "Tamil", te: "Telugu", tel: "Telugu", hi: "Hindi", hin: "Hindi",
@@ -33,7 +37,7 @@ export function validateHttpUrl(rawUrl) {
   if (/^magnet:\?/i.test(trimmed)) return { valid: true, url: trimmed, isMagnet: true };
   try {
     const parsed = new URL(trimmed);
-    if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password) return null;
+    if (!["http:", "https:"].includes(parsed.protocol) || parsed.username || parsed.password) return null;
     return { valid: true, url: parsed.href, parsed };
   } catch {
     return null;
@@ -93,29 +97,26 @@ export function detectDirectMediaType(rawUrl, contentType = "") {
 
 function isAllowedOnestreamMedia(stream) {
   const parsed = stream?.parsed;
-  if (!parsed || !['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password ||
+  if (!parsed || !["http:", "https:"].includes(parsed.protocol) || parsed.username || parsed.password ||
       (parsed.port && parsed.port !== "443" && parsed.port !== "80")) return false;
 
   const host = parsed.hostname.toLowerCase();
 
-  // Uptodub media hosts
   if (host === "dub.uptodub.ch" || host.endsWith(".uptodub.ch") || host === "uptodub.ch" || host.endsWith(".uptodub.com")) {
     return !/\/stream\/(?:video|page)\/\d+\/?$/i.test(parsed.pathname) &&
       !/\.(html?|json|txt)$/i.test(parsed.pathname);
   }
 
-  // Fastbytes hosts
   if (host === "fastbytes.xyz" || host.endsWith(".fastbytes.xyz")) {
     return (parsed.pathname === "/download.php" || parsed.pathname === "/open.php" || parsed.pathname === "/stream.php" || parsed.pathname === "/play.php") &&
       (parsed.searchParams.get("stream") === "1" || Boolean(parsed.searchParams.get("dl")));
   }
 
-  // isaidub host
   if (host === "download.isaidub.dad" || host.endsWith(".isaidub.dad") || host.endsWith(".isaidub.me")) {
     if ((parsed.pathname !== "/download.php" && parsed.pathname !== "/stream.php") || parsed.searchParams.get("stream") !== "1") return false;
     try {
       const nestedMedia = new URL(parsed.searchParams.get("url") || "");
-      return ['https:', 'http:'].includes(nestedMedia.protocol) &&
+      return ["https:", "http:"].includes(nestedMedia.protocol) &&
         !nestedMedia.username && !nestedMedia.password &&
         (ONESTREAM_DUBSHARE_HOST_RE.test(nestedMedia.hostname.toLowerCase()) || nestedMedia.hostname.toLowerCase().endsWith(".dubshare.one")) &&
         (!nestedMedia.port || nestedMedia.port === "443" || nestedMedia.port === "80") &&
@@ -125,13 +126,11 @@ function isAllowedOnestreamMedia(stream) {
     }
   }
 
-  // Onestream direct media URLs
   if (host === "onestream.today" || host.endsWith(".onestream.today")) {
     return !/\/stream\/(?:video|page)\/\d+\/?$/i.test(parsed.pathname) &&
       !/\.(html?|json|txt)$/i.test(parsed.pathname);
   }
 
-  // Dubshare hosts
   if (host === "dubshare.one" || host.endsWith(".dubshare.one") || ONESTREAM_DUBSHARE_HOST_RE.test(host)) {
     return /\.mp4$/i.test(parsed.pathname);
   }
@@ -157,12 +156,12 @@ async function probeMediaContentType(url, signal) {
     return { status: "resolved", streamUrl: finalUrl.url, mediaType, provider: "Direct Stream", subtitles: [], audioTracks: [] };
   } catch (error) {
     if (signal?.aborted) throw error;
-    // CORS-blocked or unavailable sources remain in their provider's official embed.
     return null;
   } finally {
     request.dispose();
   }
 }
+
 function makeFallback(url, provider, reason, embedUrl = url) {
   return { status: "iframe_fallback", embedUrl, provider: provider.name, fallbackReason: reason };
 }
@@ -242,8 +241,6 @@ export async function resolveMediaSource(rawUrl, { signal, preferNativeBridge = 
     return makeFallback(validated.url, provider, "The YouTube URL could not be identified for its official embed.");
   }
 
-  // Only the fixed public Archive API and allowlisted Onestream pages are fetched.
-  // Other providers are never fetched or scraped; their official embed remains the fallback.
   if (provider.id !== "archive" && provider.id !== "onestream") {
     if (provider.id !== "embed_only") {
       const probe = await probeMediaContentType(validated.url, signal);
