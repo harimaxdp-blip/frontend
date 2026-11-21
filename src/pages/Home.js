@@ -37,7 +37,8 @@ const LAST_WATCHED_KEY = "ott_last_watched";
 const RECENT_KEY       = "hm_recent";
 const RECENT_LIMIT     = 10;
 const ANDROID_LW_PREFS = "hm_last_watched";
-const EAGER_COUNT      = 12; // first N posters load eagerly, the rest lazy
+const EAGER_COUNT      = 12;   // first N posters load eagerly, the rest lazy
+const PAGE_SIZE        = 30;   // cards rendered per "page" while scrolling down
 
 let _navStateId = 0;
 const nextNavId = () => ++_navStateId;
@@ -127,6 +128,28 @@ function initInputMode(isTV) {
     window.removeEventListener("keydown", onKey, true);
     window.removeEventListener("pointerdown", onPtr, true);
   };
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   BOTTOM-NAV AWARE OFFSET
+   Finds the app's fixed bottom bar and publishes its height as
+   --nav-offset so floating buttons (scroll-to-top) sit ABOVE it.
+   ═══════════════════════════════════════════════════════════════ */
+function measureChrome() {
+  let top = 0, bottom = 0;
+  const vh = window.innerHeight, vw = window.innerWidth;
+  document.querySelectorAll("nav, header, footer, div[class*='nav'], div[class*='tab'], div[class*='bottom'], div[class*='header'], div[class*='top']").forEach((el) => {
+    if (el.closest(".fixed-controls, .movies-page") || el.classList.contains("hm-back")) return;
+    const cs = getComputedStyle(el);
+    if (cs.position !== "fixed" && cs.position !== "sticky") return;
+    const r = el.getBoundingClientRect();
+    if (r.height < 36 || r.height > 170 || r.width < vw * 0.6) return;
+    if (r.top <= 4 && r.bottom > 30)                 top    = Math.max(top, r.bottom);       // fixed top bar
+    if (r.bottom >= vh - 6 && r.top > vh * 0.5)       bottom = Math.max(bottom, vh - r.top);  // fixed bottom bar
+  });
+  const root = document.documentElement.style;
+  if (top > 0)    root.setProperty("--header-offset", `${Math.round(top)}px`);
+  if (bottom > 0) root.setProperty("--nav-offset",    `${Math.round(bottom)}px`);
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -232,7 +255,10 @@ const scrollPageTo   = (top, behavior = "auto") => {
   else window.scrollTo({ top, left: 0, behavior });
 };
 
-/* Two attempts only (next frame + 150 ms) — no retry cascade, no visible jumps */
+/* Restores the list exactly where the person left it:
+   1) jump to the saved scroll position
+   2) find the card they opened (Evil Dead collection, an episode …), make sure it is on screen, focus it
+   Retries a few times while the grid is still re-rendering. */
 let restoreScrollToken = 0;
 function restoreScrollAndFocus(scrollY, focusId) {
   const token = ++restoreScrollToken;
@@ -241,13 +267,16 @@ function restoreScrollAndFocus(scrollY, focusId) {
   const attempt = () => {
     if (done || token !== restoreScrollToken) return;
     scrollPageTo(targetY);
-    if (focusId) {
-      const el = document.querySelector(`[data-card-id="${focusId}"]`);
-      if (el) { el.focus({ preventScroll: true }); done = true; }
-    } else done = true;
+    if (!focusId) { done = true; return; }
+    const el = document.querySelector(`[data-card-id="${focusId}"]`);
+    if (!el) return;                                   // not rendered yet → next retry
+    const r = el.getBoundingClientRect();
+    if (r.bottom < 60 || r.top > window.innerHeight - 60) el.scrollIntoView({ block: "center", behavior: "auto" });
+    try { el.focus({ preventScroll: true }); } catch {}
+    done = true;
   };
   requestAnimationFrame(attempt);
-  setTimeout(attempt, 150);
+  [90, 220, 450, 800].forEach((ms) => setTimeout(attempt, ms));
 }
 
 const isTVNow = () => document.documentElement.dataset.device === "tv";
@@ -279,6 +308,23 @@ const TrashIcon = () => (
   </svg>
 );
 
+const ArrowLeft = () => (
+  <svg viewBox="0 0 24 24" fill="none" className="hm-back-icon" aria-hidden="true">
+    <path d="M19 12H5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+    <path d="M11 6L5 12L11 18" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+/* Round arrow button, fixed at the top. Uses browser history so the Android/TV back key, Esc and this button behave the same */
+const BackButton = React.memo(function BackButton({ label = "Back", onClick }) {
+  return (
+    <button type="button" className="hm-back" onClick={onClick} aria-label={label} title={label}>
+      <ArrowLeft />
+    </button>
+  );
+});
+
+/* Poster with shimmer + spinner until the image is really on screen */
 const PosterImg = React.memo(function PosterImg({ src, alt, eager = false }) {
   const [state, setState] = useState(src ? "loading" : "error");
   const ref = useRef(null);
@@ -292,7 +338,12 @@ const PosterImg = React.memo(function PosterImg({ src, alt, eager = false }) {
   const ready = state !== "loading";
   return (
     <div className="poster-wrap">
-      {!ready && <div className="poster-shimmer" aria-hidden="true" />}
+      {!ready && (
+        <>
+          <div className="poster-shimmer" aria-hidden="true" />
+          <div className="poster-loader" aria-hidden="true"><span className="poster-mark">HM</span></div>
+        </>
+      )}
       <img
         ref={ref}
         src={state === "error" || !src ? POSTER_FALLBACK : src}
@@ -310,6 +361,25 @@ const PosterImg = React.memo(function PosterImg({ src, alt, eager = false }) {
 
 const SkeletonCard = React.memo(function SkeletonCard() {
   return <div className="card-skeleton"><div className="skel-img" /><div className="skel-title" /><div className="skel-sub" /></div>;
+});
+
+/* Bottom-of-list loader (also the IntersectionObserver sentinel):
+   brand orb + shimmering label + a row of skeleton posters that the real cards replace */
+const InfiniteLoader = React.forwardRef(function InfiniteLoader(_, ref) {
+  return (
+    <div ref={ref} className="infinite-loader" role="status" aria-live="polite" aria-label="Loading more titles">
+      <div className="infinite-head">
+        <span className="infinite-orb" aria-hidden="true"><b>HM</b></span>
+        <span className="infinite-copy">
+          <span className="infinite-text">Loading more titles</span>
+          <span className="infinite-bar" aria-hidden="true"><i /></span>
+        </span>
+      </div>
+      <div className="infinite-skeleton" aria-hidden="true">
+        {Array.from({ length: 10 }).map((_, i) => <SkeletonCard key={i} />)}
+      </div>
+    </div>
+  );
 });
 
 const NoResults = React.memo(function NoResults({ img }) {
@@ -469,9 +539,17 @@ export default function Home({ type = "all" }) {
   const [showUpBtn, setShowUpBtn] = useState(false);
   const [viewStack, setViewStack] = useState([{ kind: "home" }]);
 
+  /* infinite scroll: how many cards are rendered right now */
+  const [limit, setLimit] = useState(PAGE_SIZE);
+  const limitRef      = useRef(PAGE_SIZE);
+  limitRef.current    = limit;
+  const sentinelRef   = useRef(null);
+
   const navigate         = useNavigate();
   const savedScrollMap   = useRef({});
   const savedFocusMap    = useRef({});
+  const savedLimitMap    = useRef({});
+  const lastClickRef     = useRef(null);   // data-card-id of the card that was just opened
   const isNavigatingBack = useRef(false);
   const navIdRef         = useRef(0);
   const recognitionRef   = useRef(null);
@@ -487,6 +565,22 @@ export default function Home({ type = "all" }) {
     applyPlatform(platform);
     return initInputMode(platform.tv);
   }, [platform]);
+
+  /* ── keep scroll-to-top above the bottom navigation bar ── */
+  useEffect(() => {
+    measureChrome();
+    const t1 = setTimeout(measureChrome, 400);
+    const t2 = setTimeout(measureChrome, 1500);
+    window.addEventListener("resize", measureChrome);
+    window.addEventListener("orientationchange", measureChrome);
+    return () => {
+      clearTimeout(t1); clearTimeout(t2);
+      window.removeEventListener("resize", measureChrome);
+      window.removeEventListener("orientationchange", measureChrome);
+    };
+  }, []);
+
+  useEffect(() => { const t = setTimeout(measureChrome, 60); return () => clearTimeout(t); }, [currentView.kind]);
 
   /* ── sync last-watched from Android bridge ── */
   useEffect(() => {
@@ -653,8 +747,11 @@ export default function Home({ type = "all" }) {
   /* ── view stack / history ── */
   const saveCurrentScrollAndFocus = useCallback(() => {
     savedScrollMap.current[navIdRef.current] = getPageScrollY();
-    const f = document.activeElement;
-    if (f?.dataset?.cardId) savedFocusMap.current[navIdRef.current] = f.dataset.cardId;
+    savedLimitMap.current[navIdRef.current]  = limitRef.current;
+    const f  = document.activeElement;
+    const id = f?.dataset?.cardId || lastClickRef.current;
+    if (id) savedFocusMap.current[navIdRef.current] = id;
+    lastClickRef.current = null;
   }, []);
 
   const pushView = useCallback((newView) => {
@@ -662,6 +759,7 @@ export default function Home({ type = "all" }) {
     const id = nextNavId();
     navIdRef.current = id;
     window.history.pushState({ id, kind: newView.kind }, "");
+    setLimit(PAGE_SIZE);
     setViewStack((prev) => [...prev, newView]);
     scrollPageTo(0);
   }, [saveCurrentScrollAndFocus]);
@@ -672,11 +770,17 @@ export default function Home({ type = "all" }) {
     setViewStack((prev) => prev.slice(0, -1));
   }, [viewStack.length]);
 
+  /* On-screen Back button → same path as the hardware / browser back */
+  const handleBack = useCallback(() => {
+    if (viewStack.length > 1) window.history.back();
+  }, [viewStack.length]);
+
   useLayoutEffect(() => {
     if (!isNavigatingBack.current) return;
     isNavigatingBack.current = false;
     const id = window.history.state?.id ?? 0;
     navIdRef.current = id;
+    setLimit(savedLimitMap.current[id] ?? PAGE_SIZE);   // re-render the same amount of cards so scroll position matches
     restoreScrollAndFocus(savedScrollMap.current[id] ?? 0, savedFocusMap.current[id] ?? null);
   }, [viewStack]);
 
@@ -704,6 +808,7 @@ export default function Home({ type = "all" }) {
     const {
       stackKinds, collectionName, seriesTitle, seriesDisplayName, seasonNum,
       scrollY, focusId, homeScrollY, homeFocusId, seriesScrollY, seriesFocusId, filters,
+      limit: savedLimit, homeLimit, seriesLimit,
     } = saved;
 
     const android = readAndroidLastWatched();
@@ -718,18 +823,20 @@ export default function Home({ type = "all" }) {
     if (filters?.search   !== undefined) setSearch(filters.search);
     setFilterOpen(false);
 
-    const finish = () => setTimeout(() => { isRestoringNavState.current = false; }, 200);
+    const finish = () => setTimeout(() => { isRestoringNavState.current = false; }, 400);
 
-    // views[0] is always home; scrolls/focuses line up with views
-    const restoreStack = (views, scrolls, focuses) => {
+    // views[0] is always home; scrolls/focuses/limits line up with views
+    const restoreStack = (views, scrolls, focuses, limits) => {
       const ids = views.map((_, i) => (i === 0 ? 0 : nextNavId()));
       navIdRef.current = ids[ids.length - 1];
       ids.forEach((id, i) => {
         savedScrollMap.current[id] = Number(scrolls[i]) || 0;
         savedFocusMap.current[id]  = focuses[i] || null;
+        savedLimitMap.current[id]  = Number(limits[i]) || PAGE_SIZE;
       });
       window.history.replaceState({ id: 0, kind: "home" }, "");
       ids.slice(1).forEach((id, i) => window.history.pushState({ id, kind: views[i + 1].kind }, ""));
+      setLimit(savedLimitMap.current[ids[ids.length - 1]]);
       setViewStack(views);
       restoreScrollAndFocus(scrollY, focusId);
       finish();
@@ -743,16 +850,17 @@ export default function Home({ type = "all" }) {
     if (kinds.includes("season") && entry && seasonNum && entry.seasons[seasonNum]) {
       return restoreStack(
         [{ kind: "home" }, seriesView, { kind: "season", data: { seriesTitle: display, seasonNum, episodes: entry.seasons[seasonNum] } }],
-        [homeScrollY, seriesScrollY, scrollY], [homeFocusId, seriesFocusId, focusId]);
+        [homeScrollY, seriesScrollY, scrollY], [homeFocusId, seriesFocusId, focusId], [homeLimit, seriesLimit, savedLimit]);
     }
     if (kinds.includes("series") && entry) {
-      return restoreStack([{ kind: "home" }, seriesView], [homeScrollY, scrollY], [homeFocusId, focusId]);
+      return restoreStack([{ kind: "home" }, seriesView], [homeScrollY, scrollY], [homeFocusId, focusId], [homeLimit, savedLimit]);
     }
     if (kinds.includes("collection") && collectionName && allMovieCollectionLookup[collectionName]) {
       return restoreStack(
         [{ kind: "home" }, { kind: "collection", data: { name: collectionName, items: allMovieCollectionLookup[collectionName] } }],
-        [homeScrollY, scrollY], [homeFocusId, focusId]);
+        [homeScrollY, scrollY], [homeFocusId, focusId], [homeLimit, savedLimit]);
     }
+    setLimit(Number(savedLimit) || PAGE_SIZE);
     finish();
     restoreScrollAndFocus(scrollY, focusId);
   }, [isDataLoaded, allSeriesLookup, allMovieCollectionLookup]);
@@ -772,11 +880,19 @@ export default function Home({ type = "all" }) {
     if (isRestoringNavState.current || ss.getJSON("ott_nav_state")) return;
     setLanguageFilter([]); setGenreFilter([]); setYearFilter([]); setSearch("");
     setViewStack([{ kind: "home" }]);
+    setLimit(PAGE_SIZE);
     navIdRef.current = 0;
     savedScrollMap.current = {};
     savedFocusMap.current  = {};
+    savedLimitMap.current  = {};
     scrollPageTo(0);
   }, [type]);
+
+  /* ── filters / search changed → start from the first page again ── */
+  useEffect(() => {
+    if (isRestoringNavState.current) return;
+    setLimit(PAGE_SIZE);
+  }, [languageFilter, genreFilter, yearFilter, dSearch]);
 
   const handleOpenCollection = useCallback((name, items) => pushView({ kind: "collection", data: { name, items } }), [pushView]);
   const handleOpenSeries = useCallback((seriesTitle, data) =>
@@ -804,13 +920,18 @@ export default function Home({ type = "all" }) {
     }
 
     const stackKinds = viewStack.map((v) => v.kind);
-    const getNavInfo = (idx) => ({ scrollY: savedScrollMap.current[idx] ?? getPageScrollY(), focusId: savedFocusMap.current[idx] ?? null });
+    const getNavInfo = (idx) => ({
+      scrollY: savedScrollMap.current[idx] ?? getPageScrollY(),
+      focusId: savedFocusMap.current[idx] ?? null,
+      limit:   savedLimitMap.current[idx]  ?? limitRef.current,
+    });
     const homeInfo   = getNavInfo(0);
     const seriesInfo = viewStack.length >= 3 ? getNavInfo(navIdRef.current - 1) : null;
 
     saveCurrentScrollAndFocus();
     const deepScrollY = savedScrollMap.current[navIdRef.current] ?? 0;
     const deepFocusId = savedFocusMap.current[navIdRef.current] ?? cardId("ep", movie.id);
+    const deepLimit   = savedLimitMap.current[navIdRef.current] ?? limitRef.current;
 
     const seasonView = viewStack.find((v) => v.kind === "season");
     const seriesView = viewStack.find((v) => v.kind === "series");
@@ -822,9 +943,9 @@ export default function Home({ type = "all" }) {
       seriesTitle:       navContext?.seriesTitleKey ?? (seriesView?.data?.titleKey ?? (seasonView ? norm(seasonView.data?.seriesTitle) : null)),
       seriesDisplayName: navContext?.seriesDisplayName ?? (seriesView?.data?.seriesTitle ?? seasonView?.data?.seriesTitle ?? null),
       seasonNum:         navContext?.seasonNum ?? (seasonView?.data?.seasonNum ?? null),
-      scrollY: deepScrollY, focusId: deepFocusId,
-      homeScrollY: homeInfo.scrollY, homeFocusId: homeInfo.focusId,
-      seriesScrollY: seriesInfo?.scrollY ?? null, seriesFocusId: seriesInfo?.focusId ?? null,
+      scrollY: deepScrollY, focusId: deepFocusId, limit: deepLimit,
+      homeScrollY: homeInfo.scrollY, homeFocusId: homeInfo.focusId, homeLimit: homeInfo.limit,
+      seriesScrollY: seriesInfo?.scrollY ?? null, seriesFocusId: seriesInfo?.focusId ?? null, seriesLimit: seriesInfo?.limit ?? null,
       filters: { language: languageFilter, genre: genreFilter, year: yearFilter, search },
     });
 
@@ -908,6 +1029,7 @@ export default function Home({ type = "all" }) {
 
   const handleClick = useCallback((e, action) => {
     restoreScrollToken += 1;
+    lastClickRef.current = e.currentTarget?.dataset?.cardId || null;
     e.currentTarget?.focus?.({ preventScroll: true });
     triggerRipple(e, e.currentTarget);
     action();
@@ -921,6 +1043,45 @@ export default function Home({ type = "all" }) {
 
   const noResults = isDataLoaded && !movieGroups.length && !seriesGroups.length && !animeMovieGroups.length && !animeSeriesGroups.length;
   const isSearchActive = search.trim().length > 0;
+
+  /* ── infinite scroll ── */
+  const totalItems = useMemo(() => {
+    if (selectedSeason)     return selectedSeason.episodes.length;
+    if (selectedSeries)     return Object.keys(selectedSeries.seasons).length;
+    if (selectedCollection) return selectedCollection.items.length;
+    let n = 0;
+    if (type === "all" || type === "movie")  n += movieGroups.length;
+    if (type === "all" || type === "series") n += seriesGroups.length;
+    if (type === "all" || type === "anime")  n += animeMovieGroups.length + animeSeriesGroups.length;
+    return n;
+  }, [selectedSeason, selectedSeries, selectedCollection, type,
+      movieGroups.length, seriesGroups.length, animeMovieGroups.length, animeSeriesGroups.length]);
+
+  const hasMore = isDataLoaded && limit < totalItems;
+
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || !hasMore) return;
+    const root   = getScrollRoot();
+    const useWin = root === document.scrollingElement || root === document.documentElement;
+    let timer;
+    const io = new IntersectionObserver(([entry]) => {
+      if (!entry.isIntersecting) return;
+      clearTimeout(timer);
+      // short delay so the loading animation is actually visible
+      timer = setTimeout(() => setLimit((l) => l + PAGE_SIZE), 320);
+    }, { root: useWin ? null : root, rootMargin: "0px 0px 240px 0px" });
+    io.observe(el);
+    return () => { io.disconnect(); clearTimeout(timer); };
+  }, [hasMore, limit, currentView.kind]);
+
+  /* hands out cards section by section until the page budget is used */
+  let budget = limit;
+  const take = (arr) => {
+    const n = Math.max(0, Math.min(arr.length, budget));
+    budget -= n;
+    return arr.slice(0, n);
+  };
 
   /* ── renderers ── */
   const renderMovieGrid = (groups, prefix = "m") =>
@@ -1105,6 +1266,9 @@ export default function Home({ type = "all" }) {
 
         ) : selectedSeries ? (
           <section key="series-view" className="series-view-section slide-in-premium">
+            <div className="view-topbar">
+              <BackButton label="Back" onClick={handleBack} />
+            </div>
             <div className="series-view-header">
               <div className="series-view-poster"><img src={firstSeasonImg(selectedSeries.seasons)} alt={selectedSeries.seriesTitle} decoding="async" /></div>
               <div className="series-view-titles">
@@ -1115,7 +1279,7 @@ export default function Home({ type = "all" }) {
               </div>
             </div>
             <div className="grid" onKeyDown={handleGridKeyDown}>
-              {sortSeasons(selectedSeries.seasons).map(([sNum, eps], i) => {
+              {take(sortSeasons(selectedSeries.seasons)).map(([sNum, eps], i) => {
                 const lw = getLastWatchedEp(selectedSeries.seriesTitle, sNum);
                 return (
                   <FocusCard key={sNum} className="card is-collection season-card-v2" style={{ "--i": i }}
@@ -1144,6 +1308,7 @@ export default function Home({ type = "all" }) {
                 );
               })}
             </div>
+            {hasMore && <InfiniteLoader ref={sentinelRef} />}
           </section>
 
         ) : selectedSeason ? (() => {
@@ -1151,6 +1316,9 @@ export default function Home({ type = "all" }) {
           const lw = getLastWatchedEp(selectedSeason.seriesTitle, selectedSeason.seasonNum);
           return (
             <section key="episode-list" className="collection-view slide-in-premium">
+              <div className="view-topbar">
+                <BackButton label="Seasons" onClick={handleBack} />
+              </div>
               <div className="season-header">
                 <div className="season-breadcrumb">
                   <span className="season-breadcrumb-series">{selectedSeason.seriesTitle}</span>
@@ -1167,12 +1335,12 @@ export default function Home({ type = "all" }) {
                 )}
               </div>
               <div className="grid" onKeyDown={handleGridKeyDown}>
-                {sorted.map((ep, i) => {
+                {take(sorted).map((ep, i) => {
                   const isLastSeen = lw?.episodeId === ep.id;
                   return (
                     <FocusCard key={ep.id} className={`card episode-card${isLastSeen ? " last-seen-episode" : ""}`}
                       style={{ "--i": i }} data-card-id={cardId("ep", ep.id)}
-                      onClick={(e) => handleClick(e, () => playMovie(ep, sorted, i))}>
+                      onClick={(e) => handleClick(e, () => playMovie(ep, sorted, sorted.indexOf(ep)))}>
                       <PosterImg src={ep.img} alt={ep.title} eager={i < EAGER_COUNT} />
                       <div className="ep-num-badge" aria-hidden="true">EP {ep.episode || "S"}</div>
                       {isLastSeen && (
@@ -1190,10 +1358,14 @@ export default function Home({ type = "all" }) {
                   );
                 })}
               </div>
+              {hasMore && <InfiniteLoader ref={sentinelRef} />}
             </section>
           );
         })() : selectedCollection ? (
           <section key="collection-view" className="collection-view slide-in-premium">
+            <div className="view-topbar">
+              <BackButton label="Back" onClick={handleBack} />
+            </div>
             <div className="season-header">
               <div className="season-breadcrumb">
                 <span className="season-breadcrumb-series">{selectedCollection.name}</span>
@@ -1202,7 +1374,7 @@ export default function Home({ type = "all" }) {
               </div>
             </div>
             <div className="grid" onKeyDown={handleGridKeyDown}>
-              {selectedCollection.items.map((m, i) => (
+              {take(selectedCollection.items).map((m, i) => (
                 <FocusCard key={m.id} className="card" style={{ "--i": i }} data-card-id={cardId("col", m.id)}
                   onClick={(e) => handleClick(e, () => playMovie(m))}>
                   <PosterImg src={m.img} alt={m.title} eager={i < EAGER_COUNT} />
@@ -1210,6 +1382,7 @@ export default function Home({ type = "all" }) {
                 </FocusCard>
               ))}
             </div>
+            {hasMore && <InfiniteLoader ref={sentinelRef} />}
           </section>
 
         ) : (
@@ -1218,34 +1391,46 @@ export default function Home({ type = "all" }) {
             {type === "series" && renderRecentSection("Recently Watched", recentWatched.series, "series")}
             {type === "anime"  && renderRecentSection("Recently Watched", recentWatched.anime,  "anime")}
 
-            {(type === "all" || type === "movie") && movieGroups.length > 0 && (
-              <section className="content-section">
-                {sectionTitle(tvIcon, "Movies")}
-                <div className="grid" onKeyDown={handleGridKeyDown}>{renderMovieGrid(movieGroups, "mg")}</div>
-              </section>
-            )}
-            {(type === "all" || type === "series") && seriesGroups.length > 0 && (
-              <section className="content-section">
-                {sectionTitle(seriIcon, "Series")}
-                <div className="grid" onKeyDown={handleGridKeyDown}>
-                  {seriesGroups.map(([t, d], i) => renderSeriesCard(t, d, i))}
-                </div>
-              </section>
-            )}
-            {(type === "all" || type === "anime") && animeMovieGroups.length > 0 && (
-              <section className="content-section">
-                {sectionTitle(animeIcon, "Anime Movies")}
-                <div className="grid" onKeyDown={handleGridKeyDown}>{renderMovieGrid(animeMovieGroups, "amg")}</div>
-              </section>
-            )}
-            {(type === "all" || type === "anime") && animeSeriesGroups.length > 0 && (
-              <section className="content-section">
-                {sectionTitle(animeIcon, "Anime Series")}
-                <div className="grid" onKeyDown={handleGridKeyDown}>
-                  {animeSeriesGroups.map(([t, d], i) => renderSeriesCard(t, d, i))}
-                </div>
-              </section>
-            )}
+            {(() => {
+              const sections = [];
+              if (type === "all" || type === "movie") {
+                const part = take(movieGroups);
+                if (part.length) sections.push(
+                  <section className="content-section" key="s-movies">
+                    {sectionTitle(tvIcon, "Movies")}
+                    <div className="grid" onKeyDown={handleGridKeyDown}>{renderMovieGrid(part, "mg")}</div>
+                  </section>);
+              }
+              if (type === "all" || type === "series") {
+                const part = take(seriesGroups);
+                if (part.length) sections.push(
+                  <section className="content-section" key="s-series">
+                    {sectionTitle(seriIcon, "Series")}
+                    <div className="grid" onKeyDown={handleGridKeyDown}>
+                      {part.map(([t, d], i) => renderSeriesCard(t, d, i))}
+                    </div>
+                  </section>);
+              }
+              if (type === "all" || type === "anime") {
+                const part = take(animeMovieGroups);
+                if (part.length) sections.push(
+                  <section className="content-section" key="s-anime-movies">
+                    {sectionTitle(animeIcon, "Anime Movies")}
+                    <div className="grid" onKeyDown={handleGridKeyDown}>{renderMovieGrid(part, "amg")}</div>
+                  </section>);
+                const part2 = take(animeSeriesGroups);
+                if (part2.length) sections.push(
+                  <section className="content-section" key="s-anime-series">
+                    {sectionTitle(animeIcon, "Anime Series")}
+                    <div className="grid" onKeyDown={handleGridKeyDown}>
+                      {part2.map(([t, d], i) => renderSeriesCard(t, d, i))}
+                    </div>
+                  </section>);
+              }
+              return sections;
+            })()}
+
+            {hasMore && <InfiniteLoader ref={sentinelRef} />}
             {noResults && <NoResults img={NO_RESULTS_IMG[type] || NO_RESULTS_IMG.all} />}
           </div>
         )}

@@ -24,10 +24,27 @@ const MAX_PROBE_STDOUT_BYTES = 32 * 1024 * 1024;
 const PROBE_CANCEL_GRACE_MS = 1000;
 const PROBE_KILL_GRACE_MS = 5000;
 
-const FFMPEG_HTTP_ARGS = [
-  "-user_agent",
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-];
+function buildCdnHttpArgs(mediaUrl) {
+  let origin = "";
+  try {
+    const u = new URL(mediaUrl);
+    origin = `${u.protocol}//${u.host}`;
+  } catch {}
+
+  const headers =
+    [
+      "Accept: */*",
+      "Accept-Language: en-US,en;q=0.9",
+      ...(origin ? [`Origin: ${origin}`, `Referer: ${origin}/`] : []),
+    ].join("\r\n") + "\r\n";
+
+  return [
+    "-user_agent",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "-headers",
+    headers,
+  ];
+}
 
 const activeJobs = new Map();
 const wtClient = new WebTorrent();
@@ -388,8 +405,10 @@ function getOrStartProbe(mediaUrl) {
     };
 
     const args = [
-      ...FFMPEG_HTTP_ARGS,
+      ...buildCdnHttpArgs(mediaUrl),
       "-v", "error",
+      "-probesize", "10M",
+      "-analyzeduration", "10M",
       "-print_format", "json",
       "-show_format",
       "-show_streams",
@@ -704,7 +723,7 @@ app.get("/api/subtitle.vtt", async (req, res) => {
     }
 
     ff = spawn("ffmpeg", [
-      ...FFMPEG_HTTP_ARGS,
+      ...buildCdnHttpArgs(mediaUrl),
       "-reconnect", "1",
       "-reconnect_streamed", "1",
       "-reconnect_delay_max", "5",
@@ -797,6 +816,16 @@ app.get("/api/hls/master.m3u8", async (req, res) => {
     return;
   }
 
+  // Wait for any active ffprobe on this URL to finish first so CDN never sees parallel connections
+  const runningProbe = activeProbes.get(mediaUrl);
+  if (runningProbe?.state === "running") {
+    try { await runningProbe.promise; } catch {}
+  }
+  if (client.disconnected) {
+    client.dispose();
+    return;
+  }
+
   const hash = crypto
     .createHash("md5")
     .update(`${mediaUrl}-a${audioIdx}-s${startSec}-fmp4`)
@@ -814,7 +843,7 @@ app.get("/api/hls/master.m3u8", async (req, res) => {
       fs.mkdirSync(outDir, { recursive: true });
 
       const args = [
-        ...FFMPEG_HTTP_ARGS,
+        ...buildCdnHttpArgs(mediaUrl),
         "-reconnect", "1",
         "-reconnect_streamed", "1",
         "-reconnect_delay_max", "5",

@@ -720,47 +720,28 @@ export default function GlobalPlayer({
     return probeData;
   }, [applyProbeData]);
 
-  // ── Helper: Probe & Remux Any Media HTTP URL via Proxy ────────────────
+  // ── Helper: Remux MKV / DD5.1 Directly via Proxy (Single CDN Connection) ──
   const initProxyMedia = useCallback(
     async (mediaHttpUrl, ctrl, startAtSec = 0) => {
-      setDiscoverMsg("Probing multi-audio & subtitle tracks…");
-      let probeData;
-      let probeFailed = false;
-      try {
-        probeData = await fetchMediaProbe(mediaHttpUrl, ctrl.signal);
-      } catch (error) {
-        if (ctrl.signal.aborted) return true;
-
-        // Proxy server is completely offline / unreachable
-        if (!error.status) {
-          throw error;
-        }
-
-        probeFailed = true;
-        const fallbackLangs = parseMediaMetadataFromUrl(mediaHttpUrl).detectedAudio;
-        if (fallbackLangs.length > 0) {
-          setAudioList(fallbackLangs.map((audio, idx) => ({
+      const fallbackLangs = parseMediaMetadataFromUrl(mediaHttpUrl).detectedAudio;
+      if (fallbackLangs.length > 0 && propAudioTracks.length === 0) {
+        setAudioList(
+          fallbackLangs.map((audio, idx) => ({
             id: idx,
             label: audio.label,
             lang: audio.lang,
-            source: "detected",
-          })));
-        }
-        setTrackNotice(
-          error.status === 429
-            ? "The media host rate-limited metadata detection. Trying playback with the default audio track."
-            : "Audio and subtitle metadata could not be read. Trying playback with the default audio track."
+            source: "proxy",
+            baseStreamUrl: `${PROXY_BASE}/api/hls/master.m3u8?url=${encodeURIComponent(mediaHttpUrl)}&audio=${idx}`,
+          }))
         );
-        probeData = { sourceQuality: "Original" };
+        setActiveAudio(0);
       }
+
+      setQualityList([{ id: -1, label: "Original" }]);
+      setActiveQuality(-1);
+      setTrackNotice("");
 
       if (ctrl.signal.aborted) return true;
-
-      if (!probeFailed) setTrackNotice("");
-      if (probeData.sourceQuality) {
-        setQualityList([{ id: -1, label: probeData.sourceQuality }]);
-        setActiveQuality(-1);
-      }
 
       setDiscoverMsg("Remuxing 4K HEVC & transcoding DD5.1 audio to AAC…");
       const startParam = startAtSec > 0 ? `&start=${Math.floor(startAtSec)}` : "";
@@ -772,7 +753,7 @@ export default function GlobalPlayer({
       setMode("direct");
       return true;
     },
-    [fetchMediaProbe]
+    [propAudioTracks.length]
   );
 
   // ── SOURCE DISCOVERY ──────────────────────────────────────────────────
@@ -914,21 +895,8 @@ export default function GlobalPlayer({
 
       // 3. MKV / AVI / DD5.1 Multi-Audio Live Remux via Backend Proxy
       if (RE_MKV_AVI.test(rawUrl) || parsedMeta.isSurround) {
-        try {
-          await initProxyMedia(rawUrl, ctrl);
-          return;
-        } catch {
-          if (ctrl.signal.aborted) return;
-          setUnsupportedInfo({
-            ext: getFileExtension(rawUrl),
-            isMagnet: false,
-            isStreamableExternal: true,
-            title: "Media Proxy Offline (4K MKV / DD5.1)",
-            reason: `Start server.js on port 4000 (${PROXY_BASE}) to remux 4K HEVC & Dolby 5.1 in-browser, or open directly in VLC / Infuse / MX Player.`,
-          });
-          setMode("unsupported");
-          return;
-        }
+        await initProxyMedia(rawUrl, ctrl);
+        return;
       }
 
       // Resolve every web source through the common classifier and provider resolver.
@@ -1097,8 +1065,8 @@ export default function GlobalPlayer({
           enableWorker: true,
           maxBufferLength: 60,
           startFragPrefetch: true,
-          fragLoadingTimeOut: 25000,
-          manifestLoadingTimeOut: 20000,
+          fragLoadingTimeOut: 35000,
+          manifestLoadingTimeOut: 45000,
         });
         hlsRef.current = hls;
         hls.loadSource(directUrl);
@@ -1171,14 +1139,29 @@ export default function GlobalPlayer({
 
         hls.on(Hls.Events.ERROR, (_, d) => {
           if (d.fatal) {
-            if (resolvedFallbackSource) {
+            const statusCode = d.response?.code;
+            if (statusCode === 429) {
+              setError("CDN rate-limited (429). Wait 60 seconds and tap Retry, or open in VLC.");
+            } else if (statusCode === 502 || statusCode === 504) {
+              setUnsupportedInfo({
+                ext: getFileExtension(rawUrl),
+                isMagnet: false,
+                isStreamableExternal: true,
+                title: "Remux Stream Unavailable (4K MKV / DD5.1)",
+                reason:
+                  "The upstream CDN rejected or timed out during live remuxing (token expired or rate-limited). Open directly in VLC / Infuse / MX Player.",
+              });
+              setMode("unsupported");
+            } else if (resolvedFallbackSource) {
               setError("Direct playback failed. Retry or choose the provider player.");
             } else if (d.type === Hls.ErrorTypes.NETWORK_ERROR) {
-              setError("HLS network error. Retry playback.");
+              setError("HLS network error (check if server.js is running). Retry or open in VLC.");
             } else if (d.type === Hls.ErrorTypes.MEDIA_ERROR) {
               hls.recoverMediaError();
-              setError("HLS media error. Retry playback.");
-            } else setError("HLS stream error. Retry playback.");
+              setError("HLS media error (4K HEVC unsupported in this browser). Open in VLC or Safari.");
+            } else {
+              setError("HLS stream error. Retry playback or open in VLC.");
+            }
           }
         });
         if (!directUrl.includes("/api/hls/")) setEngine("HLS");
@@ -1202,7 +1185,7 @@ export default function GlobalPlayer({
       try { dashRef.current?.reset(); } catch {}
       dashRef.current = null;
     };
-  }, [mode, directUrl, directMediaType, resolvedFallbackSource]);
+  }, [mode, directUrl, directMediaType, resolvedFallbackSource, rawUrl]);
 
   // ── Detect Native HTML5 Audio & Subtitle Tracks ────────────────────────
   const syncNativeTracks = useCallback(() => {
@@ -1460,9 +1443,9 @@ export default function GlobalPlayer({
           ext: getFileExtension(rawUrl),
           isMagnet: false,
           isStreamableExternal: true,
-          title: "Open in External Player (MKV / DD5.1)",
+          title: "Open in External Player (4K MKV / DD5.1)",
           reason:
-            "Web browsers cannot decode Dolby Digital (DD5.1) or switch Matroska (.mkv) tracks without the media proxy running. Open in VLC/MX Player or start server.js.",
+            "This browser could not decode the 4K HEVC / Dolby 5.1 stream or the media proxy is offline. Open directly in VLC, Infuse, or MX Player.",
         });
         setMode("unsupported");
       } else {
