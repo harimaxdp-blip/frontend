@@ -23,6 +23,8 @@ const MAX_PROBE_CACHE_ENTRIES = 128;
 const MAX_PROBE_STDOUT_BYTES = 32 * 1024 * 1024;
 const PROBE_CANCEL_GRACE_MS = 1000;
 const PROBE_KILL_GRACE_MS = 5000;
+const UPSTREAM_RATE_LIMIT_MS = 60 * 1000;
+const MAX_UPSTREAM_RATE_LIMIT_ENTRIES = 128;
 
 function buildCdnHttpArgs(mediaUrl) {
   let origin = "";
@@ -52,6 +54,7 @@ const activeTorrents = new Map();
 const activeTorrentLoads = new Map();
 const activeProbes = new Map();
 const probeCache = new Map();
+const upstreamRateLimits = new Map();
 
 const CLIENT_DISCONNECT_CODES = new Set([
   "ABORT_ERR",
@@ -275,6 +278,29 @@ function cacheProbe(mediaUrl, data) {
   while (probeCache.size > MAX_PROBE_CACHE_ENTRIES) {
     probeCache.delete(probeCache.keys().next().value);
   }
+}
+
+function cacheUpstreamRateLimit(mediaUrl) {
+  upstreamRateLimits.delete(mediaUrl);
+  while (upstreamRateLimits.size >= MAX_UPSTREAM_RATE_LIMIT_ENTRIES) {
+    upstreamRateLimits.delete(upstreamRateLimits.keys().next().value);
+  }
+  upstreamRateLimits.set(mediaUrl, Date.now() + UPSTREAM_RATE_LIMIT_MS);
+}
+
+function getUpstreamRateLimitRetryAfter(mediaUrl) {
+  const expiresAt = upstreamRateLimits.get(mediaUrl);
+  if (!expiresAt) return 0;
+  if (expiresAt <= Date.now()) {
+    upstreamRateLimits.delete(mediaUrl);
+    return 0;
+  }
+  return Math.ceil((expiresAt - Date.now()) / 1000);
+}
+
+function sendUpstreamRateLimit(res, retryAfter) {
+  res.setHeader("Retry-After", String(retryAfter));
+  return res.status(429).send("The upstream media host rate-limited this stream. Wait before retrying.");
 }
 
 function terminateProbe(job, reason) {
@@ -674,6 +700,10 @@ app.get("/api/probe", async (req, res) => {
     if (client.disconnected) return;
     const status = err.code === "ETIMEDOUT" ? 504 : err.code === "ERATELIMIT" ? 429 : 500;
     if (!res.headersSent && !res.destroyed) {
+      if (err.code === "ERATELIMIT") {
+        cacheUpstreamRateLimit(mediaUrl);
+        res.setHeader("Retry-After", String(getUpstreamRateLimitRetryAfter(mediaUrl)));
+      }
       res.status(status).json({
         error: err.code === "ETIMEDOUT"
           ? "ffprobe timed out"
@@ -816,12 +846,25 @@ app.get("/api/hls/master.m3u8", async (req, res) => {
     return;
   }
 
+  const retryAfter = getUpstreamRateLimitRetryAfter(mediaUrl);
+  if (retryAfter) {
+    sendUpstreamRateLimit(res, retryAfter);
+    client.dispose();
+    return;
+  }
+
   // Wait for any active ffprobe on this URL to finish first so CDN never sees parallel connections
   const runningProbe = activeProbes.get(mediaUrl);
   if (runningProbe?.state === "running") {
     try { await runningProbe.promise; } catch {}
   }
   if (client.disconnected) {
+    client.dispose();
+    return;
+  }
+  const probeRetryAfter = getUpstreamRateLimitRetryAfter(mediaUrl);
+  if (probeRetryAfter) {
+    sendUpstreamRateLimit(res, probeRetryAfter);
     client.dispose();
     return;
   }
@@ -884,6 +927,9 @@ app.get("/api/hls/master.m3u8", async (req, res) => {
         if (activeJobs.get(hash) === proc) activeJobs.delete(hash);
         if (!spawnFailed && code !== 0 && !proc.killed) {
           const details = stderr.toString("utf8").trim();
+          if (/\b(?:HTTP error|Server returned)\s*429\b/i.test(details)) {
+            cacheUpstreamRateLimit(mediaUrl);
+          }
           console.error(
             `[HLS ffmpeg] Remux exited with code ${code}${signal ? ` (${signal})` : ""}` +
               (details ? `: ${details}` : "")
@@ -907,6 +953,8 @@ app.get("/api/hls/master.m3u8", async (req, res) => {
       if (activeJobs.has(hash)) {
         return res.status(504).send("Stream initialization timed out");
       }
+      const retryAfter = getUpstreamRateLimitRetryAfter(mediaUrl);
+      if (retryAfter) return sendUpstreamRateLimit(res, retryAfter);
       return res.status(502).send("The media remux process exited before creating a playlist");
     }
 

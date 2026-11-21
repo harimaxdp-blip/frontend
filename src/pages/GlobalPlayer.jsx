@@ -2773,7 +2773,7 @@ export default function GlobalPlayer({
               onClick={() => {
                 setError("");
                 if (hlsRef.current) {
-                  hlsRef.current.startLoad();
+                  hlsRef.current.loadSource(directUrl);
                 } else if (dashRef.current) {
                   dashRef.current.attachSource(directUrl);
                 } else if (videoRef.current) {
