@@ -534,7 +534,11 @@ export default function GlobalPlayer({
       `${PROXY_BASE}/api/probe?url=${encodeURIComponent(mediaHttpUrl)}`,
       { signal }
     );
-    if (!probeRes.ok) throw new Error("Probe failed");
+    if (!probeRes.ok) {
+      const error = new Error("Probe failed");
+      error.status = probeRes.status;
+      throw error;
+    }
     const probeData = await probeRes.json();
     if (!signal?.aborted) applyProbeData(probeData, mediaHttpUrl);
     return probeData;
@@ -544,11 +548,34 @@ export default function GlobalPlayer({
   const initProxyMedia = useCallback(
     async (mediaHttpUrl, ctrl, startAtSec = 0) => {
       setDiscoverMsg("Probing multi-audio & subtitle tracks…");
-      const probeData = await fetchMediaProbe(mediaHttpUrl, ctrl.signal);
+      let probeData;
+      let probeFailed = false;
+      try {
+        probeData = await fetchMediaProbe(mediaHttpUrl, ctrl.signal);
+      } catch (error) {
+        if (ctrl.signal.aborted) return true;
+
+        probeFailed = true;
+        const fallbackLangs = parseMediaMetadataFromUrl(mediaHttpUrl).detectedAudio;
+        if (fallbackLangs.length > 0) {
+          setAudioList(fallbackLangs.map((audio, idx) => ({
+            id: idx,
+            label: audio.label,
+            lang: audio.lang,
+            source: "detected",
+          })));
+        }
+        setTrackNotice(
+          error.status === 429
+            ? "The media host rate-limited metadata detection. Trying playback with the default audio track."
+            : "Audio and subtitle metadata could not be read. Trying playback with the default audio track."
+        );
+        probeData = { sourceQuality: "Original" };
+      }
 
       if (ctrl.signal.aborted) return true;
 
-      setTrackNotice("");
+      if (!probeFailed) setTrackNotice("");
       if (probeData.sourceQuality) {
         setQualityList([{ id: -1, label: probeData.sourceQuality }]);
         setActiveQuality(-1);

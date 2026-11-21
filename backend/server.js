@@ -362,7 +362,9 @@ function getOrStartProbe(mediaUrl) {
           `ffprobe exited with code ${code}${signal ? ` (${signal})` : ""}` +
             (details ? `: ${details}` : "")
         );
-        error.code = "EFFPROBE";
+        error.code = /\b(?:HTTP error|Server returned)\s*429\b/i.test(details)
+          ? "ERATELIMIT"
+          : "EFFPROBE";
         console.error("[ffprobe] Probe process failed:", error);
         reject(error);
         return;
@@ -644,10 +646,14 @@ app.get("/api/probe", async (req, res) => {
     if (!client.disconnected && !res.destroyed) res.json(probeData);
   } catch (err) {
     if (client.disconnected) return;
-    const status = err.code === "ETIMEDOUT" ? 504 : 500;
+    const status = err.code === "ETIMEDOUT" ? 504 : err.code === "ERATELIMIT" ? 429 : 500;
     if (!res.headersSent && !res.destroyed) {
       res.status(status).json({
-        error: err.code === "ETIMEDOUT" ? "ffprobe timed out" : "ffprobe failed",
+        error: err.code === "ETIMEDOUT"
+          ? "ffprobe timed out"
+          : err.code === "ERATELIMIT"
+            ? "Media host rate-limited the metadata probe"
+            : "ffprobe failed",
         details: err.message,
       });
     }
