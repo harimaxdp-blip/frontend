@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════════
-   HARI MOVIE — OTT UI  ·  Production Edition v7 (Full Fix)
+   HARI MOVIE — OTT UI  ·  Production Edition v8 (Full Fix + Back UI)
    Platform-Aware: Mobile · Android TV · Smart TV · PC · 4K · 8K
    ═══════════════════════════════════════════════════════════════ */
 
@@ -9,7 +9,7 @@
 :root {
   --primary:           #e50914;
   --primary-low:       rgba(229, 9, 20, 0.18);
-  --primary-glow:      rgba(229, 9, 20, 0.30);
+  --primary-glow:      rgba(229, 9, 20, 0.32);
 
   --bg-deep:           #060606;
   --bg-surface:        #0f0f0f;
@@ -17,7 +17,7 @@
 
   --glass:             rgba(255, 255, 255, 0.04);
   --glass-border:      rgba(255, 255, 255, 0.08);
-  --glass-hover:       rgba(255, 255, 255, 0.14);
+  --glass-hover:       rgba(255, 255, 255, 0.16);
 
   --text-main:         #f0f0f0;
   --text-dim:          #999;
@@ -34,8 +34,6 @@
   --ease-out:          cubic-bezier(0.22, 1, 0.36, 1);
   --ease-premium:      cubic-bezier(0.16, 1, 0.3, 1);
   --spring:            cubic-bezier(0.34, 1.56, 0.64, 1);
-
-  /* Netflix-style easing — subtle, never bouncy */
   --ease-netflix:      cubic-bezier(0.25, 0.46, 0.45, 0.94);
 
   --card-ratio:        2 / 3;
@@ -54,6 +52,9 @@
 
   --grid-min:          clamp(110px, 14vw, 200px);
 
+  /* Bottom Navbar Clearance (adjust if your bottom nav height differs) */
+  --bottom-nav-h:      72px;
+
   --focus-ring:        rgba(229, 9, 20, 0.60);
   --focus-glow:        rgba(229, 9, 20, 0.35);
   --focus-gold-ring:   rgba(245, 197, 24, 0.52);
@@ -70,7 +71,7 @@
 
 html {
   font-size: 16px;
-  scroll-behavior: auto; /* never auto-scroll via CSS — JS controls this */
+  scroll-behavior: auto;
 }
 
 body {
@@ -101,7 +102,6 @@ body::before {
 .tv-mode body      { background: #030303; }
 .tv-mode :root     { --radius-card: 12px; --radius-ui: 14px; }
 
-/* TV: fast durations so D-pad feel snappy */
 .tv-mode,
 .android-mode {
   --dur-premium: 100ms;
@@ -116,9 +116,7 @@ body::before {
 .movies-page {
   width: 100%;
   max-width: 100%;
-  padding: clamp(16px, 3vw, 44px) clamp(10px, 3%, 64px) 120px;
-  /* FIX v7: fade-in only, no translateY — prevents the "jump" when
-     the page mounts and layout shifts from image loads push content. */
+  padding: clamp(16px, 3vw, 44px) clamp(10px, 3%, 64px) calc(var(--bottom-nav-h) + 56px + env(safe-area-inset-bottom, 0px));
   animation: pageIn 200ms ease both;
   overflow-x: hidden;
 }
@@ -442,7 +440,7 @@ body::before {
 
 @keyframes micGlow {
   0%, 100% { box-shadow: 0 0 0 6px rgba(229,9,20,0.14); transform: scale(1); }
-  50%       { box-shadow: 0 0 0 10px rgba(229,9,20,0.12); transform: scale(1.05); }
+  50%      { box-shadow: 0 0 0 10px rgba(229,9,20,0.12); transform: scale(1.05); }
 }
 
 @keyframes spinnerRotate { to { transform: rotate(360deg); } }
@@ -607,9 +605,6 @@ body::before {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(var(--grid-min), 1fr));
   gap: clamp(8px, 1.4vw, 20px);
-  /* FIX v7: padding-top removed — was causing a 14px scroll jump
-     when the grid re-renders (e.g. filter change). Use margin-top
-     on the section-title instead. */
   padding: 10px 0 4px;
   align-items: start;
   width: 100%;
@@ -645,7 +640,6 @@ body::before {
   object-fit: cover;
   object-position: center top;
   display: block;
-  /* FIX v7: no will-change here — only focused card gets GPU promotion */
   transition: opacity 0.3s ease, transform 0.4s var(--ease-netflix), filter 0.3s ease;
   backface-visibility: hidden;
   max-width: 100%;
@@ -695,14 +689,10 @@ body::before {
   cursor: pointer;
   position: relative;
   will-change: auto;
-  /* FIX v7: Netflix-style easing — smooth deceleration, not spring.
-     Spring easing caused the "bad animation" on scroll because cards
-     overshoot during layout-triggered repaints. */
   transition:
     transform    var(--dur-premium) var(--ease-netflix),
     box-shadow   var(--dur-premium) var(--ease-netflix),
     border-color var(--dur-normal)  ease;
-  /* FIX v7: staggered appear uses translateY(8px) not 10px — gentler */
   animation: cardAppear 180ms var(--ease-netflix) both;
   animation-delay: calc(var(--i, 0) * 12ms);
   outline: none;
@@ -712,9 +702,6 @@ body::before {
   contain: layout style;
 }
 
-/* FIX v7: cardAppear — smaller translateY (10→6px), shorter duration.
-   The original 10px shift caused visible "jumping" when many cards
-   appeared simultaneously during a scroll-triggered render. */
 @keyframes cardAppear {
   from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0); }
@@ -807,8 +794,10 @@ body::before {
 }
 
 /* ─── Series card ── */
-.card.is-series { border-color: rgba(0,201,177,0.22); }
-.card.is-series .card-info h3 { color: var(--teal); }
+.card.is-series,
+.card.series-card { border-color: rgba(0,201,177,0.22); }
+.card.is-series .card-info h3,
+.card.series-card .card-info h3 { color: var(--teal); }
 
 .series-badge {
   position: absolute;
@@ -903,11 +892,80 @@ body::before {
 
 
 /* ═══════════════════════════════════════════════════════════════
-   SEASON & SERIES VIEWS
+   SUBVIEW BACK BUTTON & HEADERS (Collections, Series, Seasons)
    ═══════════════════════════════════════════════════════════════ */
+.subview-topbar {
+  display: flex;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.view-back-btn {
+  position: relative;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  color: #f0f0f0;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  padding: 8px 18px 8px 14px;
+  border-radius: 100px;
+  cursor: pointer;
+  font-family: var(--font-body);
+  font-size: clamp(0.8rem, 1vw, 0.92rem);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  min-height: 40px;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  z-index: 6;
+  outline: none;
+  transition:
+    background var(--dur-fast),
+    border-color var(--dur-fast),
+    color var(--dur-fast),
+    transform var(--dur-fast) var(--ease-netflix),
+    box-shadow var(--dur-fast);
+}
+
+.view-back-btn svg {
+  transition: transform var(--dur-fast) var(--ease-netflix);
+  flex-shrink: 0;
+}
+
+.view-back-btn:hover {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+  box-shadow: 0 4px 18px var(--primary-glow);
+}
+
+.view-back-btn:hover svg {
+  transform: translateX(-3px);
+}
+
+.view-back-btn:active {
+  transform: scale(0.95);
+}
+
+.tv-mode .view-back-btn:focus,
+.android-mode .view-back-btn:focus,
+.view-back-btn:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+  background: rgba(229, 9, 20, 0.22);
+  border-color: var(--primary);
+  color: #fff;
+  box-shadow: 0 0 0 4px rgba(229, 9, 20, 0.25);
+}
+
 .season-header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 14px;
   flex-wrap: wrap;
   margin-bottom: 18px;
@@ -915,20 +973,27 @@ body::before {
   border-bottom: 1px solid rgba(255,255,255,0.07);
 }
 
+.season-header-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
 .season-breadcrumb { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
 .season-breadcrumb-series {
   font-family: var(--font-display);
-  font-size: clamp(1.1rem, 2vw, 1.6rem);
+  font-size: clamp(1.15rem, 2.2vw, 1.7rem);
   letter-spacing: 0.05em;
   color: #fff;
 }
 
-.season-breadcrumb-sep  { color: var(--text-muted); font-size: 1.2rem; }
+.season-breadcrumb-sep  { color: var(--primary); font-size: 1.25rem; font-weight: 700; }
 
 .season-breadcrumb-season {
   font-family: var(--font-display);
-  font-size: clamp(1.1rem, 2vw, 1.6rem);
+  font-size: clamp(1.15rem, 2.2vw, 1.7rem);
   letter-spacing: 0.05em;
   color: var(--text-dim);
 }
@@ -1001,6 +1066,7 @@ body::before {
   overflow: hidden;
   flex-shrink: 0;
   border: 1px solid var(--glass-border);
+  box-shadow: 0 8px 22px rgba(0,0,0,0.65);
 }
 
 .series-view-poster img { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -1009,7 +1075,7 @@ body::before {
 
 .series-view-title {
   font-family: var(--font-display);
-  font-size: clamp(1.2rem, 2.8vw, 2.2rem);
+  font-size: clamp(1.3rem, 2.8vw, 2.3rem);
   letter-spacing: 0.05em;
   color: #fff;
   margin: 0 0 4px;
@@ -1018,7 +1084,7 @@ body::before {
   text-overflow: ellipsis;
 }
 
-.series-view-count { font-size: clamp(0.72rem, 1vw, 0.85rem); color: var(--text-dim); }
+.series-view-count { font-size: clamp(0.74rem, 1vw, 0.88rem); color: var(--teal); font-weight: 600; }
 
 /* ─── Season card (inside series view) ── */
 .season-card-v2 { border-color: rgba(0,201,177,0.22); }
@@ -1066,25 +1132,25 @@ body::before {
    ═══════════════════════════════════════════════════════════════ */
 .continue-play-btn {
   position: absolute;
-  top: 8px; left: 8px;
+  bottom: 54px; right: 8px;
   z-index: 6;
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  background: rgba(229,9,20,0.90);
+  background: rgba(229,9,20,0.92);
   border: 1px solid rgba(255,255,255,0.22);
   color: #fff;
-  font-size: 0.62rem;
+  font-size: 0.64rem;
   font-weight: 700;
   letter-spacing: 0.07em;
   text-transform: uppercase;
-  padding: 4px 9px;
+  padding: 4px 10px;
   border-radius: 5px;
   backdrop-filter: blur(6px);
   cursor: pointer;
   outline: none;
   font-family: var(--font-body);
-  box-shadow: 0 2px 10px rgba(229,9,20,0.40);
+  box-shadow: 0 2px 10px rgba(229,9,20,0.45);
   transition: background var(--dur-fast), transform var(--dur-fast) var(--spring), box-shadow var(--dur-fast);
 }
 
@@ -1113,15 +1179,9 @@ body::before {
 
 /* ═══════════════════════════════════════════════════════════════
    RECENTLY WATCHED — HORIZONTAL STRIP
-   FIX v7: The strip no longer causes scroll-to-top because we
-   removed scroll-snap-type from .rw-hstrip (snap interacted badly
-   with the page scroll container on some Android WebViews, triggering
-   a full scroll reset). The strip still scrolls horizontally fine.
    ═══════════════════════════════════════════════════════════════ */
 .recently-watched-section {
   margin-bottom: 40px;
-  /* FIX v7: isolate this section's stacking context so its
-     overflow:auto child doesn't bubble scroll events to the page */
   isolation: isolate;
   contain: layout;
 }
@@ -1134,11 +1194,7 @@ body::before {
   padding: 8px 2px 18px;
   scrollbar-width: none;
   -ms-overflow-style: none;
-  /* FIX v7: removed scroll-snap-type — it caused the page to
-     scroll to top on Android WebView when snapping fired mid-page-scroll.
-     Cards are still scrollable horizontally without snap. */
   -webkit-overflow-scrolling: touch;
-  /* Prevent horizontal scroll from propagating to vertical page scroll */
   overscroll-behavior-x: contain;
 }
 
@@ -1155,7 +1211,6 @@ body::before {
   will-change: auto;
   transition: transform var(--dur-premium) var(--ease-netflix);
   -webkit-tap-highlight-color: transparent;
-  /* FIX v7: ensure the card itself doesn't intercept vertical scroll */
   touch-action: pan-x;
 }
 
@@ -1204,16 +1259,6 @@ body::before {
   border-radius: 0 0 var(--radius-card) var(--radius-card);
 }
 
-/* ─── Delete button — FIXED for TV ──────────────────────────────
-   FIX v7: On TV the delete button was invisible (opacity:0, 
-   pointer-events:none) because TV uses (hover:none) media query
-   but the old TV override only triggered on .rw-hcard:focus,
-   not on .rw-hcard:focus-within. The button itself getting focus
-   via D-pad never made .rw-hcard match :focus.
-   
-   Solution: Always show on TV/Android, and show on focus-within
-   so when the button itself receives focus the parent still matches.
-   ──────────────────────────────────────────────────────────────── */
 .rw-hcard-delete {
   position: absolute;
   top: 5px; right: 5px;
@@ -1232,12 +1277,10 @@ body::before {
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
   transition: background var(--dur-fast), color var(--dur-fast), transform var(--dur-fast), border-color var(--dur-fast), opacity var(--dur-fast);
-  /* Default: hidden on desktop (shown on hover) */
   opacity: 0;
   pointer-events: none;
 }
 
-/* Touch / coarse pointer — always visible */
 @media (hover: none), (pointer: coarse) {
   .rw-hcard-delete {
     opacity: 1;
@@ -1245,7 +1288,6 @@ body::before {
   }
 }
 
-/* Desktop fine pointer — show on hover or focus-within */
 @media (hover: hover) and (pointer: fine) {
   .rw-hcard:hover .rw-hcard-delete,
   .rw-hcard:focus-within .rw-hcard-delete {
@@ -1254,20 +1296,14 @@ body::before {
   }
 }
 
-/* FIX v7: TV / Android — ALWAYS show delete button.
-   TV uses coarse pointer so the media query above covers it,
-   but we add explicit TV overrides as a safety net, and also
-   handle focus-within for when the button itself is focused. */
 .tv-mode .rw-hcard-delete,
 .android-mode .rw-hcard-delete {
   opacity: 1 !important;
   pointer-events: auto !important;
-  /* Make it slightly larger for D-pad accuracy */
   width: 32px;
   height: 32px;
 }
 
-/* TV delete button focus style */
 .tv-mode .rw-hcard-delete:focus,
 .android-mode .rw-hcard-delete:focus {
   outline: 2px solid var(--primary);
@@ -1321,7 +1357,6 @@ body::before {
   }
 }
 
-/* TV recently-watched card focus */
 .tv-mode .rw-hcard:focus,
 .tv-mode .rw-hcard:focus-visible,
 .android-mode .rw-hcard:focus,
@@ -1360,9 +1395,6 @@ body::before {
 
 /* ═══════════════════════════════════════════════════════════════
    SLIDE-IN ANIMATIONS
-   FIX v7: Use opacity-only fade for all platforms.
-   translateX caused the "disturbing" animation when scrolling
-   because the browser repainted the entire section on each frame.
    ═══════════════════════════════════════════════════════════════ */
 .slide-in-premium,
 .collection-view {
@@ -1370,15 +1402,11 @@ body::before {
   will-change: opacity;
 }
 
-/* FIX v7: Netflix-style — fade only, no translate.
-   translate causes jank on scroll because it forces a composite layer
-   re-upload every time the page scrolls during the animation. */
 @keyframes premiumEnter {
   from { opacity: 0; }
   to   { opacity: 1; }
 }
 
-/* TV: same opacity-fade, slightly faster */
 .tv-mode .slide-in-premium,
 .tv-mode .collection-view,
 .android-mode .slide-in-premium,
@@ -1394,13 +1422,10 @@ body::before {
 
 /* ═══════════════════════════════════════════════════════════════
    PC / DESKTOP — HOVER & FOCUS
-   FIX v7: hover lift uses --ease-netflix instead of --ease-premium
-   so the card decelerates like Netflix (no overshoot).
    ═══════════════════════════════════════════════════════════════ */
 @media (hover: hover) and (pointer: fine) {
   .card:hover,
   .episode-card:hover {
-    /* FIX v7: scale(1.04) not 1.05 — matches Netflix's subtle lift */
     transform: translateY(-6px) scale(1.04);
     border-color: var(--glass-hover);
     box-shadow: 0 20px 48px rgba(0,0,0,0.78), 0 0 28px var(--primary-glow);
@@ -1421,7 +1446,8 @@ body::before {
     box-shadow: 0 20px 48px rgba(0,0,0,0.78), 0 0 28px rgba(245,197,24,0.14);
   }
 
-  .card.is-series:hover {
+  .card.is-series:hover,
+  .card.series-card:hover {
     border-color: rgba(0,201,177,0.50);
     box-shadow: 0 20px 48px rgba(0,0,0,0.78), 0 0 28px rgba(0,201,177,0.14);
   }
@@ -1442,7 +1468,8 @@ body::before {
     box-shadow: 0 0 0 4px rgba(245,197,24,0.18), 0 16px 40px rgba(0,0,0,0.70);
   }
 
-  .card.is-series:focus-visible {
+  .card.is-series:focus-visible,
+  .card.series-card:focus-visible {
     outline-color: rgba(0,201,177,0.60);
     border-color: rgba(0,201,177,0.45);
     box-shadow: 0 0 0 4px rgba(0,201,177,0.18), 0 16px 40px rgba(0,0,0,0.70);
@@ -1477,14 +1504,15 @@ body::before {
   .hero-play-btn:focus, .hero-play-btn:focus-visible,
   .control-btn:focus,  .control-btn:focus-visible,
   .hero-nav:focus,     .hero-nav:focus-visible,
-  .back-btn:focus,     .back-btn:focus-visible {
+  .back-btn:focus,     .back-btn:focus-visible,
+  .view-back-btn:focus, .view-back-btn:focus-visible {
     outline: none;
     box-shadow: none;
   }
 
   .back-btn:hover { background: #1a1a1a; color: #fff; border-color: #2e2e2e; }
+  .view-back-btn:hover { background: rgba(255, 255, 255, 0.06); color: #f0f0f0; border-color: rgba(255, 255, 255, 0.14); box-shadow: none; }
 
-  /* TV/Android override — these DO need focus styles */
   .tv-mode .card:focus,
   .tv-mode .card:focus-visible,
   .tv-mode .episode-card:focus,
@@ -1493,7 +1521,7 @@ body::before {
   .android-mode .card:focus-visible,
   .android-mode .episode-card:focus,
   .android-mode .episode-card:focus-visible {
-    outline: none; /* Actual styles in TV section below */
+    outline: none;
   }
 }
 
@@ -1542,13 +1570,14 @@ body::before {
 }
 
 .tv-mode .card.is-series:focus,
-.tv-mode .card.is-series:focus-visible {
+.tv-mode .card.is-series:focus-visible,
+.tv-mode .card.series-card:focus,
+.tv-mode .card.series-card:focus-visible {
   outline-color: var(--teal);
   border-color: var(--teal);
   box-shadow: 0 0 0 5px rgba(0,201,177,0.35), 0 20px 44px rgba(0,0,0,0.90);
 }
 
-/* Snap back fast on blur */
 .tv-mode .card:not(:focus),
 .tv-mode .episode-card:not(:focus) {
   will-change: auto;
@@ -1561,6 +1590,7 @@ body::before {
 .tv-mode .hero-play-btn:focus,
 .tv-mode .hero-nav:focus,
 .tv-mode .back-btn:focus,
+.tv-mode .view-back-btn:focus,
 .tv-mode .control-btn:focus {
   outline: 3px solid var(--primary);
   outline-offset: 4px;
@@ -1572,7 +1602,6 @@ body::before {
   box-shadow: 0 0 0 3px rgba(229,9,20,0.30);
 }
 
-/* FIX v7: TV fp-trigger button focus */
 .tv-mode .fp-trigger:focus,
 .android-mode .fp-trigger:focus {
   outline: 2px solid var(--primary);
@@ -1620,7 +1649,9 @@ body::before {
 }
 
 .android-mode .card.is-series:focus,
-.android-mode .card.is-series:focus-visible {
+.android-mode .card.is-series:focus-visible,
+.android-mode .card.series-card:focus,
+.android-mode .card.series-card:focus-visible {
   outline-color: var(--teal);
   border-color: var(--teal);
   box-shadow: 0 0 0 5px rgba(0,201,177,0.55), 0 20px 40px rgba(0,0,0,0.95);
@@ -1638,6 +1669,7 @@ body::before {
 .android-mode .hero-play-btn:focus,
 .android-mode .hero-nav:focus,
 .android-mode .back-btn:focus,
+.android-mode .view-back-btn:focus,
 .android-mode .control-btn:focus {
   outline: 3px solid var(--primary);
   outline-offset: 3px;
@@ -1701,7 +1733,6 @@ body::before {
   flex-shrink: 0;
 }
 
-/* TV: slower shimmer = fewer GPU wakeups */
 .tv-mode .skel-img,
 .tv-mode .skel-title,
 .tv-mode .skel-sub,
@@ -1746,7 +1777,7 @@ body::before {
 
 
 /* ═══════════════════════════════════════════════════════════════
-   BACK BUTTON
+   BACK BUTTON (Legacy Admin / General)
    ═══════════════════════════════════════════════════════════════ */
 .back-btn {
   position: relative;
@@ -1777,16 +1808,17 @@ body::before {
 
 
 /* ═══════════════════════════════════════════════════════════════
-   FIXED CONTROLS (scroll-to-top)
+   FIXED CONTROLS (scroll-to-top — clears bottom navbar)
    ═══════════════════════════════════════════════════════════════ */
 .fixed-controls {
   position: fixed;
-  bottom: 28px; right: 20px;
+  bottom: calc(var(--bottom-nav-h) + 18px + env(safe-area-inset-bottom, 0px));
+  right: 20px;
   display: flex;
   flex-direction: column;
   gap: 20px;
   z-index: 9000;
-  pointer-events: auto;
+  pointer-events: none;
 }
 
 .control-btn {
@@ -1869,15 +1901,15 @@ body::before {
 @keyframes diceSpin  { from { transform: rotateX(0)   rotateY(0); } to { transform: rotateX(720deg) rotateY(720deg); } }
 @keyframes arrowFloat {
   0%, 100% { transform: translateY(2px); }
-  50%       { transform: translateY(-4px); }
+  50%      { transform: translateY(-4px); }
 }
 @keyframes lwPulse {
   0%, 100% { opacity: 1; transform: scale(1); }
-  50%       { opacity: 0.5; transform: scale(0.75); }
+  50%      { opacity: 0.5; transform: scale(0.75); }
 }
 @keyframes rwPulse {
   0%, 100% { opacity: 1; transform: scale(1); }
-  50%       { opacity: 0.5; transform: scale(0.7); }
+  50%      { opacity: 0.5; transform: scale(0.7); }
 }
 
 
@@ -2165,7 +2197,7 @@ select.tv-input {
 @media (max-width: 400px) {
   :root { --grid-min: calc(50% - 6px); }
 
-  .movies-page { padding: 12px 8px 100px; }
+  .movies-page { padding: 12px 8px calc(var(--bottom-nav-h) + 40px + env(safe-area-inset-bottom, 0px)); }
 
   .hero-banner {
     margin-left: -8px; margin-right: -8px; margin-top: -12px;
@@ -2187,7 +2219,7 @@ select.tv-input {
   .section-title { font-size: 1.1rem; }
   .series-main-title { font-size: 1.1rem; }
 
-  .fixed-controls { bottom: 80px; right: 10px; gap: 8px; }
+  .fixed-controls { bottom: calc(var(--bottom-nav-h) + 14px + env(safe-area-inset-bottom, 0px)); right: 10px; gap: 8px; }
   .control-btn    { width: 44px; height: 44px; }
   .top-btn::before { inset: -2px; }
   .top-btn::after  { inset: 3px; }
@@ -2204,7 +2236,7 @@ select.tv-input {
 @media (min-width: 401px) and (max-width: 600px) {
   :root { --grid-min: calc(50% - 6px); }
 
-  .movies-page { padding: 14px 10px 100px; }
+  .movies-page { padding: 14px 10px calc(var(--bottom-nav-h) + 40px + env(safe-area-inset-bottom, 0px)); }
 
   .hero-banner {
     margin-left: -10px; margin-right: -10px; margin-top: -14px;
@@ -2220,7 +2252,7 @@ select.tv-input {
   .grid          { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
   .filter-bar select { font-size: 0.76rem; }
 
-  .fixed-controls { bottom: 80px; right: 12px; }
+  .fixed-controls { bottom: calc(var(--bottom-nav-h) + 14px + env(safe-area-inset-bottom, 0px)); right: 12px; }
   .control-btn    { width: 46px; height: 46px; }
 }
 
@@ -2228,7 +2260,7 @@ select.tv-input {
 @media (min-width: 601px) and (max-width: 900px) {
   :root { --grid-min: calc(25% - 8px); }
 
-  .movies-page   { padding: 18px 16px 100px; }
+  .movies-page   { padding: 18px 16px calc(var(--bottom-nav-h) + 40px + env(safe-area-inset-bottom, 0px)); }
   .hero-content  { width: min(480px, 65%); }
   .hero-banner   { max-height: 68vw; }
   .grid          { grid-template-columns: repeat(4, 1fr); gap: 10px; }
@@ -2239,14 +2271,14 @@ select.tv-input {
 /* ── Small laptop (901px – 1279px) ── */
 @media (min-width: 901px) and (max-width: 1279px) {
   :root { --grid-min: clamp(140px, 18%, 200px); }
-  .movies-page { padding: 22px 24px 100px; }
+  .movies-page { padding: 22px 24px calc(var(--bottom-nav-h) + 40px); }
   .grid        { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 14px; }
 }
 
 /* ── Desktop (1280px – 1919px) ── */
 @media (min-width: 1280px) and (max-width: 1919px) {
   :root { --grid-min: clamp(140px, 12%, 190px); }
-  .movies-page { padding: 28px 40px 100px; }
+  .movies-page { padding: 28px 40px calc(var(--bottom-nav-h) + 40px); }
   .grid        { grid-template-columns: repeat(6, 1fr); gap: 16px; }
 
   .hero-banner {

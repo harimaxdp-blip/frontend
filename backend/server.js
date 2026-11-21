@@ -37,7 +37,8 @@ function buildCdnHttpArgs(mediaUrl) {
     [
       "Accept: */*",
       "Accept-Language: en-US,en;q=0.9",
-      ...(origin ? [`Origin: ${origin}`, `Referer: ${origin}/`] : []),
+      "Connection: keep-alive",
+      ...(origin ? [`Referer: ${origin}/`] : []),
     ].join("\r\n") + "\r\n";
 
   return [
@@ -853,7 +854,6 @@ app.get("/api/hls/master.m3u8", async (req, res) => {
     return;
   }
 
-  // Wait for any active ffprobe on this URL to finish first so CDN never sees parallel connections
   const runningProbe = activeProbes.get(mediaUrl);
   if (runningProbe?.state === "running") {
     try { await runningProbe.promise; } catch {}
@@ -882,30 +882,43 @@ app.get("/api/hls/master.m3u8", async (req, res) => {
     /\b(hevc|h265|x265)\b/i.test(mediaUrl);
 
   try {
+    let lastFfmpegError = "";
+
     if (!activeJobs.has(hash) && !fs.existsSync(playlistPath)) {
       fs.mkdirSync(outDir, { recursive: true });
 
       const args = [
+        "-hide_banner",
+        "-loglevel", "warning",
         ...buildCdnHttpArgs(mediaUrl),
         "-reconnect", "1",
         "-reconnect_streamed", "1",
+        "-reconnect_at_eof", "1",
         "-reconnect_delay_max", "5",
+        "-fflags", "+genpts+discardcorrupt",
+        "-analyzeduration", "15M",
+        "-probesize", "15M",
         ...(startSec > 0 ? ["-ss", String(startSec)] : []),
         "-i", mediaUrl,
         "-map", "0:v:0",
         "-map", `0:a:${audioIdx}?`,
+        "-sn",
         "-c:v", "copy",
         ...(isHevc ? ["-tag:v", "hvc1"] : []),
         "-c:a", "aac",
         "-ac", "2",
+        "-ar", "48000",
         "-b:a", "192k",
+        "-af", "aresample=async=1:first_pts=0",
+        "-avoid_negative_ts", "make_zero",
+        "-max_muxing_queue_size", "4096",
         ...(startSec > 0 ? ["-output_ts_offset", String(startSec)] : []),
         "-f", "hls",
         "-hls_time", "4",
         "-hls_list_size", "0",
         "-hls_segment_type", "fmp4",
         "-hls_fmp4_init_filename", "init.mp4",
-        "-hls_flags", "independent_segments",
+        "-hls_flags", "independent_segments+temp_file",
         "-hls_segment_filename", path.join(outDir, "seg_%05d.m4s"),
         playlistPath,
       ];
@@ -914,12 +927,14 @@ app.get("/api/hls/master.m3u8", async (req, res) => {
       let stderr = Buffer.alloc(0);
       let spawnFailed = false;
       activeJobs.set(hash, proc);
+
       proc.stderr.on("data", (chunk) => {
-        stderr = Buffer.concat([stderr, chunk]).subarray(-8192);
+        stderr = Buffer.concat([stderr, chunk]).subarray(-16384);
       });
       proc.stderr.on("error", (err) => logStreamError("HLS ffmpeg stderr", err, false));
       proc.once("error", (err) => {
         spawnFailed = true;
+        lastFfmpegError = err.message;
         console.error("[HLS ffmpeg] Unable to start remux:", err);
         if (activeJobs.get(hash) === proc) activeJobs.delete(hash);
       });
@@ -927,6 +942,7 @@ app.get("/api/hls/master.m3u8", async (req, res) => {
         if (activeJobs.get(hash) === proc) activeJobs.delete(hash);
         if (!spawnFailed && code !== 0 && !proc.killed) {
           const details = stderr.toString("utf8").trim();
+          lastFfmpegError = details;
           if (/\b(?:HTTP error|Server returned)\s*429\b/i.test(details)) {
             cacheUpstreamRateLimit(mediaUrl);
           }
@@ -943,7 +959,7 @@ app.get("/api/hls/master.m3u8", async (req, res) => {
       !client.disconnected &&
       !fs.existsSync(playlistPath) &&
       activeJobs.has(hash) &&
-      Date.now() - waitStart < 45000
+      Date.now() - waitStart < 90000
     ) {
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
@@ -951,11 +967,13 @@ app.get("/api/hls/master.m3u8", async (req, res) => {
     if (client.disconnected) return;
     if (!fs.existsSync(playlistPath)) {
       if (activeJobs.has(hash)) {
-        return res.status(504).send("Stream initialization timed out");
+        return res.status(504).send("Stream initialization timed out while buffering 4K MKV.");
       }
       const retryAfter = getUpstreamRateLimitRetryAfter(mediaUrl);
       if (retryAfter) return sendUpstreamRateLimit(res, retryAfter);
-      return res.status(502).send("The media remux process exited before creating a playlist");
+      return res
+        .status(502)
+        .send(lastFfmpegError || "The media remux process exited before creating a playlist");
     }
 
     res.redirect(`/api/hls-files/${hash}/index.m3u8`);
@@ -966,7 +984,6 @@ app.get("/api/hls/master.m3u8", async (req, res) => {
     client.dispose();
   }
 });
-
 app.use(
   "/api/hls-files",
   express.static(HLS_ROOT, {

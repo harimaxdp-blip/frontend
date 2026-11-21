@@ -721,7 +721,7 @@ export default function GlobalPlayer({
   }, [applyProbeData]);
 
   // ── Helper: Remux MKV / DD5.1 Directly via Proxy (Single CDN Connection) ──
-  const initProxyMedia = useCallback(
+const initProxyMedia = useCallback(
     async (mediaHttpUrl, ctrl, startAtSec = 0) => {
       const fallbackLangs = parseMediaMetadataFromUrl(mediaHttpUrl).detectedAudio;
       if (fallbackLangs.length > 0 && propAudioTracks.length === 0) {
@@ -741,6 +741,9 @@ export default function GlobalPlayer({
       setActiveQuality(-1);
       setTrackNotice("");
 
+      setDiscoverMsg("Reading MKV audio & subtitle tracks…");
+      fetchMediaProbe(mediaHttpUrl, ctrl.signal).catch(() => {});
+
       if (ctrl.signal.aborted) return true;
 
       setDiscoverMsg("Remuxing 4K HEVC & transcoding DD5.1 audio to AAC…");
@@ -753,7 +756,7 @@ export default function GlobalPlayer({
       setMode("direct");
       return true;
     },
-    [propAudioTracks.length]
+    [propAudioTracks.length, fetchMediaProbe]
   );
 
   // ── SOURCE DISCOVERY ──────────────────────────────────────────────────
@@ -1065,8 +1068,9 @@ export default function GlobalPlayer({
           enableWorker: true,
           maxBufferLength: 60,
           startFragPrefetch: true,
-          fragLoadingTimeOut: 35000,
-          manifestLoadingTimeOut: 45000,
+          fragLoadingTimeOut: 60000,
+          manifestLoadingTimeOut: 95000,
+          levelLoadingTimeOut: 60000,
         });
         hlsRef.current = hls;
         hls.loadSource(directUrl);
@@ -1140,25 +1144,24 @@ export default function GlobalPlayer({
         hls.on(Hls.Events.ERROR, (_, d) => {
           if (d.fatal) {
             const statusCode = d.response?.code;
+            const serverMsg = d.response?.text || "";
             if (statusCode === 429) {
               setError("CDN rate-limited (429). Wait 60 seconds and tap Retry, or open in VLC.");
+            } else if (/403|410|expired|Forbidden/i.test(serverMsg)) {
+              setError("CDN link token expired (403). Generate a fresh download/stream link.");
             } else if (statusCode === 502 || statusCode === 504) {
-              setUnsupportedInfo({
-                ext: getFileExtension(rawUrl),
-                isMagnet: false,
-                isStreamableExternal: true,
-                title: "Remux Stream Unavailable (4K MKV / DD5.1)",
-                reason:
-                  "The upstream CDN rejected or timed out during live remuxing (token expired or rate-limited). Open directly in VLC / Infuse / MX Player.",
-              });
-              setMode("unsupported");
+              setError(
+                serverMsg
+                  ? `Remux failed: ${serverMsg.slice(0, 140)}`
+                  : "Proxy remux timed out or CDN rejected connection. Check server.js logs or open in VLC."
+              );
             } else if (resolvedFallbackSource) {
               setError("Direct playback failed. Retry or choose the provider player.");
             } else if (d.type === Hls.ErrorTypes.NETWORK_ERROR) {
-              setError("HLS network error (check if server.js is running). Retry or open in VLC.");
+              setError("Media proxy unreachable (is node server.js running on port 4000?).");
             } else if (d.type === Hls.ErrorTypes.MEDIA_ERROR) {
               hls.recoverMediaError();
-              setError("HLS media error (4K HEVC unsupported in this browser). Open in VLC or Safari.");
+              setError("Browser cannot decode 4K HEVC (H.265). Try Edge/Safari or open in VLC.");
             } else {
               setError("HLS stream error. Retry playback or open in VLC.");
             }

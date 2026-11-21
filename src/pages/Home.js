@@ -20,7 +20,7 @@ import { useSpatialNav } from "../hooks/useSpatialNav";
 import tvIcon    from "../assets/tv1.png";
 import seriIcon  from "../assets/tv2.png";
 import animeIcon from "../assets/tv.png";
-import { Film, Globe, Calendar } from "lucide-react";
+import { Film, Globe, Calendar, ArrowLeft } from "lucide-react";
 
 const NO_RESULTS_IMG = {
   all:     noResultsAll,
@@ -28,11 +28,13 @@ const NO_RESULTS_IMG = {
   series:  noResultsSeries,
   anime:   noResultsAnime,
 };
-const POSTER_FALLBACK  = "https://via.placeholder.com/300x450";
+const POSTER_FALLBACK  = "https://via.placeholder.com/300x450/141414/555555?text=No+Poster";
 const LAST_WATCHED_KEY = "ott_last_watched";
 const RECENT_KEY       = "hm_recent";
 const RECENT_LIMIT     = 10;
 const ANDROID_LW_PREFS = "hm_last_watched";
+const CACHE_MOVIES_KEY = "hm_cache_movies_v1";
+const CACHE_BANNER_KEY = "hm_cache_banners_v1";
 
 let _navStateId = 0;
 const nextNavId = () => ++_navStateId;
@@ -105,23 +107,6 @@ const scrollPageTo = (top, behavior = "auto") => {
   else window.scrollTo({ top, left: 0, behavior });
 };
 
-/*
- * FIX: restoreScrollAndFocus rewritten.
- *
- * BEFORE: called scrollPageTo + scrollIntoView + focus in up to 6 places
- * (rAF + 5 timeouts at 60/160/350/700/1200ms). Each retry fired even after
- * success, causing visible scroll jumps and fighting the TV's own auto-scroll.
- *
- * AFTER:
- * - Only 2 attempts: one immediate rAF (for when DOM is ready) + one 150ms
- *   fallback (for when images push layout after mount).
- * - scrollIntoView is GONE. We use a manual scrollTop calculation so
- *   the two scroll calls can't fight each other.
- * - A "done" flag prevents the second attempt from running if the first
- *   succeeded (element found + scrolled).
- * - Token system kept so stale restores from superseded navigations are
- *   discarded immediately.
- */
 let restoreScrollToken = 0;
 
 function restoreScrollAndFocus(scrollY, focusId) {
@@ -131,7 +116,6 @@ function restoreScrollAndFocus(scrollY, focusId) {
 
   const attempt = () => {
     if (done || token !== restoreScrollToken) return;
-
     scrollPageTo(targetY);
 
     if (focusId) {
@@ -145,27 +129,16 @@ function restoreScrollAndFocus(scrollY, focusId) {
     }
   };
 
-  // Attempt 1: next paint (covers most cases)
   requestAnimationFrame(attempt);
-
-  // Attempt 2: 150ms fallback only (covers slow image-load reflows)
-  // No more 5-retry cascade — that was what caused the visible jumps.
-  setTimeout(() => {
-    if (!done) attempt();
-  }, 150);
+  setTimeout(() => { if (!done) attempt(); }, 150);
 }
 
-/*
- * FIX: triggerRipple disabled on TV (ripple causes paint on a composited
- * layer; on Android TV this adds ~3ms per keydown which accumulates to
- * visible lag at 30fps rendering budgets).
- */
 const isTV = () =>
   document.body.classList.contains("tv-mode") ||
   document.body.classList.contains("android-mode");
 
 function triggerRipple(e, el) {
-  if (isTV()) return; // skip on TV — expensive composited paint
+  if (isTV()) return;
   const rect = el.getBoundingClientRect();
   const size = Math.max(rect.width, rect.height);
   const clientX = e.clientX ?? e.touches?.[0]?.clientX ?? rect.left + rect.width  / 2;
@@ -220,14 +193,18 @@ const TrashIcon = () => (
   </svg>
 );
 
-const PosterImg = React.memo(function PosterImg({ src, alt, ...props }) {
+const PosterImg = React.memo(function PosterImg({ src, alt, loading = "lazy", ...props }) {
   const [loaded, setLoaded] = useState(false);
   const [error,  setError]  = useState(false);
   const finalSrc = error || !src ? POSTER_FALLBACK : src;
   return (
     <div className="poster-wrap">
       {!loaded && <div className="poster-shimmer" aria-hidden="true" />}
-      <img src={finalSrc} alt={alt}
+      <img
+        src={finalSrc}
+        alt={alt}
+        loading={loading}
+        decoding="async"
         className={`poster-img ${loaded ? "poster-img--loaded" : "poster-img--loading"}`}
         onLoad={() => setLoaded(true)}
         onError={() => { setError(true); setLoaded(true); }}
@@ -249,8 +226,25 @@ const NoResults = React.memo(function NoResults({ img }) {
   return (
     <div className="no-results" role="status">
       <img src={img} alt="No results found" className="no-results-img" />
-      <p>No items found.</p>
+      <p>No titles match your search or filters.</p>
     </div>
+  );
+});
+
+const BackButton = React.memo(function BackButton({ onBack, label = "Back" }) {
+  return (
+    <button
+      type="button"
+      className="view-back-btn"
+      onClick={(e) => {
+        triggerRipple(e, e.currentTarget);
+        onBack();
+      }}
+      aria-label={label}
+    >
+      <ArrowLeft size={18} strokeWidth={2.5} aria-hidden="true" />
+      <span>{label}</span>
+    </button>
   );
 });
 
@@ -281,7 +275,7 @@ const HeroBanner = React.memo(function HeroBanner({ banners, onPlay }) {
   const resetTimer = useCallback(() => {
     clearInterval(timerRef.current);
     if (banners.length > 1 && !pausedRef.current)
-      timerRef.current = setInterval(next, 5000);
+      timerRef.current = setInterval(next, 5500);
   }, [next, banners.length]);
 
   useEffect(() => { resetTimer(); return () => clearInterval(timerRef.current); }, [resetTimer]);
@@ -358,17 +352,6 @@ const HeroBanner = React.memo(function HeroBanner({ banners, onPlay }) {
   );
 });
 
-/*
- * FIX: FocusCard — added keydown throttle for TV D-pad.
- *
- * On Android TV, holding an arrow key fires keydown at ~125ms intervals.
- * If each keydown triggers a React state update (focus change → re-render),
- * the JS thread and render pipeline compete for the same frame budget.
- *
- * The throttle here does NOT block navigation — it only prevents rapid-fire
- * Enter/Space activations that would accidentally open a card twice.
- * Arrow key navigation happens in useSpatialNav (separate from this).
- */
 const FocusCard = React.forwardRef(function FocusCard(
   { className, style, onClick, children, tabIndex = 0, "data-card-id": dataCardId }, ref
 ) {
@@ -378,7 +361,6 @@ const FocusCard = React.forwardRef(function FocusCard(
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
       const now = Date.now();
-      // Throttle: ignore repeated Enter/Space within 300ms (prevents double-open on TV)
       if (now - lastActivateRef.current < 300) return;
       lastActivateRef.current = now;
       e.currentTarget.click();
@@ -403,12 +385,14 @@ const FocusCard = React.forwardRef(function FocusCard(
 });
 
 export default function Home({ type = "all" }) {
-  const [movies, setMovies]             = useState([]);
-  const [allBanners, setAllBanners]     = useState([]);
-  const [filterOpen, setFilterOpen]     = useState(false);
-  const [filterTab, setFilterTab]       = useState("language");
-  const [isDataLoaded, setIsDataLoaded] = useState(false);
-  const handleGridKeyDown               = useSpatialNav();
+  // Hydrate immediately from local cache for instant boot
+  const [movies, setMovies] = useState(() => ls.getJSON(CACHE_MOVIES_KEY) || []);
+  const [allBanners, setAllBanners] = useState(() => ls.getJSON(CACHE_BANNER_KEY) || []);
+  const [isDataLoaded, setIsDataLoaded] = useState(() => Boolean(ls.getJSON(CACHE_MOVIES_KEY)?.length));
+
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [filterTab, setFilterTab]   = useState("language");
+  const handleGridKeyDown           = useSpatialNav();
 
   const [isTVMode, setIsTVMode] = useState(() => detectIsTV());
 
@@ -416,6 +400,12 @@ export default function Home({ type = "all" }) {
   const [genreFilter,    setGenreFilter]    = useState([]);
   const [yearFilter,     setYearFilter]     = useState([]);
   const [search,         setSearch]         = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedSearch(search), 150);
+    return () => clearTimeout(id);
+  }, [search]);
 
   const isRestoringNavState = useRef(false);
 
@@ -485,22 +475,29 @@ export default function Home({ type = "all" }) {
     return () => root.removeEventListener("scroll", fn);
   }, []);
 
-  const scrollToTop = useCallback((e) => { triggerRipple(e, e.currentTarget); scrollPageTo(0, "smooth"); }, []);
+  const scrollToTop = useCallback((e) => {
+    triggerRipple(e, e.currentTarget);
+    scrollPageTo(0, "smooth");
+  }, []);
 
   const normalize   = useCallback((v) => String(v || "").toLowerCase().trim(), []);
   const naturalSort = useCallback((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }), []);
 
   useEffect(() => {
     const u = onSnapshot(collection(db, "movies"), (snap) => {
-      setMovies(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      setMovies(list);
       setIsDataLoaded(true);
+      ls.setJSON(CACHE_MOVIES_KEY, list);
     });
     return () => u();
   }, []);
 
   useEffect(() => {
     const u = onSnapshot(collection(db, "banners"), (snap) => {
-      setAllBanners(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      setAllBanners(list);
+      ls.setJSON(CACHE_BANNER_KEY, list);
     });
     return () => u();
   }, []);
@@ -543,9 +540,9 @@ export default function Home({ type = "all" }) {
     const mL = languageFilter.length === 0 || languageFilter.includes(normalize(item.language));
     const mG = genreFilter.length === 0 || genreFilter.includes(normalize(item.genre));
     const mY = yearFilter.length === 0 || yearFilter.includes(String(item.year));
-    const q  = normalize(search), t = normalize(item[titleField] || item.title);
+    const q  = normalize(debouncedSearch), t = normalize(item[titleField] || item.title);
     return mL && mG && mY && (!q || t.includes(q) || isSimilar(t, q));
-  }, [languageFilter, genreFilter, yearFilter, search, normalize]);
+  }, [languageFilter, genreFilter, yearFilter, debouncedSearch, normalize]);
 
   const searchScore = useCallback((title, query) => {
     const t = normalize(title), q = normalize(query);
@@ -566,9 +563,9 @@ export default function Home({ type = "all" }) {
       groups[base].push(m);
     });
     return Object.entries(groups)
-      .sort((a, b) => { if (search) { const sa = searchScore(a[0], search), sb = searchScore(b[0], search); if (sb !== sa) return sb - sa; } return sortGroups(a, b); })
+      .sort((a, b) => { if (debouncedSearch) { const sa = searchScore(a[0], debouncedSearch), sb = searchScore(b[0], debouncedSearch); if (sb !== sa) return sb - sa; } return sortGroups(a, b); })
       .map(([n, items]) => [n, [...items].sort(sortByYearThenCreatedAt)]);
-  }, [movies, isMovieType, isAnimeGenre, matchesTab, passesFilters, search, searchScore]);
+  }, [movies, isMovieType, isAnimeGenre, matchesTab, passesFilters, debouncedSearch, searchScore]);
 
   const groupSeriesItems = useCallback((items) => {
     const groups = {};
@@ -605,9 +602,9 @@ export default function Home({ type = "all" }) {
       groups[base].push(m);
     });
     return Object.entries(groups)
-      .sort((a, b) => { if (search) { const sa = searchScore(a[0], search), sb = searchScore(b[0], search); if (sb !== sa) return sb - sa; } return sortGroups(a, b); })
+      .sort((a, b) => { if (debouncedSearch) { const sa = searchScore(a[0], debouncedSearch), sb = searchScore(b[0], debouncedSearch); if (sb !== sa) return sb - sa; } return sortGroups(a, b); })
       .map(([n, items]) => [n, [...items].sort(sortByYearThenCreatedAt)]);
-  }, [movies, isAnimeType, isAnimeGenre, passesFilters, search, searchScore]);
+  }, [movies, isAnimeType, isAnimeGenre, passesFilters, debouncedSearch, searchScore]);
 
   const animeSeriesGroups = useMemo(() => {
     const hasEp = (ep) => ep !== undefined && ep !== null && ep !== "" && ep !== 0 && ep !== "0";
@@ -693,7 +690,7 @@ export default function Home({ type = "all" }) {
   }, []);
 
   const saveCurrentScrollAndFocus = useCallback(() => {
-    savedScrollMap.current[navIdRef.current]  = getPageScrollY();
+    savedScrollMap.current[navIdRef.current] = getPageScrollY();
     const focused = document.activeElement;
     if (focused?.dataset?.cardId) savedFocusMap.current[navIdRef.current] = focused.dataset.cardId;
   }, []);
@@ -713,6 +710,12 @@ export default function Home({ type = "all" }) {
     setViewStack((prev) => prev.slice(0, -1));
   }, [viewStack.length]);
 
+  const handleGoBack = useCallback(() => {
+    if (viewStack.length > 1) {
+      window.history.back();
+    }
+  }, [viewStack.length]);
+
   useLayoutEffect(() => {
     if (!isNavigatingBack.current) return;
     isNavigatingBack.current = false;
@@ -722,11 +725,6 @@ export default function Home({ type = "all" }) {
     const targetY = savedScrollMap.current[id] ?? 0;
     const focusId = savedFocusMap.current[id] ?? null;
 
-    /*
-     * FIX: back-navigation scroll restore.
-     * Previously used the global restoreScrollAndFocus with 5 retries.
-     * Here we use 2 targeted attempts — same logic as above.
-     */
     let done = false;
     const doRestore = () => {
       if (done) return;
@@ -751,6 +749,9 @@ export default function Home({ type = "all" }) {
     const onKey = (e) => {
       const isBack = e.key === "Escape" || e.key === "GoBack" || e.key === "Backspace" ||
                      e.keyCode === 27   || e.keyCode === 10009 || e.keyCode === 8;
+      // Don't hijack Backspace inside an active text input
+      const tag = document.activeElement?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
       if (isBack && viewStack.length > 1) { e.preventDefault(); window.history.back(); }
     };
     window.addEventListener("popstate", onPop);
@@ -785,7 +786,10 @@ export default function Home({ type = "all" }) {
       if (filters?.language !== undefined) setLanguageFilter(filters.language);
       if (filters?.genre    !== undefined) setGenreFilter(filters.genre);
       if (filters?.year     !== undefined) setYearFilter(filters.year);
-      if (filters?.search   !== undefined) setSearch(filters.search);
+      if (filters?.search   !== undefined) {
+        setSearch(filters.search);
+        setDebouncedSearch(filters.search);
+      }
       setFilterOpen(false);
     } catch {}
 
@@ -873,7 +877,7 @@ export default function Home({ type = "all" }) {
   useLayoutEffect(() => {
     if (isRestoringNavState.current) return;
     if (ss.getJSON("ott_nav_state")) return;
-    setLanguageFilter([]); setGenreFilter([]); setYearFilter([]); setSearch("");
+    setLanguageFilter([]); setGenreFilter([]); setYearFilter([]); setSearch(""); setDebouncedSearch("");
     setViewStack([{ kind: "home" }]);
     navIdRef.current = 0;
     savedScrollMap.current = {};
@@ -938,15 +942,13 @@ export default function Home({ type = "all" }) {
     const effStackKinds = navContext
       ? Array.from(new Set([...stackKinds, "series", "season"]))
       : stackKinds;
-    const effSeriesTitleKey  = navContext?.seriesTitleKey ?? (seriesView?.data?.titleKey ?? (seasonView ? normalize(seasonView.data?.seriesTitle) : null));
-    const effSeriesDisplay   = navContext?.seriesDisplayName ?? (seriesView?.data?.seriesTitle ?? seasonView?.data?.seriesTitle ?? null);
-    const effSeasonNum       = navContext?.seasonNum ?? (seasonView?.data?.seasonNum ?? null);
-
-    const currentSearch = search;
+    const effSeriesTitleKey = navContext?.seriesTitleKey ?? (seriesView?.data?.titleKey ?? (seasonView ? normalize(seasonView.data?.seriesTitle) : null));
+    const effSeriesDisplay  = navContext?.seriesDisplayName ?? (seriesView?.data?.seriesTitle ?? seasonView?.data?.seriesTitle ?? null);
+    const effSeasonNum      = navContext?.seasonNum ?? (seasonView?.data?.seasonNum ?? null);
 
     ss.setJSON("ott_nav_state", {
-      stackKinds: effStackKinds,
-      collectionName:    colView?.data?.name    ?? null,
+      stackKinds:        effStackKinds,
+      collectionName:    colView?.data?.name ?? null,
       seriesTitle:       effSeriesTitleKey,
       seriesDisplayName: effSeriesDisplay,
       seasonNum:         effSeasonNum,
@@ -956,10 +958,11 @@ export default function Home({ type = "all" }) {
       homeFocusId:       homeInfo.focusId,
       seriesScrollY:     seriesInfo?.scrollY ?? null,
       seriesFocusId:     seriesInfo?.focusId ?? null,
-      filters: { language: languageFilter, genre: genreFilter, year: yearFilter, search: currentSearch },
+      filters: { language: languageFilter, genre: genreFilter, year: yearFilter, search },
     });
 
     setSearch("");
+    setDebouncedSearch("");
     addRecentWatched(movie);
     navigate("/player", { state: { movie, playlist: finalPlaylist, currentIndex: finalIndex } });
   }, [
@@ -1046,18 +1049,18 @@ export default function Home({ type = "all" }) {
     movieGroups.length === 0 && seriesGroups.length === 0 &&
     animeMovieGroups.length === 0 && animeSeriesGroups.length === 0;
 
-  const isSearchActive = search.trim().length > 0;
+  const isSearchActive = debouncedSearch.trim().length > 0;
 
   const renderMovieGrid = useCallback((groups, prefix = "m") =>
     groups.map(([name, items], i) => {
       const cid = cardId(prefix, items[0].id);
       return (
         <FocusCard key={name} className={`card ${items.length > 1 ? "is-collection" : ""}`}
-          style={{ "--i": i }} data-card-id={cid}
+          style={{ "--i": Math.min(i, 12) }} data-card-id={cid}
           onClick={(e) => handleClick(e, () =>
             items.length > 1 ? handleOpenCollection(name, items) : playMovie(items[0])
           )}>
-          <PosterImg src={items[0].img} alt={name} loading="eager" fetchPriority="high" />
+          <PosterImg src={items[0].img} alt={name} loading={i < 8 ? "eager" : "lazy"} />
           {items.length > 1 && <div className="collection-badge">{items.length} Parts</div>}
           <div className="card-info">
             <h3>{items.length > 1 ? `${name} (Collection)` : items[0].title}</h3>
@@ -1073,10 +1076,10 @@ export default function Home({ type = "all" }) {
     const episodes    = seasons.flatMap(([, eps]) => eps);
     const posterImg   = firstSeasonImg(data.seasons);
     return (
-      <FocusCard key={titleKey} className="card is-collection series-card" style={{ "--i": i }}
+      <FocusCard key={titleKey} className="card is-collection series-card" style={{ "--i": Math.min(i, 12) }}
         data-card-id={cardId("series", titleKey)}
         onClick={(e) => handleClick(e, () => handleOpenSeries(seriesTitle, data))}>
-        <PosterImg src={posterImg} alt={seriesTitle} loading="eager" />
+        <PosterImg src={posterImg} alt={seriesTitle} loading={i < 8 ? "eager" : "lazy"} />
         <div className="collection-badge">{seasons.length} Season{seasons.length !== 1 ? "s" : ""}</div>
         <div className="card-info">
           <h3>{seriesTitle}</h3>
@@ -1124,9 +1127,9 @@ export default function Home({ type = "all" }) {
                       if (epToPlay) {
                         const idx = sorted.findIndex(ep => ep.id === epToPlay.id);
                         playMovie(epToPlay, sorted, idx >= 0 ? idx : 0, {
-                          seriesTitleKey:     sKey,
-                          seriesDisplayName:  item.seriesTitle || item.title,
-                          seasonNum:          sNum,
+                          seriesTitleKey:    sKey,
+                          seriesDisplayName: item.seriesTitle || item.title,
+                          seasonNum:         sNum,
                         });
                         return;
                       }
@@ -1137,7 +1140,7 @@ export default function Home({ type = "all" }) {
                 onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.currentTarget.click(); } }}
               >
                 <div className="rw-hcard-poster">
-                  <PosterImg src={item.img} alt={item.seriesTitle || item.title} />
+                  <PosterImg src={item.img} alt={item.seriesTitle || item.title} loading="lazy" />
                   {isEpisode && <div className="rw-hcard-bar" />}
                   <span className={`rw-hcard-badge rw-hcard-badge--${
                     category === "anime" ? "anime" : category === "series" ? "series" : "movie"
@@ -1308,6 +1311,9 @@ export default function Home({ type = "all" }) {
           </section>
         ) : selectedSeries ? (
           <section key="series-view" className="series-view-section slide-in-premium">
+            <div className="subview-topbar">
+              <BackButton onBack={handleGoBack} label="Back" />
+            </div>
             <div className="series-view-header">
               <div className="series-view-poster">
                 <img src={firstSeasonImg(selectedSeries.seasons)} alt={selectedSeries.seriesTitle} />
@@ -1328,10 +1334,10 @@ export default function Home({ type = "all" }) {
                     String(a.episode).localeCompare(String(b.episode), undefined, { numeric: true, sensitivity: "base" })
                   );
                   return (
-                    <FocusCard key={sNum} className="card is-collection season-card-v2" style={{ "--i": i }}
+                    <FocusCard key={sNum} className="card is-collection season-card-v2" style={{ "--i": Math.min(i, 12) }}
                       data-card-id={cardId(`sv_${selectedSeries.titleKey}`, sNum)}
                       onClick={(e) => handleClick(e, () => handleOpenSeason(selectedSeries.seriesTitle, sNum, eps))}>
-                      <PosterImg src={randomImg(eps)} alt={`Season ${sNum}`} loading="eager" />
+                      <PosterImg src={randomImg(eps)} alt={`Season ${sNum}`} loading="lazy" />
                       <div className="season-num-badge">Season {sNum}</div>
                       <div className="collection-badge">{eps.length} Ep{eps.length !== 1 ? "s" : ""}</div>
                       {lw && (
@@ -1367,10 +1373,13 @@ export default function Home({ type = "all" }) {
         ) : selectedSeason ? (
           <section key="episode-list" className="collection-view slide-in-premium">
             <div className="season-header">
-              <div className="season-breadcrumb">
-                <span className="season-breadcrumb-series">{selectedSeason.seriesTitle}</span>
-                <span className="season-breadcrumb-sep" aria-hidden="true">›</span>
-                <span className="season-breadcrumb-season">Season {selectedSeason.seasonNum}</span>
+              <div className="season-header-left">
+                <BackButton onBack={handleGoBack} label="Seasons" />
+                <div className="season-breadcrumb">
+                  <span className="season-breadcrumb-series">{selectedSeason.seriesTitle}</span>
+                  <span className="season-breadcrumb-sep" aria-hidden="true">›</span>
+                  <span className="season-breadcrumb-season">Season {selectedSeason.seasonNum}</span>
+                </div>
               </div>
               {(() => {
                 const lw        = getLastWatchedEp(selectedSeason.seriesTitle, selectedSeason.seasonNum);
@@ -1407,9 +1416,9 @@ export default function Home({ type = "all" }) {
                   return (
                     <FocusCard key={ep.id}
                       className={`card episode-card${isLastSeen ? " last-seen-episode" : ""}`}
-                      style={{ "--i": i }} data-card-id={cid}
+                      style={{ "--i": Math.min(i, 12) }} data-card-id={cid}
                       onClick={(e) => handleClick(e, () => playMovie(ep, sorted, i))}>
-                      <PosterImg src={ep.img} alt={ep.title} loading="eager" />
+                      <PosterImg src={ep.img} alt={ep.title} loading="lazy" />
                       <div className="ep-num-badge" aria-hidden="true">EP {ep.episode || "S"}</div>
                       {isLastSeen && (
                         <div className="last-seen-banner" aria-label="Continue watching">
@@ -1431,18 +1440,21 @@ export default function Home({ type = "all" }) {
         ) : selectedCollection ? (
           <section key="collection-view" className="collection-view slide-in-premium">
             <div className="season-header">
-              <div className="season-breadcrumb">
-                <span className="season-breadcrumb-series">{selectedCollection.name}</span>
-                <span className="season-breadcrumb-sep" aria-hidden="true">›</span>
-                <span className="season-breadcrumb-season">Collection</span>
+              <div className="season-header-left">
+                <BackButton onBack={handleGoBack} label="Back" />
+                <div className="season-breadcrumb">
+                  <span className="season-breadcrumb-series">{selectedCollection.name}</span>
+                  <span className="season-breadcrumb-sep" aria-hidden="true">›</span>
+                  <span className="season-breadcrumb-season">Collection ({selectedCollection.items.length})</span>
+                </div>
               </div>
             </div>
             <div className="grid" onKeyDown={handleGridKeyDown}>
               {selectedCollection.items.map((m, i) => (
-                <FocusCard key={m.id} className="card" style={{ "--i": i }}
+                <FocusCard key={m.id} className="card" style={{ "--i": Math.min(i, 12) }}
                   data-card-id={cardId("col", m.id)}
                   onClick={(e) => handleClick(e, () => playMovie(m))}>
-                  <PosterImg src={m.img} alt={m.title} loading="eager" />
+                  <PosterImg src={m.img} alt={m.title} loading="lazy" />
                   <div className="card-info"><h3>{m.title}</h3><p>{m.year}</p></div>
                 </FocusCard>
               ))}
