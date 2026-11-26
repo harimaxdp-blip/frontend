@@ -868,7 +868,7 @@ export default function Home({ type = "all" }) {
     requestAnimationFrame(() => {
       const isTV = detectIsTV() || document.documentElement.getAttribute("data-input") === "key";
       if (!isTV) return;
-      if (document.activeElement && document.activeElement !== document.body) return;
+      if (document.activeElement && document.activeElement !== document.body && !document.activeElement.classList.contains('search-input')) return;
       const first = document.querySelector("[data-card-id], .card, .season-card-v2, .episode-card");
       if (first) first.focus({ preventScroll: true });
     });
@@ -1224,7 +1224,7 @@ export default function Home({ type = "all" }) {
             <div id="search-section" className="search-bar" role="search">
               <input id="search-input" className="search-input" value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); }}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === 'Escape' || e.key === 'ArrowDown' || e.key === 'ArrowUp') e.target.blur(); }}
                 placeholder={isListening ? "Listening…" : "Search movies, series, anime…"}
                 aria-label="Search content" type="search" enterKeyHint="search" />
               <div className="search-voice-group">

@@ -5,7 +5,7 @@ const config: CapacitorConfig = {
   appName: 'HM',
   webDir: 'build',
   server: {
-    url: 'https://hm-tau-eight.vercel.app',
+    url: 'https://hari-movies.vercel.app',
     cleartext: true,
     androidScheme: 'https'
   },

@@ -984,6 +984,7 @@ app.get("/api/hls/master.m3u8", async (req, res) => {
     client.dispose();
   }
 });
+
 app.use(
   "/api/hls-files",
   express.static(HLS_ROOT, {
@@ -997,6 +998,10 @@ app.use(
     },
   })
 );
+
+app.get("/", (req, res) => {
+  res.status(200).json({ status: "ok", service: "hari-movies-media-proxy" });
+});
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Media Proxy running on http://0.0.0.0:${PORT}`);
