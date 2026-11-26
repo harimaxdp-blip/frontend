@@ -9,9 +9,7 @@ import "./GlobalPlayer.css";
 
 const PROXY_BASE =
   process.env.REACT_APP_MEDIA_PROXY_URL ||
-  (typeof window !== "undefined" && window.location?.hostname
-    ? `${window.location.protocol}//${window.location.hostname}:4000`
-    : "http://localhost:4000");
+  "https://frontend-2-rckn.onrender.com";
 
 const EMPTY_LIST = Object.freeze([]);
 const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
