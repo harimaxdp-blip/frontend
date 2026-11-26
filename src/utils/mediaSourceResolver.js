@@ -1,8 +1,7 @@
-const PROXY_BASE =
+export const MEDIA_PROXY_BASE = (
   process.env.REACT_APP_MEDIA_PROXY_URL ||
-  (typeof window !== "undefined" && window.location?.hostname
-    ? `${window.location.protocol}//${window.location.hostname}:4000`
-    : "http://localhost:4000");
+  "https://frontend-2-rckn.onrender.com"
+).replace(/\/+$/, "");
 
 const ARCHIVE_HOSTS = new Set(["archive.org", "www.archive.org"]);
 
@@ -255,7 +254,7 @@ export async function resolveMediaSource(rawUrl, { signal, preferNativeBridge = 
 
   const request = createRequestController(signal, RESOLUTION_TIMEOUT_MS);
   try {
-    const response = await fetch(`${PROXY_BASE}/api/resolve?url=${encodeURIComponent(validated.url)}`, {
+    const response = await fetch(`${MEDIA_PROXY_BASE}/api/resolve?url=${encodeURIComponent(validated.url)}`, {
       signal: request.signal,
     });
     const data = response.ok ? await response.json() : null;

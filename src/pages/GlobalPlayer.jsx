@@ -2,15 +2,11 @@ import React, { useEffect, useRef, useState, useCallback, useMemo } from "react"
 import Hls from "hls.js";
 import {
   detectDirectMediaType,
+  MEDIA_PROXY_BASE as PROXY_BASE,
   normalizeLanguageLabel,
   resolveMediaSource,
 } from "../utils/mediaSourceResolver";
 import "./GlobalPlayer.css";
-
-const PROXY_BASE = (
-  process.env.REACT_APP_MEDIA_PROXY_URL ||
-  "https://frontend-2-rckn.onrender.com"
-).replace(/\/+$/, "");
 
 const EMPTY_LIST = Object.freeze([]);
 const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];

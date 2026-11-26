@@ -1,7 +1,7 @@
 import { Capacitor } from "@capacitor/core";
 import DeviceControl from "../plugins/deviceControl";
 import IOSPlayer from "../plugins/iosPlayer";
-import { resolveMediaSource } from "../utils/mediaSourceResolver";
+import { MEDIA_PROXY_BASE, resolveMediaSource } from "../utils/mediaSourceResolver";
 
 export function isDirectVideo(url, mediaType = "") {
   if (!url) return false;
@@ -35,6 +35,11 @@ function asFallback(url, error) {
     provider: "External source",
     fallbackReason: error?.message || "The media source could not be resolved safely.",
   };
+}
+
+function getAndroidPlaybackUrl(url, resolution) {
+  if (resolution?.status !== "resolved" || resolution.mediaType !== "remux") return url;
+  return `${MEDIA_PROXY_BASE}/api/hls/master.m3u8?url=${encodeURIComponent(url)}&audio=0`;
 }
 
 export const playerAdapter = {
@@ -92,17 +97,26 @@ export const playerAdapter = {
     if (signal?.aborted) return;
 
     const selectedResolution = resolutions[startIndex] || resolutions[0];
-    const playbackUrl = (selectedResolution?.status === "resolved" && selectedResolution?.streamUrl)
+    const resolvedPlaybackUrl = (selectedResolution?.status === "resolved" && selectedResolution?.streamUrl)
       ? selectedResolution.streamUrl
       : sourceUrl;
+    const playbackUrl = platform === "android"
+      ? getAndroidPlaybackUrl(resolvedPlaybackUrl, selectedResolution)
+      : resolvedPlaybackUrl;
 
     const resolvedPlaylist = isSeries
-      ? sourcePlaylist.map((episode, index) => ({
-          ...episode,
-          link: resolutions[index]?.status === "resolved" && resolutions[index]?.streamUrl
-            ? resolutions[index].streamUrl
-            : episode.link,
-        }))
+      ? sourcePlaylist.map((episode, index) => {
+          const resolution = resolutions[index];
+          const resolvedUrl = resolution?.status === "resolved" && resolution.streamUrl
+            ? resolution.streamUrl
+            : episode.link;
+          return {
+            ...episode,
+            link: platform === "android"
+              ? getAndroidPlaybackUrl(resolvedUrl, resolution)
+              : resolvedUrl,
+          };
+        })
       : null;
 
     const resolvedFallbackPayload = {
@@ -112,11 +126,16 @@ export const playerAdapter = {
     };
 
     if (platform === "android") {
+      if (selectedResolution?.status !== "resolved" || !selectedResolution.streamUrl) {
+        onFallback?.(new Error("No direct media stream was resolved for ExoPlayer"), resolvedFallbackPayload);
+        return;
+      }
+
       const payload = {
         url: playbackUrl,
         originalUrl: sourceUrl,
         title,
-        mediaType: selectedResolution?.mediaType,
+        mediaType: selectedResolution.mediaType === "remux" ? "hls" : selectedResolution.mediaType,
         referer: selectedResolution?.provider === "Onestream"
           ? "https://dub.onestream.today/"
           : undefined,

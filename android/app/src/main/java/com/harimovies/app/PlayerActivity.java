@@ -1084,7 +1084,7 @@ public class PlayerActivity extends AppCompatActivity {
         if (playerView != null) playerView.setVisibility(View.VISIBLE);
 
         Map<String, String> headers = new HashMap<>();
-        headers.put("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36");
+        headers.put("User-Agent", "Mozilla/5.0 (Linux; Android 12; Pixel 6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36");
         if (StreamResolver.isHttpUrl(playbackReferer)) {
             headers.put("Referer", playbackReferer);
             Uri refererUri = Uri.parse(playbackReferer);
@@ -1110,9 +1110,9 @@ public class PlayerActivity extends AppCompatActivity {
         DefaultHttpDataSource.Factory dsFactory =
                 new DefaultHttpDataSource.Factory()
                         .setUserAgent(
-                            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+                            "Mozilla/5.0 (Linux; Android 12; Pixel 6) " +
                             "AppleWebKit/537.36 (KHTML, like Gecko) " +
-                            "Chrome/148.0.0.0 Safari/537.36")
+                            "Chrome/120.0.0.0 Mobile Safari/537.36")
                         .setAllowCrossProtocolRedirects(true);
 
         dsFactory.setDefaultRequestProperties(headers);

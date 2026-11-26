@@ -1,5 +1,6 @@
 import {
   detectDirectMediaType,
+  MEDIA_PROXY_BASE,
   normalizeLanguageLabel,
   resolveMediaSource,
 } from "./mediaSourceResolver";
@@ -74,7 +75,9 @@ describe("media source resolver", () => {
     const result = await resolveMediaSource("https://archive.org/details/public-film");
     expect(result).toMatchObject({ status: "resolved", mediaType: "hls", provider: "Internet Archive" });
     expect(result.subtitles).toHaveLength(1);
-    expect(fetch.mock.calls[0][0]).toContain("/api/resolve?");
+    expect(fetch.mock.calls[0][0]).toBe(
+      `${MEDIA_PROXY_BASE}/api/resolve?url=${encodeURIComponent("https://archive.org/details/public-film")}`
+    );
   });
 
   test("retries a provider fallback instead of caching the failed resolution", async () => {
