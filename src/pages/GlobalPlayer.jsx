@@ -7,9 +7,10 @@ import {
 } from "../utils/mediaSourceResolver";
 import "./GlobalPlayer.css";
 
-const PROXY_BASE =
+const PROXY_BASE = (
   process.env.REACT_APP_MEDIA_PROXY_URL ||
-  "https://frontend-2-rckn.onrender.com";
+  "https://frontend-2-rckn.onrender.com"
+).replace(/\/+$/, "");
 
 const EMPTY_LIST = Object.freeze([]);
 const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
@@ -719,7 +720,7 @@ export default function GlobalPlayer({
   }, [applyProbeData]);
 
   // ── Helper: Remux MKV / DD5.1 Directly via Proxy (Single CDN Connection) ──
-const initProxyMedia = useCallback(
+  const initProxyMedia = useCallback(
     async (mediaHttpUrl, ctrl, startAtSec = 0) => {
       const fallbackLangs = parseMediaMetadataFromUrl(mediaHttpUrl).detectedAudio;
       if (fallbackLangs.length > 0 && propAudioTracks.length === 0) {
@@ -832,7 +833,7 @@ const initProxyMedia = useCallback(
               lang: audio.lang,
               source: "detected",
             })));
-            setTrackNotice("Start the Node.js media proxy (port 4000) to switch audio tracks in-browser, or open in VLC.");
+            setTrackNotice(`Media proxy (${PROXY_BASE}) is unavailable to switch audio tracks in-browser. Retry or open in VLC.`);
           }
         });
       };
@@ -872,8 +873,7 @@ const initProxyMedia = useCallback(
           isMagnet: true,
           isStreamableExternal: false,
           title: "BitTorrent Magnet Link",
-          reason:
-            "Start the Node.js media proxy (port 4000) to stream Magnet links directly in-browser, or open in qBittorrent / Flud.",
+          reason: `Media proxy (${PROXY_BASE}) could not connect to torrent peers or is waking up. Retry in a few seconds, or open in qBittorrent / Flud.`,
         });
         setMode("unsupported");
         return;
@@ -1156,7 +1156,7 @@ const initProxyMedia = useCallback(
             } else if (resolvedFallbackSource) {
               setError("Direct playback failed. Retry or choose the provider player.");
             } else if (d.type === Hls.ErrorTypes.NETWORK_ERROR) {
-              setError("Media proxy unreachable (is node server.js running on port 4000?).");
+              setError(`Media proxy (${PROXY_BASE}) unreachable or waking up. Tap Retry in a few seconds, or open in VLC.`);
             } else if (d.type === Hls.ErrorTypes.MEDIA_ERROR) {
               hls.recoverMediaError();
               setError("Browser cannot decode 4K HEVC (H.265). Try Edge/Safari or open in VLC.");
@@ -1291,7 +1291,7 @@ const initProxyMedia = useCallback(
       setDirectMediaType(detectDirectMediaType(item.url) || "");
       setDirectUrl(item.url);
     } else if (item.source === "detected") {
-      setTrackNotice(`Start the Node.js media proxy (port 4000) to switch to "${item.label}" in-browser, or open in VLC.`);
+      setTrackNotice(`Media proxy (${PROXY_BASE}) is unavailable to switch to "${item.label}" in-browser, or open in VLC.`);
     }
     setSettingsTab("main");
   }, []);

@@ -95,6 +95,114 @@ function directionalScore(direction, current, candidate) {
   return primary + secondary * (aligned ? 0.75 : 2.5);
 }
 
+const MOVIE_CARD_SELECTOR = "[data-card-id], .card, .episode-card, .season-card-v2";
+const HOME_VIEW_SELECTOR = ".movies-page[data-home-view='true']";
+const HOME_MOVIE_GRID_SELECTOR = `${HOME_VIEW_SELECTOR} .grid`;
+
+function focusFirstAvailable(selectors) {
+  for (const selector of selectors) {
+    const target = document.querySelector(selector);
+    if (target && isVisible(target)) return focusElement(target, true);
+  }
+  return false;
+}
+
+function getMovieGridTarget(focused, direction) {
+  const grid = focused.closest(HOME_MOVIE_GRID_SELECTOR);
+  if (!grid) return null;
+
+  const currentCard = focused.matches(MOVIE_CARD_SELECTOR)
+    ? focused
+    : focused.closest(MOVIE_CARD_SELECTOR);
+  if (!currentCard || !grid.contains(currentCard)) return null;
+
+  const currentRect = currentCard.getBoundingClientRect();
+  return Array.from(grid.querySelectorAll(MOVIE_CARD_SELECTOR))
+    .filter((candidate) => candidate !== currentCard && isVisible(candidate))
+    .map((el) => ({ el, rect: el.getBoundingClientRect() }))
+    .filter(({ rect }) => {
+      if (!isDirectionalCandidate(direction, currentRect, rect)) return false;
+      const verticalOverlap = Math.min(currentRect.bottom, rect.bottom) - Math.max(currentRect.top, rect.top);
+      const horizontalOverlap = Math.min(currentRect.right, rect.right) - Math.max(currentRect.left, rect.left);
+      return direction === "left" || direction === "right"
+        ? verticalOverlap > 0
+        : horizontalOverlap > 0;
+    })
+    .sort((a, b) => directionalScore(direction, currentRect, a.rect) - directionalScore(direction, currentRect, b.rect))[0]?.el || null;
+}
+
+function getRecentCardTarget(recentCard, direction) {
+  const strip = recentCard.closest(".rw-hstrip");
+  if (!strip) return null;
+
+  const cards = Array.from(strip.querySelectorAll(".rw-hcard"));
+  const currentIndex = cards.indexOf(recentCard);
+  const targetIndex = currentIndex + (direction === "left" ? -1 : 1);
+  return cards[targetIndex] || null;
+}
+
+function getNearestRecentCard(source) {
+  const sourceRect = source.getBoundingClientRect();
+  return Array.from(document.querySelectorAll(
+    `${HOME_VIEW_SELECTOR} .recently-watched-section .rw-hcard`
+  ))
+    .filter(isVisible)
+    .sort((a, b) =>
+      Math.abs(center(a.getBoundingClientRect()).x - center(sourceRect).x) -
+      Math.abs(center(b.getBoundingClientRect()).x - center(sourceRect).x)
+    )[0] || null;
+}
+
+function getRecentCardForContent(contentSection, source) {
+  const sectionName = contentSection?.dataset.contentSection;
+  const recentCategory = sectionName === "movies"
+    ? "movies"
+    : sectionName === "series"
+    ? "series"
+    : "anime";
+  const recentKind = sectionName === "anime-series" ? "series" : "movie";
+  const kindSelector = recentCategory === "anime"
+    ? `[data-recent-kind="${recentKind}"]`
+    : "";
+  const sourceRect = source.getBoundingClientRect();
+  return Array.from(document.querySelectorAll(
+    `${HOME_VIEW_SELECTOR} .rw-hcard[data-recent-category="${recentCategory}"]${kindSelector}`
+  ))
+    .filter(isVisible)
+    .sort((a, b) =>
+      Math.abs(center(a.getBoundingClientRect()).x - center(sourceRect).x) -
+      Math.abs(center(b.getBoundingClientRect()).x - center(sourceRect).x)
+    )[0] || null;
+}
+
+function getContentCardBelow(recentCard) {
+  const contentSection = recentCard.dataset.recentCategory === "movies"
+    ? "movies"
+    : recentCard.dataset.recentCategory === "series"
+    ? "series"
+    : recentCard.dataset.recentKind === "series"
+    ? "anime-series"
+    : "anime-movies";
+  const grid = document.querySelector(
+    `${HOME_VIEW_SELECTOR} [data-content-section="${contentSection}"] .grid`
+  );
+  if (!grid) return null;
+
+  const currentRect = recentCard.getBoundingClientRect();
+  const cards = Array.from(grid.querySelectorAll(MOVIE_CARD_SELECTOR))
+    .filter(isVisible)
+    .map((el) => ({ el, rect: el.getBoundingClientRect() }));
+  if (cards.length === 0) return null;
+
+  const firstRowTop = Math.min(...cards.map(({ rect }) => rect.top));
+  return cards
+    .filter(({ rect }) => rect.top <= firstRowTop + 2)
+    .sort((a, b) =>
+      Math.abs(center(a.rect).x - center(currentRect).x) -
+      Math.abs(center(b.rect).x - center(currentRect).x)
+    )[0]?.el || null;
+}
+
 export function focusElement(el, preventScroll = false) {
   if (!el) return false;
   if (!el.hasAttribute("tabindex") && el.tagName !== "BUTTON" && el.tagName !== "INPUT" && el.tagName !== "A" && el.tagName !== "SELECT" && el.tagName !== "TEXTAREA") {
@@ -140,6 +248,8 @@ export function useSpatialNav() {
       }
     }
 
+    if (e.defaultPrevented) return;
+
     // Handle Enter / OK key on custom focusable non-button elements (e.g. div cards, pills, avatars)
     if ((key === "Enter" || key === " ") && document.activeElement && !isPlayerActive) {
       const activeEl = document.activeElement;
@@ -161,6 +271,171 @@ export function useSpatialNav() {
 
     const scope = getActiveScope();
     const isModalScope = scope !== document.body;
+    const focused = document.activeElement;
+
+    if (!isModalScope) {
+      const recentCard = focused.closest(".rw-hcard");
+      if (recentCard) {
+        const isDeleteFocused = focused.matches(".rw-hcard-delete");
+
+        if (direction === "up") {
+          e.preventDefault();
+          if (isDeleteFocused) {
+            focusFirstAvailable(['[data-spatial-nav="filter-language"]']);
+          } else {
+            focusElement(recentCard.querySelector(".rw-hcard-delete"), true);
+          }
+          return;
+        }
+
+        if (direction === "down") {
+          e.preventDefault();
+          if (isDeleteFocused) {
+            focusElement(recentCard);
+          } else {
+            const target = getContentCardBelow(recentCard);
+            if (target) focusElement(target);
+          }
+          return;
+        }
+
+        if (direction === "left" || direction === "right") {
+          e.preventDefault();
+          const targetCard = getRecentCardTarget(recentCard, direction);
+          if (targetCard) {
+            focusElement(isDeleteFocused
+              ? targetCard.querySelector(".rw-hcard-delete")
+              : targetCard);
+          } else if (direction === "left") {
+            focusFirstAvailable([".topbar .menu-btn"]);
+          }
+          return;
+        }
+      }
+
+      const topbarOrder = [
+        ".topbar .menu-btn",
+        ".topbar .gear-btn",
+        ".topbar .search-btn",
+        ".topbar .profile-btn",
+      ];
+      const topbarIndex = topbarOrder.findIndex((selector) => focused.matches(selector));
+      if (topbarIndex !== -1 && (direction === "left" || direction === "right")) {
+        const nextIndex = topbarIndex + (direction === "left" ? -1 : 1);
+        const nextSelector = topbarOrder[nextIndex];
+        e.preventDefault();
+        if (nextSelector) focusFirstAvailable([nextSelector]);
+        return;
+      }
+
+      if (focused.closest(".topbar") && direction === "down" && !focused.matches(".topbar .menu-btn")) {
+        if (focusFirstAvailable(["#search-input"])) {
+          e.preventDefault();
+          return;
+        }
+      }
+
+      if (focused.matches("#search-input")) {
+        const targets = {
+          left: [".topbar .menu-btn"],
+          right: [".search-bar .mic-btn"],
+          up: [".topbar .menu-btn"],
+          down: ['[data-spatial-nav="filter-language"]'],
+        };
+        e.preventDefault();
+        focusFirstAvailable(targets[direction]);
+        return;
+      }
+
+      if (focused.matches(".search-bar .mic-btn")) {
+        const targets = {
+          left: ["#search-input"],
+          up: [".topbar .search-btn"],
+          down: [`${HOME_MOVIE_GRID_SELECTOR} [data-card-id]`],
+        };
+        if (targets[direction]) {
+          e.preventDefault();
+          focusFirstAvailable(targets[direction]);
+          return;
+        }
+      }
+
+      const filterOrder = [
+        '[data-spatial-nav="filter-language"]',
+        '[data-spatial-nav="filter-genre"]',
+        '[data-spatial-nav="filter-year"]',
+      ];
+      const filterIndex = filterOrder.findIndex((selector) => focused.matches(selector));
+      if (filterIndex !== -1) {
+        if (direction === "down") {
+          e.preventDefault();
+          const recentTarget = getNearestRecentCard(focused);
+          if (recentTarget) {
+            focusElement(recentTarget);
+          } else {
+            focusFirstAvailable([`${HOME_MOVIE_GRID_SELECTOR} [data-card-id]`]);
+          }
+          return;
+        }
+
+        const nextIndex = direction === "left"
+          ? filterIndex - 1
+          : direction === "right"
+          ? (filterIndex + 1) % filterOrder.length
+          : -1;
+        const target = direction === "up"
+          ? "#search-input"
+          : direction === "left" && nextIndex < 0
+          ? ".topbar .menu-btn"
+          : filterOrder[nextIndex];
+        e.preventDefault();
+        focusFirstAvailable([target]);
+        return;
+      }
+
+      const movieGrid = focused.closest(HOME_MOVIE_GRID_SELECTOR);
+      if (movieGrid) {
+        const currentCard = focused.matches(MOVIE_CARD_SELECTOR)
+          ? focused
+          : focused.closest(MOVIE_CARD_SELECTOR);
+        const target = getMovieGridTarget(focused, direction);
+        if (target) {
+          e.preventDefault();
+          focusElement(target);
+          return;
+        }
+
+        if (currentCard && direction === "left") {
+          e.preventDefault();
+          focusFirstAvailable([".topbar .menu-btn"]);
+          return;
+        }
+
+        if (currentCard && direction === "up") {
+          const cards = Array.from(movieGrid.querySelectorAll(MOVIE_CARD_SELECTOR)).filter(isVisible);
+          const firstRowTop = Math.min(...cards.map((card) => card.getBoundingClientRect().top));
+          if (currentCard.getBoundingClientRect().top <= firstRowTop + 2) {
+            const recentTarget = getRecentCardForContent(
+              currentCard.closest("[data-content-section]"),
+              currentCard
+            );
+            e.preventDefault();
+            if (recentTarget) {
+              focusElement(recentTarget);
+            } else {
+              focusFirstAvailable(['[data-spatial-nav="filter-language"]']);
+            }
+            return;
+          }
+        }
+
+        if (currentCard) {
+          e.preventDefault();
+          return;
+        }
+      }
+    }
+
     let candidates = Array.from(scope.querySelectorAll(FOCUSABLE_SELECTOR)).filter(isVisible);
 
     // If not in a modal, also include topbar controls
@@ -172,7 +447,6 @@ export function useSpatialNav() {
 
     if (candidates.length === 0) return;
 
-    const focused = document.activeElement;
     const idx = candidates.indexOf(focused);
 
     // 1. If nothing in the interactive list is currently focused, find the best entry element

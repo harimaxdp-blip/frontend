@@ -380,7 +380,6 @@ function App() {
 
   const handleMenuKeyDown = useCallback((e) => {
     if (e.key === "ArrowDown")  { e.preventDefault(); setOpen(true); focusFirstSidebarItem(); return; }
-    if (e.key === "ArrowRight") { e.preventDefault(); document.querySelector(".gear-btn")?.focus({ preventScroll: true }); return; }
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
       setOpen((next) => { if (!next) focusFirstSidebarItem(); return !next; });
@@ -447,8 +446,6 @@ function App() {
                 aria-expanded={showGear}
                 onClick={() => setShowGear((s) => !s)}
                 onKeyDown={(e) => {
-                  if (e.key === "ArrowLeft")  { e.preventDefault(); menuButtonRef.current?.focus({ preventScroll: true }); }
-                  if (e.key === "ArrowRight") { e.preventDefault(); document.querySelector(".search-btn")?.focus({ preventScroll: true }); }
                   if (e.key === "Escape")     setShowGear(false);
                 }}
               >
@@ -480,10 +477,6 @@ function App() {
                   document.getElementById("search-input")?.focus();
                   document.getElementById("search-section")?.scrollIntoView({ behavior: "smooth", block: "center" });
                 }, 300);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "ArrowLeft")  { e.preventDefault(); document.querySelector(".gear-btn")?.focus({ preventScroll: true }); }
-                if (e.key === "ArrowDown")  { e.preventDefault(); document.querySelector("#search-input, [data-card-id]")?.focus({ preventScroll: false }); }
               }}
             >
               <SearchIcon />

@@ -16,7 +16,6 @@ import noResultsAll    from "../assets/no-results-all.png";
 import noResultsMovie  from "../assets/no-results-movie.png";
 import noResultsSeries from "../assets/no-results-series.png";
 import noResultsAnime  from "../assets/no-results-anime.png";
-import { useSpatialNav } from "../hooks/useSpatialNav";
 import tvIcon    from "../assets/tv1.png";
 import seriIcon  from "../assets/tv2.png";
 import animeIcon from "../assets/tv.png";
@@ -392,7 +391,6 @@ export default function Home({ type = "all" }) {
 
   const [filterOpen, setFilterOpen] = useState(false);
   const [filterTab, setFilterTab]   = useState("language");
-  const handleGridKeyDown           = useSpatialNav();
 
   const [isTVMode, setIsTVMode] = useState(() => detectIsTV());
 
@@ -1107,6 +1105,8 @@ export default function Home({ type = "all" }) {
                 role="button"
                 aria-pressed="false"
                 data-card-id={cid}
+                data-recent-category={category}
+                data-recent-kind={isEpisode ? "series" : "movie"}
                 onClick={(e) => {
                   triggerRipple(e, e.currentTarget);
                   if (isEpisode) {
@@ -1137,7 +1137,13 @@ export default function Home({ type = "all" }) {
                   }
                   playMovie(item);
                 }}
-                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.currentTarget.click(); } }}
+                onKeyDown={(e) => {
+                  if (e.target !== e.currentTarget) return;
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    e.currentTarget.click();
+                  }
+                }}
               >
                 <div className="rw-hcard-poster">
                   <PosterImg src={item.img} alt={item.seriesTitle || item.title} loading="lazy" />
@@ -1151,7 +1157,22 @@ export default function Home({ type = "all" }) {
                     className="rw-hcard-delete"
                     aria-label="Remove from recently watched"
                     title="Remove"
-                    onClick={(e) => { e.stopPropagation(); deleteRecentWatched(category, item.id); }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const strip = e.currentTarget.closest(".rw-hstrip");
+                      const cards = Array.from(strip?.querySelectorAll(".rw-hcard") || []);
+                      const index = cards.indexOf(e.currentTarget.closest(".rw-hcard"));
+                      const nextCard = cards[index + 1] || cards[index - 1];
+                      deleteRecentWatched(category, item.id);
+                      requestAnimationFrame(() => {
+                        const fallback = document.querySelector(
+                          '.movies-page[data-home-view="true"] .content-section .grid [data-card-id], .topbar .menu-btn'
+                        );
+                        const target = nextCard?.isConnected ? nextCard : fallback;
+                        target?.focus({ preventScroll: true });
+                        target?.scrollIntoView?.({ block: "nearest", inline: "nearest", behavior: "smooth" });
+                      });
+                    }}
                   >
                     <TrashIcon />
                   </button>
@@ -1218,13 +1239,13 @@ export default function Home({ type = "all" }) {
         }}
       />
 
-      <div className="movies-page">
+      <div className="movies-page" data-home-view={currentView.kind === "home" ? "true" : undefined}>
         {currentView.kind === "home" && (
           <>
             <div id="search-section" className="search-bar" role="search">
               <input id="search-input" className="search-input" value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === 'Escape' || e.key === 'ArrowDown' || e.key === 'ArrowUp') e.target.blur(); }}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === "Escape") e.target.blur(); }}
                 placeholder={isListening ? "Listening…" : "Search movies, series, anime…"}
                 aria-label="Search content" type="search" enterKeyHint="search" />
               <div className="search-voice-group">
@@ -1253,6 +1274,7 @@ export default function Home({ type = "all" }) {
             <div className="filter-bar search-filter-gap" role="group" aria-label="Filter content">
               <button
                 className={`fp-trigger ${languageFilter.length > 0 ? "fp-trigger--active-teal" : ""}`}
+                data-spatial-nav="filter-language"
                 onClick={() => { setFilterTab("language"); setFilterOpen(true); }}
                 aria-haspopup="dialog"
                 aria-expanded={filterOpen && filterTab === "language"}
@@ -1267,6 +1289,7 @@ export default function Home({ type = "all" }) {
 
               <button
                 className={`fp-trigger ${genreFilter.length > 0 ? "fp-trigger--active-red" : ""}`}
+                data-spatial-nav="filter-genre"
                 onClick={() => { setFilterTab("genre"); setFilterOpen(true); }}
                 aria-haspopup="dialog"
                 aria-expanded={filterOpen && filterTab === "genre"}
@@ -1287,6 +1310,7 @@ export default function Home({ type = "all" }) {
 
               <button
                 className={`fp-trigger ${yearFilter.length > 0 ? "fp-trigger--active-gold" : ""}`}
+                data-spatial-nav="filter-year"
                 onClick={() => { setFilterTab("year"); setFilterOpen(true); }}
                 aria-haspopup="dialog"
                 aria-expanded={filterOpen && filterTab === "year"}
@@ -1305,7 +1329,7 @@ export default function Home({ type = "all" }) {
         {!isDataLoaded ? (
           <section className="content-section" aria-busy="true">
             <h2 className="section-title">Loading…</h2>
-            <div className="grid" onKeyDown={handleGridKeyDown}>
+            <div className="grid">
               {Array.from({ length: 12 }).map((_, i) => <SkeletonCard key={i} />)}
             </div>
           </section>
@@ -1325,7 +1349,7 @@ export default function Home({ type = "all" }) {
                 </div>
               </div>
             </div>
-            <div className="grid" onKeyDown={handleGridKeyDown}>
+            <div className="grid">
               {Object.entries(selectedSeries.seasons)
                 .sort((a, b) => parseInt(a[0]) - parseInt(b[0]))
                 .map(([sNum, eps], i) => {
@@ -1404,7 +1428,7 @@ export default function Home({ type = "all" }) {
                 ) : null;
               })()}
             </div>
-            <div className="grid" onKeyDown={handleGridKeyDown}>
+            <div className="grid">
               {(() => {
                 const sorted = [...selectedSeason.episodes].sort(
                   (a, b) => naturalSort(String(a.episode), String(b.episode))
@@ -1449,7 +1473,7 @@ export default function Home({ type = "all" }) {
                 </div>
               </div>
             </div>
-            <div className="grid" onKeyDown={handleGridKeyDown}>
+            <div className="grid">
               {selectedCollection.items.map((m, i) => (
                 <FocusCard key={m.id} className="card" style={{ "--i": Math.min(i, 12) }}
                   data-card-id={cardId("col", m.id)}
@@ -1467,40 +1491,40 @@ export default function Home({ type = "all" }) {
             {type === "anime"  && renderRecentSection("Recently Watched", recentWatched.anime,   "anime")}
 
             {(type === "all" || type === "movie") && movieGroups.length > 0 && (
-              <section className="content-section">
+              <section className="content-section" data-content-section="movies">
                 <h2 className="section-title">
                   <img src={tvIcon} alt="" className="section-icon" aria-hidden="true" /> Movies
                 </h2>
-                <div className="grid" onKeyDown={handleGridKeyDown}>{renderMovieGrid(movieGroups, "mg")}</div>
+                <div className="grid">{renderMovieGrid(movieGroups, "mg")}</div>
               </section>
             )}
 
             {(type === "all" || type === "series") && seriesGroups.length > 0 && (
-              <section className="content-section">
+              <section className="content-section" data-content-section="series">
                 <h2 className="section-title">
                   <img src={seriIcon} alt="" className="section-icon" aria-hidden="true" /> Series
                 </h2>
-                <div className="grid" onKeyDown={handleGridKeyDown}>
+                <div className="grid">
                   {seriesGroups.map(([title, data], i) => renderSeriesCard(title, data, i))}
                 </div>
               </section>
             )}
 
             {(type === "all" || type === "anime") && animeMovieGroups.length > 0 && (
-              <section className="content-section">
+              <section className="content-section" data-content-section="anime-movies">
                 <h2 className="section-title">
                   <img src={animeIcon} alt="" className="section-icon" aria-hidden="true" /> Anime Movies
                 </h2>
-                <div className="grid" onKeyDown={handleGridKeyDown}>{renderMovieGrid(animeMovieGroups, "amg")}</div>
+                <div className="grid">{renderMovieGrid(animeMovieGroups, "amg")}</div>
               </section>
             )}
 
             {(type === "all" || type === "anime") && animeSeriesGroups.length > 0 && (
-              <section className="content-section">
+              <section className="content-section" data-content-section="anime-series">
                 <h2 className="section-title">
                   <img src={animeIcon} alt="" className="section-icon" aria-hidden="true" /> Anime Series
                 </h2>
-                <div className="grid" onKeyDown={handleGridKeyDown}>
+                <div className="grid">
                   {animeSeriesGroups.map(([title, data], i) => renderSeriesCard(title, data, i))}
                 </div>
               </section>

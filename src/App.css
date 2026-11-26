@@ -735,12 +735,10 @@ body.tv-mode .episode-card:focus,
 body.tv-mode .episode-card:focus-visible,
 body.tv-mode .season-card-v2:focus,
 body.tv-mode .season-card-v2:focus-visible,
-body.tv-mode .rw-hcard:focus,
 [data-input="key"] .card:focus,
 [data-input="key"] .card:focus-visible,
 [data-input="key"] .episode-card:focus,
-[data-input="key"] .season-card-v2:focus,
-[data-input="key"] .rw-hcard:focus {
+[data-input="key"] .season-card-v2:focus {
   outline: 3px solid #e50914 !important;
   outline-offset: 3px !important;
   border-color: #e50914 !important;
