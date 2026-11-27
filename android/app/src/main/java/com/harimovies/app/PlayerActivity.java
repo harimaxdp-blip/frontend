@@ -46,9 +46,9 @@ import androidx.media3.common.Player;
 import androidx.media3.common.TrackSelectionParameters;
 import androidx.media3.common.Tracks;
 import androidx.media3.datasource.DefaultHttpDataSource;
+import androidx.media3.exoplayer.DefaultLoadControl;
 import androidx.media3.exoplayer.DefaultRenderersFactory;
 import androidx.media3.exoplayer.ExoPlayer;
-import androidx.media3.exoplayer.SeekParameters;
 import androidx.media3.exoplayer.audio.AudioSink;
 import androidx.media3.exoplayer.audio.DefaultAudioSink;
 import androidx.media3.exoplayer.dash.DashMediaSource;
@@ -115,6 +115,7 @@ public class PlayerActivity extends AppCompatActivity {
     private float   youtubeCurrentTime = 0f;
     private float   youtubeDuration = 0f;
     private DelayAudioProcessor delayAudioProcessor;
+    private View bufferingView;
 
     private String  videoTitle   = "";
     private String  seriesTitle  = "";
@@ -233,6 +234,9 @@ public class PlayerActivity extends AppCompatActivity {
     private HandlerThread previewThread;
     private Handler       previewHandler;
     private final Map<String, String> requestHeaders = new HashMap<>();
+    private volatile String previewUrl = "";
+    private volatile int previewSourceGeneration = 0;
+    private int previewRetrieverLoadingGeneration = -1;
 
     private boolean isPreviewLoading = false;
     private long    lastPreviewPos   = -1;
@@ -374,8 +378,12 @@ public class PlayerActivity extends AppCompatActivity {
             }
 
             delayAudioProcessor = new DelayAudioProcessor();
-            player = new ExoPlayer.Builder(this, createRenderersFactory()).build();
-            player.setSeekParameters(SeekParameters.EXACT);
+            player = new ExoPlayer.Builder(this, createRenderersFactory())
+                    .setLoadControl(new DefaultLoadControl.Builder()
+                            .setBufferDurationsMs(30_000, 60_000, 2_500, 5_000)
+                            .setPrioritizeTimeOverSizeThresholds(true)
+                            .build())
+                    .build();
             applySavedTrackPreferences();
             playerView.setPlayer(player);
             playerView.setControllerShowTimeoutMs(-1);
@@ -430,6 +438,11 @@ public class PlayerActivity extends AppCompatActivity {
                 @Override
                 public void onPlaybackStateChanged(int state) {
                     Log.d("PLAYER", "State: " + state);
+                    if (state == Player.STATE_BUFFERING) {
+                        setBufferingVisible(true);
+                    } else if (state == Player.STATE_READY || state == Player.STATE_ENDED) {
+                        setBufferingVisible(false);
+                    }
                     if (state == Player.STATE_ENDED) {
                         clearSavedPosition();
                         if (!playlist.isEmpty() && currentIndex < playlist.size() - 1) {
@@ -607,23 +620,8 @@ public class PlayerActivity extends AppCompatActivity {
                     isFullscreen ? R.drawable.ic_fullscreen_exit : R.drawable.ic_fullscreen);
         }
         if (playerView != null) {
-            // Detect if running on Android TV
-            android.app.UiModeManager uiModeManager = (android.app.UiModeManager) getSystemService(Context.UI_MODE_SERVICE);
-            boolean isTv = uiModeManager != null && uiModeManager.getCurrentModeType() == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION;
-
-            if (isTv) {
-                // TV Default: Fit mode
-                playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
-                resizeModeIndex = 1;
-            } else if (isFullscreen) {
-                // Phone Landscape Default: Fill (Netflix style)
-                playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
-                resizeModeIndex = 0;
-            } else {
-                // Phone Portrait Default: Fit
-                playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
-                resizeModeIndex = 1;
-            }
+            playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
+            resizeModeIndex = 1;
         }
     }
 
@@ -870,6 +868,7 @@ public class PlayerActivity extends AppCompatActivity {
     }
 
     private void resolveAndPlayYouTube() {
+        setPreviewSource(null);
         if (progressBar != null) progressBar.setVisibility(View.VISIBLE);
         String videoId = extractYouTubeVideoId(videoUrl);
         if (videoId == null) {
@@ -992,6 +991,8 @@ public class PlayerActivity extends AppCompatActivity {
     private void setupTelegramCdnPlayer(String cdnUrl) {
         resumeChecked = false;
         isYoutubePlaying = false;
+        setBufferingVisible(true);
+        player.pause();
         if (youtubePlayerView != null) youtubePlayerView.setVisibility(View.GONE);
         if (playerView != null) playerView.setVisibility(View.VISIBLE);
 
@@ -1002,22 +1003,7 @@ public class PlayerActivity extends AppCompatActivity {
         headers.put("Origin", "https://t.me");
         requestHeaders.clear();
         requestHeaders.putAll(headers);
-
-        // Update preview retriever for the resolved URL
-        if (previewHandler != null) {
-            previewHandler.removeCallbacksAndMessages(null);
-            final String url = cdnUrl;
-            final Map<String, String> finalHeaders = new HashMap<>(requestHeaders);
-            previewHandler.post(() -> {
-                try {
-                    if (retriever != null) retriever.release();
-                    retriever = new MediaMetadataRetriever();
-                    retriever.setDataSource(url, finalHeaders);
-                } catch (Exception e) {
-                    Log.e("PREVIEW", "Retriever error: " + e.getClass().getSimpleName());
-                }
-            });
-        }
+        setPreviewSource(cdnUrl);
 
         DefaultHttpDataSource.Factory dsFactory = new DefaultHttpDataSource.Factory()
                 .setUserAgent(
@@ -1034,7 +1020,6 @@ public class PlayerActivity extends AppCompatActivity {
 
         player.setMediaSource(mediaSource);
         player.prepare();
-        player.play();
 
         updateSeriesUI();
         fetchSkipTimes();
@@ -1062,7 +1047,11 @@ public class PlayerActivity extends AppCompatActivity {
     }
 
     private void setupPlayerWithTelegram(int fileId) {
+        resumeChecked = false;
         isYoutubePlaying = false;
+        setBufferingVisible(true);
+        player.pause();
+        setPreviewSource(null);
         if (youtubePlayerView != null) youtubePlayerView.setVisibility(View.GONE);
         if (playerView != null) playerView.setVisibility(View.VISIBLE);
 
@@ -1072,7 +1061,6 @@ public class PlayerActivity extends AppCompatActivity {
         
         player.setMediaSource(mediaSource);
         player.prepare();
-        player.play();
         updateSeriesUI();
         fetchSkipTimes();
     }
@@ -1080,6 +1068,8 @@ public class PlayerActivity extends AppCompatActivity {
     private void setupPlayerWithUrl(String resolvedUrl) {
         resumeChecked = false;
         isYoutubePlaying = false;
+        setBufferingVisible(true);
+        player.pause();
         if (youtubePlayerView != null) youtubePlayerView.setVisibility(View.GONE);
         if (playerView != null) playerView.setVisibility(View.VISIBLE);
 
@@ -1092,20 +1082,7 @@ public class PlayerActivity extends AppCompatActivity {
         }
         requestHeaders.clear();
         requestHeaders.putAll(headers);
-
-        if (previewHandler != null) {
-            previewHandler.removeCallbacksAndMessages(null);
-            final Map<String, String> finalHeaders = new HashMap<>(requestHeaders);
-            previewHandler.post(() -> {
-                try {
-                    if (retriever != null) retriever.release();
-                    retriever = new MediaMetadataRetriever();
-                    retriever.setDataSource(resolvedUrl, finalHeaders);
-                } catch (Exception e) {
-                    Log.e("PREVIEW", "Retriever update error: " + e.getClass().getSimpleName());
-                }
-            });
-        }
+        setPreviewSource(resolvedUrl);
 
         DefaultHttpDataSource.Factory dsFactory =
                 new DefaultHttpDataSource.Factory()
@@ -1135,7 +1112,6 @@ public class PlayerActivity extends AppCompatActivity {
 
         player.setMediaSource(mediaSource);
         player.prepare();
-        player.play();
         Log.d("STREAM_PLAYING", "Media source prepared.");
 
         updateSeriesUI();
@@ -1864,15 +1840,6 @@ public class PlayerActivity extends AppCompatActivity {
         previewThread.start();
         previewHandler = new Handler(previewThread.getLooper());
 
-        previewHandler.post(() -> {
-            try {
-                retriever = new MediaMetadataRetriever();
-                retriever.setDataSource(videoUrl, requestHeaders);
-            } catch (Exception e) {
-                Log.e("PREVIEW", "Retriever error: " + e.getClass().getSimpleName());
-            }
-        });
-
         if (progressBar instanceof DefaultTimeBar) {
             ((DefaultTimeBar) progressBar).addListener(new TimeBar.OnScrubListener() {
                 @Override
@@ -1924,7 +1891,75 @@ public class PlayerActivity extends AppCompatActivity {
         }
 
         lastPreviewPos = positionMs;
+        ensurePreviewRetriever();
         if (!isPreviewLoading && retriever != null) fetchNextPreviewFrame();
+    }
+
+    private void setPreviewSource(String url) {
+        previewUrl = url != null && StreamResolver.isHttpUrl(url)
+                && !"hls".equalsIgnoreCase(mediaTypeHint) && !"dash".equalsIgnoreCase(mediaTypeHint)
+                && !StreamResolver.isHls(url) && !StreamResolver.isDash(url)
+                ? url : "";
+        final int generation = ++previewSourceGeneration;
+        previewRetrieverLoadingGeneration = -1;
+        if (previewHandler != null) {
+            previewHandler.post(() -> {
+                if (retriever != null) {
+                    releasePreviewRetriever(retriever);
+                    retriever = null;
+                }
+                if (generation == previewSourceGeneration) {
+                    runOnUiThread(() -> {
+                        if (generation == previewSourceGeneration) {
+                            isPreviewLoading = false;
+                        }
+                    });
+                }
+            });
+        }
+    }
+
+    private void ensurePreviewRetriever() {
+        if (previewHandler == null || previewUrl.isEmpty()) return;
+        final int generation = previewSourceGeneration;
+        if (retriever != null || previewRetrieverLoadingGeneration == generation) return;
+
+        previewRetrieverLoadingGeneration = generation;
+        final String sourceUrl = previewUrl;
+        final Map<String, String> headers = new HashMap<>(requestHeaders);
+        previewHandler.post(() -> {
+            MediaMetadataRetriever nextRetriever = new MediaMetadataRetriever();
+            try {
+                nextRetriever.setDataSource(sourceUrl, headers);
+                if (generation != previewSourceGeneration || isFinishing()) {
+                    releasePreviewRetriever(nextRetriever);
+                    return;
+                }
+                retriever = nextRetriever;
+                runOnUiThread(() -> {
+                    if (previewRetrieverLoadingGeneration == generation) {
+                        previewRetrieverLoadingGeneration = -1;
+                    }
+                    if (generation == previewSourceGeneration) fetchNextPreviewFrame();
+                });
+            } catch (Exception e) {
+                releasePreviewRetriever(nextRetriever);
+                Log.e("PREVIEW", "Retriever setup error: " + e.getClass().getSimpleName());
+                runOnUiThread(() -> {
+                    if (previewRetrieverLoadingGeneration == generation) {
+                        previewRetrieverLoadingGeneration = -1;
+                    }
+                });
+            }
+        });
+    }
+
+    private void releasePreviewRetriever(MediaMetadataRetriever target) {
+        try {
+            target.release();
+        } catch (IOException e) {
+            Log.e("PREVIEW", "Retriever release error: " + e.getClass().getSimpleName());
+        }
     }
 
     private void fetchNextPreviewFrame() {
@@ -2016,6 +2051,7 @@ public class PlayerActivity extends AppCompatActivity {
         tvSeekDelta         = playerView.findViewById(R.id.tv_seek_delta);
         topBar              = playerView.findViewById(R.id.top_bar);
         centerControls      = playerView.findViewById(R.id.center_controls);
+        bufferingView       = playerView.findViewById(R.id.exo_buffering);
         bottomBar           = playerView.findViewById(R.id.bottom_bar);
         scrimTop            = playerView.findViewById(R.id.scrim_top);
         scrimBottom         = playerView.findViewById(R.id.scrim_bottom);
@@ -2075,6 +2111,12 @@ public class PlayerActivity extends AppCompatActivity {
         // Disable system focus traversal — we manage it manually for TV
         disableSystemFocusTraversal();
         setupButtonAccessibility();
+    }
+
+    private void setBufferingVisible(boolean visible) {
+        if (bufferingView != null) {
+            bufferingView.setVisibility(visible ? View.VISIBLE : View.GONE);
+        }
     }
 
     /**
@@ -3082,7 +3124,7 @@ public class PlayerActivity extends AppCompatActivity {
     @Override protected void onDestroy() {
         timeUpdateHandler.removeCallbacks(timeUpdateRunnable);
         if (previewThread != null) { previewThread.quitSafely(); previewThread = null; }
-        if (retriever != null) { try { retriever.release(); } catch (Exception ignored) {} retriever = null; }
+        if (retriever != null) { releasePreviewRetriever(retriever); retriever = null; }
         autoHideHandler.removeCallbacks(autoHideRunnable);
         autoHideHandler.removeCallbacks(hideLockUiRunnable);
         autoHideHandler.removeCallbacks(savePositionRunnable);

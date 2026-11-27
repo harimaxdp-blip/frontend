@@ -127,7 +127,10 @@ export const playerAdapter = {
 
     if (platform === "android") {
       if (selectedResolution?.status !== "resolved" || !selectedResolution.streamUrl) {
-        onFallback?.(new Error("No direct media stream was resolved for ExoPlayer"), resolvedFallbackPayload);
+        onFallback?.(
+          new Error("No direct media stream was resolved for ExoPlayer"),
+          resolvedFallbackPayload
+        );
         return;
       }
 

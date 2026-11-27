@@ -50,7 +50,7 @@ describe("Android player adapter", () => {
     }));
   });
 
-  test("uses the web player fallback instead of passing provider pages to ExoPlayer", async () => {
+  test("uses GlobalPlayer for Android provider URLs that do not resolve to direct media", async () => {
     const sourceUrl = "https://provider.example/watch/movie";
     const resolution = {
       status: "iframe_fallback",
@@ -70,5 +70,44 @@ describe("Android player adapter", () => {
       expect.any(Error),
       expect.objectContaining({ url: sourceUrl, initialResolution: resolution })
     );
+  });
+
+  test("keeps YouTube links on the compatible embedded-player fallback on Android", async () => {
+    const sourceUrl = "https://www.youtube.com/watch?v=abcdefghijk";
+    const resolution = {
+      status: "iframe_fallback",
+      embedUrl: "https://www.youtube-nocookie.com/embed/abcdefghijk",
+      provider: "YouTube",
+    };
+    const onFallback = jest.fn();
+    resolveMediaSource.mockResolvedValue(resolution);
+
+    await playerAdapter.play({
+      movie: { link: sourceUrl, title: "Test movie" },
+      onFallback,
+    });
+
+    expect(DeviceControl.openExoPlayer).not.toHaveBeenCalled();
+    expect(onFallback).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({ url: sourceUrl, initialResolution: resolution })
+    );
+  });
+
+  test("keeps browser playback on GlobalPlayer", async () => {
+    Capacitor.getPlatform.mockReturnValue("web");
+    const onFallback = jest.fn();
+    const sourceUrl = "https://provider.example/watch/movie";
+
+    await playerAdapter.play({
+      movie: { link: sourceUrl, title: "Test movie" },
+      onFallback,
+    });
+
+    expect(DeviceControl.openExoPlayer).not.toHaveBeenCalled();
+    expect(onFallback).toHaveBeenCalledWith(null, expect.objectContaining({
+      url: sourceUrl,
+      title: "Test movie",
+    }));
   });
 });
